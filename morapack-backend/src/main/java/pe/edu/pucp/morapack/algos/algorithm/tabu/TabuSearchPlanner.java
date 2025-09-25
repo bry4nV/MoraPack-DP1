@@ -4,9 +4,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Random;
-import java.util.stream.Collectors;
-
+import java.time.Duration;
 import pe.edu.pucp.morapack.algos.algorithm.IOptimizer;
 import pe.edu.pucp.morapack.algos.entities.PlannerRoute;
 import pe.edu.pucp.morapack.algos.entities.PlannerSegment;
@@ -42,13 +40,22 @@ public class TabuSearchPlanner implements IOptimizer {
 
     @Override
     public Solution optimize(List<Order> orders, List<Flight> flights, List<Airport> airports) {
+        long startTime = System.currentTimeMillis();
+        
         if (orders == null || orders.isEmpty()) return new Solution();
+        
+        System.out.println("\n=== Starting Tabu Search Optimization ===");
+        System.out.println("Orders to process: " + orders.size());
+        System.out.println("Available flights: " + flights.size());
         
         // First convert orders to shipments
         List<Shipment> shipments = partitionOrdersIntoShipments(orders, flights);
+        System.out.println("Generated shipments: " + shipments.size());
         
         Solution currentSolution = generateInitialSolution(shipments, flights);
-        Solution bestGlobalSolution = new Solution(currentSolution);
+        System.out.println("Initial solution routes: " + currentSolution.getRouteMap().size());
+        
+        final Solution[] bestSolution = {new Solution(currentSolution)};
         Queue<TabuMove> tabuList = new LinkedList<>();
         int iterationsWithoutImprovement = 0;
 
@@ -72,7 +79,7 @@ public class TabuSearchPlanner implements IOptimizer {
                 double neighborCost = TabuSearchPlannerCostFunction.calculateCost(neighbor, flights, airports, i, maxIterations);
                 
                 if (tabuList.contains(move)) {
-                    if (neighborCost < TabuSearchPlannerCostFunction.calculateCost(bestGlobalSolution, flights, airports, i, maxIterations)) {
+                    if (neighborCost < TabuSearchPlannerCostFunction.calculateCost(bestSolution[0], flights, airports, i, maxIterations)) {
                         // Aspiration Criteria
                     } else {
                         continue;
@@ -93,17 +100,28 @@ public class TabuSearchPlanner implements IOptimizer {
                         tabuList.poll();
                     }
                 }
+                System.out.println("Found better solution with cost: " + bestNeighborCost);
+            } else {
+                System.out.println("No improvement found in this iteration");
             }
 
-            if (TabuSearchPlannerCostFunction.calculateCost(currentSolution, flights, airports, i, maxIterations) < TabuSearchPlannerCostFunction.calculateCost(bestGlobalSolution, flights, airports, i, maxIterations)) {
-                bestGlobalSolution = new Solution(currentSolution);
+            double currentCost = TabuSearchPlannerCostFunction.calculateCost(currentSolution, flights, airports, i, maxIterations);
+            double bestCost = TabuSearchPlannerCostFunction.calculateCost(bestSolution[0], flights, airports, i, maxIterations);
+
+            if (currentCost < bestCost) {
+                bestSolution[0] = new Solution(currentSolution);
                 iterationsWithoutImprovement = 0;
+                System.out.println("New best global solution found!");
+                System.out.println("Current cost: " + currentCost);
+                System.out.println("Previous best: " + bestCost);
             } else {
                 iterationsWithoutImprovement++;
+                System.out.println("Iterations without improvement: " + iterationsWithoutImprovement);
             }
 
             if (iterationsWithoutImprovement >= maxIterationsWithoutImprovement) {
-                currentSolution = diversify(bestGlobalSolution, shipments, flights);
+                System.out.println("Diversifying after " + iterationsWithoutImprovement + " iterations without improvement");
+                currentSolution = diversify(bestSolution[0], shipments, flights);
                 iterationsWithoutImprovement = 0;
                 tabuList.clear();
             }
@@ -114,16 +132,43 @@ public class TabuSearchPlanner implements IOptimizer {
                 .anyMatch(s -> s.getFlight().getStatus() == Flight.Status.CANCELLED);
             
             if (hasCancellations) {
+                System.out.println("Detected cancelled flights, replanning...");
                 currentSolution = cancellationHandler.handleCancellation(null, currentSolution, activeFlights);
-                // Después de replanificar, actualizar la mejor solución si es necesario
-                double currentCost = TabuSearchPlannerCostFunction.calculateCost(currentSolution, activeFlights, airports, i, maxIterations);
-                if (currentCost < TabuSearchPlannerCostFunction.calculateCost(bestGlobalSolution, activeFlights, airports, i, maxIterations)) {
-                    bestGlobalSolution = new Solution(currentSolution);
+                currentCost = TabuSearchPlannerCostFunction.calculateCost(currentSolution, activeFlights, airports, i, maxIterations);
+                bestCost = TabuSearchPlannerCostFunction.calculateCost(bestSolution[0], activeFlights, airports, i, maxIterations);
+                if (currentCost < bestCost) {
+                    bestSolution[0] = new Solution(currentSolution);
                     iterationsWithoutImprovement = 0;
+                    System.out.println("Found better solution after handling cancellations");
                 }
             }
         }
-        return bestGlobalSolution;
+
+        long endTime = System.currentTimeMillis();
+        // Find latest delivery time
+        LocalDateTime latestDelivery = bestSolution[0].getRouteMap().values().stream()
+            .map(PlannerRoute::getFinalArrivalTime)
+            .max(LocalDateTime::compareTo)
+            .orElse(null);
+            
+        System.out.println("\n=== Optimization Complete ===");
+        System.out.println("Algorithm execution time: " + (endTime - startTime) / 1000.0 + " seconds");
+        if (latestDelivery != null) {
+            System.out.println("Latest delivery time: " + latestDelivery);
+            Duration totalTimeRequired = Duration.between(LocalDateTime.now(), latestDelivery);
+            System.out.println("Total time required: " + 
+                String.format("%d days, %d hours, %d minutes",
+                    totalTimeRequired.toDays(),
+                    totalTimeRequired.toHoursPart(),
+                    totalTimeRequired.toMinutesPart()));
+        }
+        System.out.println("Final solution routes: " + bestSolution[0].getRouteMap().size());
+        System.out.println("Unassigned shipments: " + shipments.stream()
+            .filter(s -> !bestSolution[0].getRouteMap().containsKey(s) || 
+                        bestSolution[0].getRouteMap().get(s).getSegments().isEmpty())
+            .count());
+        
+        return bestSolution[0];
     }
     
     private boolean canUseFlight(Flight flight, Shipment shipment, Map<Flight,Integer> currentLoads) {
@@ -142,6 +187,7 @@ public class TabuSearchPlanner implements IOptimizer {
     }
 
     private Solution generateInitialSolution(List<Shipment> shipments, List<Flight> flights) {
+        System.out.println("\n=== Generating Initial Solution ===");
         Solution sol = new Solution();
         Map<Flight, Integer> currentLoads = new HashMap<>();
         
@@ -154,6 +200,8 @@ public class TabuSearchPlanner implements IOptimizer {
             // Then by size (larger shipments first)
             return Integer.compare(b.getQuantity(), a.getQuantity());
         });
+        
+        System.out.println("Processing " + sortedShipments.size() + " shipments in priority order...");
         
         for(Shipment s : sortedShipments) {
             List<Flight> availableFlights = flights.stream()
@@ -183,10 +231,16 @@ public class TabuSearchPlanner implements IOptimizer {
                 route.getSegments().add(new PlannerSegment(directFlight.get()));
                 sol.getRouteMap().put(s, route);
                 currentLoads.merge(directFlight.get(), s.getQuantity(), Integer::sum);
+                System.out.println("Found direct flight for shipment " + s.getId() + 
+                                 " (" + s.getOrigin().getCode() + " -> " + s.getDestination().getCode() + 
+                                 ") quantity: " + s.getQuantity());
                 continue;
             }
 
             // Try one-stop flights
+            System.out.println("Looking for connecting flights for shipment " + s.getId() + 
+                             " (" + s.getOrigin().getCode() + " -> " + s.getDestination().getCode() + 
+                             ") quantity: " + s.getQuantity());
             LocalDateTime orderTime = s.getParentOrder().getOrderTime();
             long maxHours = s.isInterContinental() ? 72 : 48;
             boolean foundRoute = false;
@@ -214,12 +268,28 @@ public class TabuSearchPlanner implements IOptimizer {
                         currentLoads.merge(firstLeg, s.getQuantity(), Integer::sum);
                         currentLoads.merge(secondLeg, s.getQuantity(), Integer::sum);
                         foundRoute = true;
+                        System.out.println("Found connecting flights for shipment " + s.getId() +
+                                         " through " + firstLeg.getDestination().getCode());
                         break;
                     }
                 }
                 if (foundRoute) break;
             }
+            
+            if (!foundRoute) {
+                System.out.println("No feasible route found for shipment " + s.getId());
+            }
         }
+        
+        int unassignedCount = (int) shipments.stream()
+            .filter(s -> !sol.getRouteMap().containsKey(s) || 
+                        sol.getRouteMap().get(s).getSegments().isEmpty())
+            .count();
+        System.out.println("\nInitial solution summary:");
+        System.out.println("Total shipments: " + shipments.size());
+        System.out.println("Assigned shipments: " + (shipments.size() - unassignedCount));
+        System.out.println("Unassigned shipments: " + unassignedCount);
+        
         return sol;
     }
 

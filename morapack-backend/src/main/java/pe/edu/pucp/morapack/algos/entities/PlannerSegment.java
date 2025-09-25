@@ -1,16 +1,16 @@
-package pe.edu.pucp.morapack.algos.common;
+package pe.edu.pucp.morapack.algos.entities;
 
-import pe.edu.pucp.morapack.model.flight.Flight;
 import java.util.Objects;
+import pe.edu.pucp.morapack.model.Flight;
 
-public class Segment {
+public class PlannerSegment {
     private Flight flight;
     
-    public Segment(Flight flight) {
+    public PlannerSegment(Flight flight) {
         this.flight = flight;
     }
     
-    public Segment(Segment other) {
+    public PlannerSegment(PlannerSegment other) {
         this.flight = other.flight;
     }
     
@@ -22,7 +22,7 @@ public class Segment {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        return Objects.equals(flight, ((Segment) o).flight);
+        return Objects.equals(flight, ((PlannerSegment) o).flight);
     }
     
     @Override

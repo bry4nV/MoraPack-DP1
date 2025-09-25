@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 public class MorapackPlanner {
     private static final String DEFAULT_AIRPORTS_FILE = "data/airports.txt";
     private static final String DEFAULT_FLIGHTS_FILE = "data/flights.csv";
-    private static final String DEFAULT_ORDERS_FILE = "data/pedidos.csv";
+    private static final String DEFAULT_ORDERS_FILE = "data/pedidos_generados.csv";
 
     public static void main(String[] args) {
         String airportsFile = args.length > 0 ? args[0] : DEFAULT_AIRPORTS_FILE;

@@ -38,14 +38,26 @@ public class DataLoader {
                 // Skip header lines
                 if (line.startsWith("*") || line.contains("GMT") || !line.matches(".*\\d+.*")) continue;
                 
-                String[] parts = line.trim().split("\\s+");
-                if (parts.length < 8) continue;
-                
-                String code = parts[1];
-                String city = parts[2];
-                String countryName = parts[3];
-                int gmt = Integer.parseInt(parts[5]);
-                int capacity = Integer.parseInt(parts[6]);
+                // Extract line number and code first
+                String[] initialParts = line.trim().split("\\s+", 3);
+                if (initialParts.length < 3) continue;
+
+                String lineNumber = initialParts[0];
+                String code = initialParts[1];
+                String remaining = initialParts[2];
+
+                // Split the remaining parts, keeping multi-word city names intact
+                String[] remainingParts = remaining.trim().split("\\s{2,}");
+                if (remainingParts.length < 5) continue;
+
+                String city = remainingParts[0].trim();
+                String countryName = remainingParts[1].trim();
+                String cityCode = remainingParts[2].trim();
+                String gmtStr = remainingParts[3].trim();
+                String capacityStr = remainingParts[4].trim();
+
+                int gmt = Integer.parseInt(gmtStr);
+                int capacity = Integer.parseInt(capacityStr);
                 
                 // Get latitude and longitude from the city code or generate random coordinates within continent boundaries
                 double latitude = generateLatitudeForContinent(continentHolder[0]);

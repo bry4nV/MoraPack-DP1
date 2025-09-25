@@ -1,4 +1,4 @@
-package pe.edu.pucp.morapack.algos.common;
+package pe.edu.pucp.morapack.algos.entities;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -6,18 +6,18 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-public class Route {
-    private List<Segment> segments = new ArrayList<>();
+public class PlannerRoute {
+    private List<PlannerSegment> segments = new ArrayList<>();
     
-    public Route() {}
+    public PlannerRoute() {}
     
-    public Route(Route other) {
+    public PlannerRoute(PlannerRoute other) {
         this.segments = other.segments.stream()
-            .map(Segment::new)
+            .map(PlannerSegment::new)
             .collect(Collectors.toList());
     }
     
-    public List<Segment> getSegments() {
+    public List<PlannerSegment> getSegments() {
         return segments;
     }
     
@@ -33,7 +33,7 @@ public class Route {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        return Objects.equals(segments, ((Route) o).segments);
+        return Objects.equals(segments, ((PlannerRoute) o).segments);
     }
     
     @Override
