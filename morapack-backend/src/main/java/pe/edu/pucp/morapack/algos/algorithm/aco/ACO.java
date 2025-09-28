@@ -1,5 +1,5 @@
 
-package MoraTravel;
+package pe.edu.pucp.morapack.algos.algorithm.aco;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 

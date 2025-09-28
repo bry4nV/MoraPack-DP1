@@ -1,5 +1,5 @@
 
-package MoraTravel;
+package pe.edu.pucp.morapack.algos.algorithm.aco;
 
 public class flightslot{
     public final flight flight;

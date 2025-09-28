@@ -1,4 +1,4 @@
-package MoraTravel;
+package pe.edu.pucp.morapack.algos.algorithm.aco;
 import java.io.*;
 import java.util.*;
 

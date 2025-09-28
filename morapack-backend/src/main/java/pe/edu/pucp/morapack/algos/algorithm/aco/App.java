@@ -1,28 +1,15 @@
-package MoraTravel;
+package pe.edu.pucp.morapack.algos.algorithm.aco;
 
 import java.io.File;
 import java.util.*;
 
 public class App {
-
-    // ===== Auxiliar de validación para líneas de pedidos =====
-    // (ajusta el mínimo de columnas según tu formato real de pedidos.csv)
-    private static boolean validarPartes(String[] partes) {
-        if (partes == null || partes.length < 6) return false;
-        for (int i = 0; i < 6; i++) {
-            if (partes[i] == null || partes[i].trim().isEmpty()) return false;
-        }
-        return true;
-    }
-
     public static void main(String[] args) {
         // =========================
         // 1) Cargar AEROPUERTOS
-        // =========================
-        long inicio = System.currentTimeMillis();
-
+        // =======================
         List<Aeropuerto> aeropuertos = new ArrayList<>();
-        String rutaAeropuertos = "C:\\Users\\USUARIO\\Desktop\\DP1\\Lectura\\DP1_TA\\DP1_TA\\src\\MoraTravel\\aeropuertos.csv";
+        String rutaAeropuertos = "C:\\Users\\USUARIO\\Desktop\\DP1\\github\\MoraPack-DP1\\morapack-backend\\src\\main\\java\\pe\\edu\\pucp\\morapack\\algos\\algorithm\\aco\\aeropuertos.csv";
         try (Scanner scanner = new Scanner(new File(rutaAeropuertos))) {
             if (scanner.hasNextLine()) scanner.nextLine(); // Saltar encabezado
             while (scanner.hasNextLine()) {
@@ -62,7 +49,7 @@ public class App {
         // 2) Cargar VUELOS
         // =========================
         List<flight> vuelos = new ArrayList<>();
-        String rutaVuelos = "C:\\Users\\USUARIO\\Desktop\\DP1\\Lectura\\DP1_TA\\DP1_TA\\src\\MoraTravel\\Planes_vuelo.csv";
+        String rutaVuelos = "C:\\Users\\USUARIO\\Desktop\\DP1\\github\\MoraPack-DP1\\morapack-backend\\src\\main\\java\\pe\\edu\\pucp\\morapack\\algos\\algorithm\\aco\\vuelos.csv";
         try (Scanner scanner = new Scanner(new File(rutaVuelos))) {
             if (scanner.hasNextLine()) scanner.nextLine(); // Saltar encabezado
             while (scanner.hasNextLine()) {

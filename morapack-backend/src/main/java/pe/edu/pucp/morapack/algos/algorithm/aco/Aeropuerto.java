@@ -1,4 +1,4 @@
-package MoraTravel;
+package pe.edu.pucp.morapack.algos.algorithm.aco;
 
 public class Aeropuerto {
     public int id;

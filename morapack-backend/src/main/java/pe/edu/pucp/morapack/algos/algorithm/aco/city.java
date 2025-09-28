@@ -1,6 +1,5 @@
 
-package MoraTravel;
-
+package pe.edu.pucp.morapack.algos.algorithm.aco;
 
 public class city {
     final int id; 
