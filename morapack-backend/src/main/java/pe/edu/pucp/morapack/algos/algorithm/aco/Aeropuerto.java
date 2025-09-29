@@ -24,6 +24,20 @@ public class Aeropuerto {
         this.husoHorario = husoHorario;
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+        Aeropuerto other = (Aeropuerto) obj;
+        return codigo.equalsIgnoreCase(other.codigo);
+    }
+
+
+
+
+
+
+
     // Método para obtener una representación en texto del aeropuerto
     @Override
     public String toString() {

@@ -1,24 +1,21 @@
 package pe.edu.pucp.morapack.algos.algorithm.aco;
 import java.util.*;
 
-
-
 public class Hormiga {
-    public List<Arista> ruta;
-    public Set<Aeropuerto> visitados;
-    public int tiempoTotal;
+    public List<Arista> ruta = new ArrayList<>();
+    public Set<Aeropuerto> visitados = new HashSet<>();
+    public double tiempoTotal = 0;
     public int cantidadPaquetes;
     public Aeropuerto destinoPedido;
+    public double plazoMaximo; // en horas
 
     private double alpha = 1.0;
     private double beta = 2.0;
 
-    public Hormiga(Aeropuerto sedeInicial, Aeropuerto destinoPedido, int cantidadPaquetes) {
-        this.ruta = new ArrayList<>();
-        this.visitados = new HashSet<>();
-        this.tiempoTotal = 0;
-        this.cantidadPaquetes = cantidadPaquetes;
+    public Hormiga(Aeropuerto sedeInicial, Aeropuerto destinoPedido, int cantidadPaquetes, double plazoMaximo) {
         this.destinoPedido = destinoPedido;
+        this.cantidadPaquetes = cantidadPaquetes;
+        this.plazoMaximo = plazoMaximo;
         visitados.add(sedeInicial);
     }
 
@@ -33,17 +30,19 @@ public class Hormiga {
 
         List<Arista> candidatas = new ArrayList<>();
         for (Arista a : posibles) {
-            // Solo considerar vuelos con capacidad suficiente
-            if (!visitados.contains(a.destino) && a.capacidad >= cantidadPaquetes) {
+            // Filtrar por capacidad y plazo máximo
+            if (!visitados.contains(a.destino) &&
+                a.capacidad >= cantidadPaquetes &&
+                (tiempoTotal + a.tiempo) <= plazoMaximo) {
                 candidatas.add(a);
             }
         }
+
         if (candidatas.isEmpty()) return null;
 
         double suma = 0.0;
         for (Arista a : candidatas) {
-            double valor = Math.pow(a.feromona, alpha) * Math.pow(1.0 / a.tiempo, beta);
-            suma += valor;
+            suma += Math.pow(a.feromona, alpha) * Math.pow(1.0 / a.tiempo, beta);
         }
 
         double rand = Math.random();
@@ -53,14 +52,14 @@ public class Hormiga {
             acumulado += prob;
             if (rand <= acumulado) return a;
         }
+
         return candidatas.get(candidatas.size() - 1);
     }
 
-    // Construye la ruta hasta llegar al destino
     public void construirRuta(Grafo grafo) {
         while (!obtenerUltimoAeropuerto().equals(destinoPedido)) {
             Arista siguiente = elegirSiguienteArista(grafo);
-            if (siguiente == null) break; // no hay ruta posible
+            if (siguiente == null) break; // no hay más vuelos válidos
             agregarArista(siguiente);
         }
     }
@@ -69,6 +68,7 @@ public class Hormiga {
         ruta.add(a);
         visitados.add(a.destino);
         tiempoTotal += a.tiempo;
-        a.capacidad -= cantidadPaquetes; // reservar espacio en el vuelo
+        // Reservar capacidad temporalmente
+        a.capacidad -= cantidadPaquetes;
     }
 }

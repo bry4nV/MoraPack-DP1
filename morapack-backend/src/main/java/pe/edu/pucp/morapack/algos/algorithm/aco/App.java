@@ -12,7 +12,8 @@ public class App {
 
         // Índice por código para búsquedas rápidas
         Map<String, Aeropuerto> aeropuertoPorCodigo = new HashMap<>();
-        for (Aeropuerto a : aeropuertos) aeropuertoPorCodigo.put(a.codigo, a);
+        for (Aeropuerto a : aeropuertos) 
+            aeropuertoPorCodigo.put(a.codigo, a);
         
         // Cargar vuelos
         String rutaVuelos = "C:\\Users\\USUARIO\\Desktop\\DP1\\github\\MoraPack-DP1\\morapack-backend\\src\\main\\java\\pe\\edu\\pucp\\morapack\\algos\\algorithm\\aco\\vuelos.csv";
@@ -23,11 +24,6 @@ public class App {
         String rutaPedidos = "C:\\Users\\USUARIO\\Desktop\\DP1\\github\\MoraPack-DP1\\morapack-backend\\src\\main\\java\\pe\\edu\\pucp\\morapack\\algos\\algorithm\\aco\\pedidos.csv";
         List<Pedido> pedidos = cargarPedidos(rutaPedidos);
 
-        for(Pedido p : pedidos){
-            System.out.println("Pedido: Dia " + p.getDia() + " Hora " + p.getHora() + ":" + p.getMinuto() +
-                    " Destino: " + p.getDestino() + " Cantidad Paquetes: " + p.getCantidadPaquetes() +
-                    " ID Cliente: " + p.getIdCliente());
-        }   
         //Representación del Grafo (Aeropuertos y Vuelos)
         //Aeropuertos -> Nodos
         //Vuelos -> Aristas
@@ -43,6 +39,10 @@ public class App {
             double tiempoVuelo = v.origen.continente.equals(v.destino.continente) ? 12 : 24; // ejemplo: 12 horas dentro de continente, 24 entre continentes
             grafo.agregarArista(v.origen, v.destino,v.capacidadMax,tiempoVuelo);
         }
+
+
+
+
 
         // Definir sedes principales
         List<Aeropuerto> sedes = new ArrayList<>();
@@ -62,9 +62,41 @@ public class App {
             100.0  // incremento de feromona
         );
 
-        // Ejecutar ACO sobre los pedidos
-        Map<Pedido, Hormiga> rutasOptimas = ac.Solucionar(pedidos,aeropuertoPorCodigo);
 
+
+
+
+
+
+       /* for (Aeropuerto a : grafo.adyacencias.keySet()) {
+            System.out.print(a.codigo + " -> ");
+            for (Arista ar : grafo.adyacencias.get(a)) {
+                 System.out.print(ar.destino.codigo + "(" + ar.tiempo + "h) ");
+         }
+        System.out.println();
+        }
+        */
+
+
+
+
+
+
+        // Ejecutar ACO sobre los pedidos
+        Map<Pedido, Hormiga> rutasOptimas = ac.solucionar(pedidos, aeropuertoPorCodigo);
+        System.out.println("\n--- Resumen de rutas optimas ---");
+         for (Pedido p : rutasOptimas.keySet()) {
+            Hormiga h = rutasOptimas.get(p);
+            if (h != null && !h.ruta.isEmpty()) {
+                System.out.print("Pedido " + p.getIdCliente() + ": ");
+                for (Arista a : h.ruta) {
+                    System.out.print(a.origen.codigo + "->" + a.destino.codigo + " ");
+                }
+                System.out.println("| Tiempo total: " + h.tiempoTotal + "h");
+            } else {
+                System.out.println("Pedido " + p.getIdCliente() + ": No se pudo generar ruta");
+            }
+        }
 
 
 

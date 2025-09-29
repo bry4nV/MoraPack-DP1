@@ -1,6 +1,6 @@
 package pe.edu.pucp.morapack.algos.algorithm.aco;
-import java.util.*;
 
+import java.util.*;
 
 public class ACOPedidos {
     private Grafo grafo;
@@ -11,7 +11,7 @@ public class ACOPedidos {
     private double incrementoFeromona;
 
     public ACOPedidos(Grafo grafo, List<Aeropuerto> sedes, int numHormigas,
-               int numIteraciones, double evaporacion, double incrementoFeromona) {
+                      int numIteraciones, double evaporacion, double incrementoFeromona) {
         this.grafo = grafo;
         this.sedes = sedes;
         this.numHormigas = numHormigas;
@@ -23,37 +23,37 @@ public class ACOPedidos {
     /**
      * Ejecuta ACO para una lista de pedidos
      */
-    public Map<Pedido, Hormiga> Solucionar(List<Pedido> pedidos, Map<String, Aeropuerto> aeropuertoPorCodigo) {
+    public Map<Pedido, Hormiga> solucionar(List<Pedido> pedidos, Map<String, Aeropuerto> aeropuertoPorCodigo) {
         Map<Pedido, Hormiga> mejorRutaPorPedido = new HashMap<>();
 
         for (Pedido pedido : pedidos) {
             Hormiga mejorHormiga = null;
 
+            // Definir plazo máximo para el pedido
+            double plazoMax = calcularPlazoMaximo(sedes.get(0), aeropuertoPorCodigo.get(pedido.getDestino()));
+
             for (int iter = 0; iter < numIteraciones; iter++) {
                 List<Hormiga> hormigas = new ArrayList<>();
 
-                // Crear varias hormigas para el pedido
                 for (int h = 0; h < numHormigas; h++) {
                     Aeropuerto sedeInicial = sedes.get(new Random().nextInt(sedes.size()));
                     Hormiga hormiga = new Hormiga(
                             sedeInicial,
-                            aeropuertoPorCodigo.get(pedido.getDestino()),
-                            pedido.getCantidadPaquetes()
+                            aeropuertoPorCodigo.get(pedido.getDestino().toUpperCase().trim()),
+                            pedido.getCantidadPaquetes(),
+                            plazoMax
                     );
                     hormigas.add(hormiga);
                 }
 
-                // Cada hormiga construye su ruta
-                for (Hormiga hormiga : hormigas) {
-                    hormiga.construirRuta(grafo);
+                for (Hormiga h : hormigas) {
+                    h.construirRuta(grafo);
                 }
 
-                // Actualizar feromonas según rutas de hormigas
                 actualizarFeromonas(hormigas);
 
-                // Elegir la mejor hormiga de esta iteración
                 for (Hormiga h : hormigas) {
-                    if (mejorHormiga == null || h.tiempoTotal < mejorHormiga.tiempoTotal) {
+                    if (mejorHormiga == null || (h.ruta.size() > 0 && h.tiempoTotal < mejorHormiga.tiempoTotal)) {
                         mejorHormiga = h;
                     }
                 }
@@ -65,18 +65,26 @@ public class ACOPedidos {
             System.out.println("\nPedido " + pedido.getIdCliente() +
                     " | destino " + pedido.getDestino() +
                     " | cantidad " + pedido.getCantidadPaquetes());
-            for (Arista a : mejorHormiga.ruta) {
-                System.out.println(a.origen.codigo + " -> " + a.destino.codigo +
-                        " | Tiempo: " + a.tiempo + "h");
+
+            if (mejorHormiga != null && !mejorHormiga.ruta.isEmpty()) {
+                for (Arista a : mejorHormiga.ruta) {
+                    System.out.println(a.origen.codigo + " -> " + a.destino.codigo +
+                            " | Tiempo: " + a.tiempo + "h");
+                }
+                System.out.println("Tiempo total de la ruta: " + mejorHormiga.tiempoTotal + "h");
+            } else {
+                System.out.println("No se pudo generar ruta para este pedido.");
             }
-            System.out.println("Tiempo total de la ruta: " + mejorHormiga.tiempoTotal + "h");
         }
 
         return mejorRutaPorPedido;
     }
 
+    /**
+     * Evaporación y refuerzo de feromonas
+     */
     private void actualizarFeromonas(List<Hormiga> hormigas) {
-        // Evaporación global
+        // Evaporación
         for (List<Arista> aristas : grafo.adyacencias.values()) {
             for (Arista a : aristas) {
                 a.feromona *= (1 - evaporacion);
@@ -84,12 +92,21 @@ public class ACOPedidos {
             }
         }
 
-        // Incrementar feromona según la calidad de las rutas
+        // Incremento según calidad de rutas
         for (Hormiga h : hormigas) {
+            if (h.ruta.isEmpty()) continue;
             double valor = incrementoFeromona / (1 + h.tiempoTotal);
             for (Arista a : h.ruta) {
                 a.feromona += valor;
             }
         }
+    }
+
+    /**
+     * Ejemplo de cálculo de plazo máximo: 24h mismo continente, 48h distinto
+     */
+    private double calcularPlazoMaximo(Aeropuerto origen, Aeropuerto destino) {
+        if (origen == null || destino == null) return 48.0;
+        return origen.continente.equals(destino.continente) ? 72.0 : 120.0;
     }
 }
