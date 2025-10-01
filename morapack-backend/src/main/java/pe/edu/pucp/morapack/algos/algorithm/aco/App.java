@@ -6,6 +6,9 @@ import java.util.*;
 
 public class App {
     public static void main(String[] args) {
+        long startTime = System.nanoTime();
+
+
         // Cargar aeropuertos
         String rutaAeropuertos = "C:\\Users\\USUARIO\\Desktop\\DP1\\github\\MoraPack-DP1\\morapack-backend\\src\\main\\java\\pe\\edu\\pucp\\morapack\\algos\\algorithm\\aco\\aeropuertos.csv";
         List<Aeropuerto> aeropuertos = cargarAeropuertos(rutaAeropuertos);
@@ -51,37 +54,20 @@ public class App {
         sedes.add(aeropuertoPorCodigo.get("UBBB")); // Baku
 
         
-        
+        Random random = new Random(); 
         // Inicializar ACO
         ACOPedidos ac = new ACOPedidos(
             grafo,
             sedes,
             10,    // número de hormigas
-            50,    // número de iteraciones
-            0.5,   // tasa de evaporación
-            100.0  // incremento de feromona
+            100,    // número de iteraciones
+            0.1,   // tasa de evaporación
+            100.0,  // incremento de feromona
+            random // semilla fija para reproducibilidad
         );
 
-
-
-
-
-
-
-       /* for (Aeropuerto a : grafo.adyacencias.keySet()) {
-            System.out.print(a.codigo + " -> ");
-            for (Arista ar : grafo.adyacencias.get(a)) {
-                 System.out.print(ar.destino.codigo + "(" + ar.tiempo + "h) ");
-         }
-        System.out.println();
-        }
-        */
-
-
-
-
-
-
+        double tiempoTotalEntrega=0.0;
+        int totalPedidos=pedidos.size();
         // Ejecutar ACO sobre los pedidos
         Map<Pedido, Hormiga> rutasOptimas = ac.solucionar(pedidos, aeropuertoPorCodigo);
         System.out.println("\n--- Resumen de rutas optimas ---");
@@ -93,11 +79,24 @@ public class App {
                     System.out.print(a.origen.codigo + "->" + a.destino.codigo + " ");
                 }
                 System.out.println("| Tiempo total: " + h.tiempoTotal + "h");
+                tiempoTotalEntrega += h.tiempoTotal;
             } else {
                 System.out.println("Pedido " + p.getIdCliente() + ": No se pudo generar ruta");
             }
-        }
+         }
 
+
+         long endTime = System.nanoTime(); 
+         // Calcular el tiempo total de ejecución en milisegundos
+        long duration = (endTime - startTime) / 1000000;  // Convertimos de nanosegundos a milisegundos
+
+        // Mostrar el tiempo total de ejecución
+        System.out.println("\nTiempo total de ejecución: " + duration + " ms");
+        double tiempoPromedioEntrega = tiempoTotalEntrega / totalPedidos;
+
+        // Mostrar el tiempo promedio de entrega en minutos
+        double tiempoPromedioMinutos = tiempoPromedioEntrega * 60;  // Convertir horas a minutos
+        System.out.println("\nTiempo promedio de entrega de los pedidos: " + tiempoPromedioMinutos + " minutos");
 
 
     }

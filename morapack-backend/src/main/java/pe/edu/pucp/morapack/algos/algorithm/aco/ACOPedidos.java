@@ -9,15 +9,17 @@ public class ACOPedidos {
     private int numIteraciones;
     private double evaporacion;
     private double incrementoFeromona;
+    private Random random;  // Añadimos la variable de Random con semilla fija
 
     public ACOPedidos(Grafo grafo, List<Aeropuerto> sedes, int numHormigas,
-                      int numIteraciones, double evaporacion, double incrementoFeromona) {
+                      int numIteraciones, double evaporacion, double incrementoFeromona,Random seed) {
         this.grafo = grafo;
         this.sedes = sedes;
         this.numHormigas = numHormigas;
         this.numIteraciones = numIteraciones;
         this.evaporacion = evaporacion;
         this.incrementoFeromona = incrementoFeromona;
+        this.random = seed;  // Usamos la semilla fija para el generador de números aleatorios
     }
 
     /**
@@ -25,25 +27,26 @@ public class ACOPedidos {
      */
     public Map<Pedido, Hormiga> solucionar(List<Pedido> pedidos, Map<String, Aeropuerto> aeropuertoPorCodigo) {
         Map<Pedido, Hormiga> mejorRutaPorPedido = new HashMap<>();
-
+        int cant;
         for (Pedido pedido : pedidos) {
             Hormiga mejorHormiga = null;
-
-            // Definir plazo máximo para el pedido
             double plazoMax = calcularPlazoMaximo(sedes.get(0), aeropuertoPorCodigo.get(pedido.getDestino()));
-
+                cant = pedido.getCantidadPaquetes();
             for (int iter = 0; iter < numIteraciones; iter++) {
                 List<Hormiga> hormigas = new ArrayList<>();
 
+                // Crear varias hormigas, cada una explorando rutas desde cada sede
                 for (int h = 0; h < numHormigas; h++) {
-                    Aeropuerto sedeInicial = sedes.get(new Random().nextInt(sedes.size()));
-                    Hormiga hormiga = new Hormiga(
-                            sedeInicial,
-                            aeropuertoPorCodigo.get(pedido.getDestino().toUpperCase().trim()),
-                            pedido.getCantidadPaquetes(),
-                            plazoMax
-                    );
-                    hormigas.add(hormiga);
+                    for (Aeropuerto sede : sedes) {
+                        Hormiga hormiga = new Hormiga(
+                                sede,
+                                aeropuertoPorCodigo.get(pedido.getDestino()),   
+                                cant,
+                                plazoMax,
+                                random  // Pasamos el random con la semilla fija
+                        );
+                        hormigas.add(hormiga);
+                    }
                 }
 
                 for (Hormiga h : hormigas) {
@@ -52,6 +55,7 @@ public class ACOPedidos {
 
                 actualizarFeromonas(hormigas);
 
+                // Seleccionar la mejor hormiga de esta iteración
                 for (Hormiga h : hormigas) {
                     if (mejorHormiga == null || (h.ruta.size() > 0 && h.tiempoTotal < mejorHormiga.tiempoTotal)) {
                         mejorHormiga = h;
@@ -61,8 +65,8 @@ public class ACOPedidos {
 
             mejorRutaPorPedido.put(pedido, mejorHormiga);
 
-            // Mostrar ruta final del pedido
-            System.out.println("\nPedido " + pedido.getIdCliente() +
+            // Imprimir las mejores rutas generadas
+          /*System.out.println("\nPedido " + pedido.getIdCliente() +
                     " | destino " + pedido.getDestino() +
                     " | cantidad " + pedido.getCantidadPaquetes());
 
@@ -74,7 +78,7 @@ public class ACOPedidos {
                 System.out.println("Tiempo total de la ruta: " + mejorHormiga.tiempoTotal + "h");
             } else {
                 System.out.println("No se pudo generar ruta para este pedido.");
-            }
+            }*/
         }
 
         return mejorRutaPorPedido;
@@ -84,7 +88,7 @@ public class ACOPedidos {
      * Evaporación y refuerzo de feromonas
      */
     private void actualizarFeromonas(List<Hormiga> hormigas) {
-        // Evaporación
+        // Evaporación de feromonas
         for (List<Arista> aristas : grafo.adyacencias.values()) {
             for (Arista a : aristas) {
                 a.feromona *= (1 - evaporacion);
@@ -92,10 +96,10 @@ public class ACOPedidos {
             }
         }
 
-        // Incremento según calidad de rutas
+        // Incremento de feromonas según calidad de las rutas
         for (Hormiga h : hormigas) {
             if (h.ruta.isEmpty()) continue;
-            double valor = incrementoFeromona / (1 + h.tiempoTotal);
+            double valor = incrementoFeromona / (1 + h.tiempoTotal); // Preferir rutas más rápidas
             for (Arista a : h.ruta) {
                 a.feromona += valor;
             }
@@ -103,10 +107,10 @@ public class ACOPedidos {
     }
 
     /**
-     * Ejemplo de cálculo de plazo máximo: 24h mismo continente, 48h distinto
+     * Cálculo de plazo máximo de entrega
      */
     private double calcularPlazoMaximo(Aeropuerto origen, Aeropuerto destino) {
-        if (origen == null || destino == null) return 48.0;
-        return origen.continente.equals(destino.continente) ? 72.0 : 120.0;
+        double plazoBase = origen.continente.equals(destino.continente) ? 48.0 : 72.0; //para vuelos dentro del mismo continente
+        return plazoBase;
     }
 }
