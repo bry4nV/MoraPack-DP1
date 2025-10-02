@@ -50,6 +50,14 @@ public class Airport {
         return gmt;
     }
 
+    public double getLatitude() {
+        return latitude;
+    }
+
+    public double getLongitude() {
+        return longitude;
+    }
+
     public int getStorageCapacity() {
         return storageCapacity;
     }

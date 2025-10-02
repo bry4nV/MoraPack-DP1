@@ -105,16 +105,21 @@ public class DataLoader {
                 LocalTime depTime = LocalTime.parse(departureTime, timeFormatter);
                 LocalTime arrTime = LocalTime.parse(arrivalTime, timeFormatter);
                 
-                // Create flight using current date for simplicity
-                LocalDateTime depDateTime = LocalDateTime.now().with(depTime);
-                LocalDateTime arrDateTime = LocalDateTime.now().with(arrTime);
+                // Create flight using October 2025 dates to match orders
+                LocalDateTime depDateTime = LocalDateTime.of(2025, 10, 1, depTime.getHour(), depTime.getMinute());
+                LocalDateTime arrDateTime = LocalDateTime.of(2025, 10, 1, arrTime.getHour(), arrTime.getMinute());
                 
                 // If arrival is before departure, it means the flight arrives the next day
                 if (arrDateTime.isBefore(depDateTime)) {
                     arrDateTime = arrDateTime.plusDays(1);
                 }
                 
-                flights.add(new Flight(idCounter++, origin, destination, depDateTime, arrDateTime, capacity));
+                // Create flights for multiple days (October 1-31, 2025)
+                for (int dayOffset = 0; dayOffset < 31; dayOffset++) {
+                    LocalDateTime flightDepDateTime = depDateTime.plusDays(dayOffset);
+                    LocalDateTime flightArrDateTime = arrDateTime.plusDays(dayOffset);
+                    flights.add(new Flight(idCounter++, origin, destination, flightDepDateTime, flightArrDateTime, capacity, 1000.0));
+                }
             }
         }
         return flights;
@@ -122,12 +127,7 @@ public class DataLoader {
 
     // Helper method to parse day-hour-minute format from order files
     public static LocalDateTime parseDayHourMinute(String day, String hour, String minute) {
-        return LocalDateTime.now()
-            .withDayOfMonth(Integer.parseInt(day))
-            .withHour(Integer.parseInt(hour))
-            .withMinute(Integer.parseInt(minute))
-            .withSecond(0)
-            .withNano(0);
+        return LocalDateTime.of(2025, 10, Integer.parseInt(day), Integer.parseInt(hour), Integer.parseInt(minute));
     }
     
     private static double generateLatitudeForContinent(String continent) {
@@ -191,12 +191,7 @@ public class DataLoader {
                 }
                 
                 // Create order time based on day, hour, minute
-                LocalDateTime orderTime = LocalDateTime.now()
-                    .withDayOfMonth(day)
-                    .withHour(hour)
-                    .withMinute(minute)
-                    .withSecond(0)
-                    .withNano(0);
+                LocalDateTime orderTime = LocalDateTime.of(2025, 10, day, hour, minute);
                 
                 Order order = new Order(orderId++, quantity, origin, destination);
                 // Set the order time explicitly

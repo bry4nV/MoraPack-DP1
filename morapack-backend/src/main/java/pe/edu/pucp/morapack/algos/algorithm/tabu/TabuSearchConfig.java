@@ -52,18 +52,18 @@ public class TabuSearchConfig {
 
     // Constructor con valores por defecto
     public TabuSearchConfig() {
-        this(10,     // tabuListSize
-             100,    // maxIterations
-             20,     // maxIterationsWithoutImprovement
-             70,     // directRouteProbability (70%)
-             80,     // oneStopRouteProbability (80%)
+        this(15,     // tabuListSize - Aumentado para mejor memoria
+             150,    // maxIterations - Más iteraciones para explorar más
+             30,     // maxIterationsWithoutImprovement - Más paciencia
+             50,     // directRouteProbability (50%) - Reducido para considerar más escalas
+             90,     // oneStopRouteProbability (90%) - Aumentado para favorecer escalas
              200,    // bottleneckCapacity
              20000,  // capacityViolationPenalty
-             50000,  // emptyRoutePenalty
+             40000,  // emptyRoutePenalty - Reducido para permitir más rutas
              10000,  // delayBasePenalty
              100,    // delayHourPenalty
-             100,    // stopoverPenalty
-             15000,  // invalidStopoverTimePenalty
+             50,     // stopoverPenalty - Reducido para favorecer escalas
+             10000,  // invalidStopoverTimePenalty - Reducido pero manteniendo validez
              25000,  // cancellationPenalty
              5000); // replanificationPenalty
     }

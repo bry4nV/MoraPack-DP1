@@ -1,0 +1,122 @@
+=== MoraPack Route Statistics ===
+Total routes: 54
+Assigned routes: 54
+Empty routes: 0
+
+=== Flight Load Statistics ===
+Flight FSPOJ871 (SPIM -> OJAI):
+  Load: 306/360 (85.0%)
+Flight FSPOS825 (SPIM -> OSDI):
+  Load: 255/320 (79.7%)
+Flight FSPLA747 (SPIM -> LATI):
+  Load: 255/300 (85.0%)
+Flight FSPOS823 (SPIM -> OSDI):
+  Load: 238/360 (66.1%)
+Flight FSPSL713 (SPIM -> SLLP):
+  Load: 289/320 (90.3%)
+Flight FSPSG735 (SPIM -> SGAS):
+  Load: 306/360 (85.0%)
+Flight FSPOA841 (SPIM -> OAKB):
+  Load: 272/320 (85.0%)
+Flight FSPSL715 (SPIM -> SLLP):
+  Load: 238/300 (79.3%)
+Flight FSPSB552 (SPIM -> SBBR):
+  Load: 289/340 (85.0%)
+Flight FSPOS821 (SPIM -> OSDI):
+  Load: 255/300 (85.0%)
+Flight FSPED753 (SPIM -> EDDI):
+  Load: 247/320 (77.2%)
+Flight FSPED751 (SPIM -> EDDI):
+  Load: 272/320 (85.0%)
+Flight FSPEH811 (SPIM -> EHAM):
+  Load: 255/300 (85.0%)
+Flight FSPSK024 (SPIM -> SKBO):
+  Load: 306/340 (90.0%)
+Flight FSPSU741 (SPIM -> SUAA):
+  Load: 243/360 (67.5%)
+Flight FSPUM773 (SPIM -> UMMS):
+  Load: 272/320 (85.0%)
+Flight FSPEK803 (SPIM -> EKCH):
+  Load: 289/340 (85.0%)
+Flight FSPLB781 (SPIM -> LBSF):
+  Load: 272/360 (75.6%)
+Flight FSPOM835 (SPIM -> OMDB):
+  Load: 325/360 (90.3%)
+Flight FSPSU737 (SPIM -> SUAA):
+  Load: 272/300 (90.7%)
+Flight FSPSU739 (SPIM -> SUAA):
+  Load: 303/340 (89.1%)
+Flight FSPSA725 (SPIM -> SABE):
+  Load: 189/300 (63.0%)
+Flight FSPEK799 (SPIM -> EKCH):
+  Load: 245/340 (72.1%)
+Flight FSPOJ869 (SPIM -> OJAI):
+  Load: 255/360 (70.8%)
+Flight FSPOJ867 (SPIM -> OJAI):
+  Load: 289/360 (80.3%)
+Flight FSPSE204 (SPIM -> SEQM):
+  Load: 255/320 (79.7%)
+Flight FSPOM831 (SPIM -> OMDB):
+  Load: 264/320 (82.5%)
+Flight FSPOM833 (SPIM -> OMDB):
+  Load: 272/320 (85.0%)
+Flight FSPOJ865 (SPIM -> OJAI):
+  Load: 255/300 (85.0%)
+Flight FSPSV380 (SPIM -> SVMI):
+  Load: 289/320 (90.3%)
+Flight FSPSL717 (SPIM -> SLLP):
+  Load: 255/320 (79.7%)
+Flight FSPEH807 (SPIM -> EHAM):
+  Load: 289/360 (80.3%)
+Flight FSPSV382 (SPIM -> SVMI):
+  Load: 272/320 (85.0%)
+Flight FSPSG733 (SPIM -> SGAS):
+  Load: 197/320 (61.6%)
+Flight FSPEB765 (SPIM -> EBCI):
+  Load: 272/320 (85.0%)
+Flight FSPOA843 (SPIM -> OAKB):
+  Load: 272/320 (85.0%)
+Flight FSPEH809 (SPIM -> EHAM):
+  Load: 255/300 (85.0%)
+Flight FSPEB763 (SPIM -> EBCI):
+  Load: 306/360 (85.0%)
+Flight FSPLB777 (SPIM -> LBSF):
+  Load: 306/340 (90.0%)
+Flight FSPOY853 (SPIM -> OYSN):
+  Load: 306/340 (90.0%)
+Flight FSPSE210 (SPIM -> SEQM):
+  Load: 206/320 (64.4%)
+Flight FSPLB779 (SPIM -> LBSF):
+  Load: 289/340 (85.0%)
+Flight FSPOY855 (SPIM -> OYSN):
+  Load: 306/360 (85.0%)
+Flight FSESU241 (SEQM -> SUAA):
+  Load: 255/300 (85.0%)
+Flight FSPLD793 (SPIM -> LDZA):
+  Load: 306/360 (85.0%)
+Flight FSPEH805 (SPIM -> EHAM):
+  Load: 306/340 (90.0%)
+
+Average flight utilization: 82.1%
+
+=== Delivery Time Statistics ===
+UNSPECIFIED:
+  Average delivery time: 10.6 hours
+  Shipments: 16
+  On-time deliveries: 100.0%
+ASIA:
+  Average delivery time: 10.5 hours
+  Shipments: 13
+  On-time deliveries: 100.0%
+EUROPE:
+  Average delivery time: 21.8 hours
+  Shipments: 17
+  On-time deliveries: 100.0%
+
+=== Hub Utilization ===
+SPIM (Lima):
+  Packages processed: 12215
+EBCI (Brussels):
+  Packages processed: 0
+UBBB (Baku):
+  Packages processed: 0

@@ -1,0 +1,730 @@
+=== MoraPack Route Statistics ===
+Total routes: 348
+Assigned routes: 348
+Empty routes: 0
+
+=== Flight Load Statistics ===
+Flight FSPEH24990 (SPIM -> EHAM):
+  Load: 333/360 (92.5%)
+Flight FSPOP26541 (SPIM -> OPKC):
+  Load: 360/360 (100.0%)
+Flight FSPOP26542 (SPIM -> OPKC):
+  Load: 360/360 (100.0%)
+Flight FSPUM23882 (SPIM -> UMMS):
+  Load: 360/360 (100.0%)
+Flight FSPOP26543 (SPIM -> OPKC):
+  Load: 360/360 (100.0%)
+Flight FSPEK24812 (SPIM -> EKCH):
+  Load: 168/340 (49.4%)
+Flight FSPLB24119 (SPIM -> LBSF):
+  Load: 340/340 (100.0%)
+Flight FSPSB17105 (SPIM -> SBBR):
+  Load: 340/340 (100.0%)
+Flight FSPSA22642 (SPIM -> SABE):
+  Load: 340/340 (100.0%)
+Flight FSPSB17106 (SPIM -> SBBR):
+  Load: 86/340 (25.3%)
+Flight FSPEH25049 (SPIM -> EHAM):
+  Load: 195/300 (65.0%)
+Flight FSPEH24991 (SPIM -> EHAM):
+  Load: 360/360 (100.0%)
+Flight FSPSG22693 (SPIM -> SGAS):
+  Load: 0/320 (0.0%)
+Flight FSPSG22694 (SPIM -> SGAS):
+  Load: 318/320 (99.4%)
+Flight FSPOO26250 (SPIM -> OOMS):
+  Load: 92/320 (28.7%)
+Flight FSPSG22697 (SPIM -> SGAS):
+  Load: 320/320 (100.0%)
+Flight FSPSG22698 (SPIM -> SGAS):
+  Load: 264/320 (82.5%)
+Flight FSPED23193 (SPIM -> EDDI):
+  Load: 340/340 (100.0%)
+Flight FSPED23190 (SPIM -> EDDI):
+  Load: 340/340 (100.0%)
+Flight FSPEB23623 (SPIM -> EBCI):
+  Load: 360/360 (100.0%)
+Flight FSPLK24452 (SPIM -> LKPR):
+  Load: 320/320 (100.0%)
+Flight FSPOJ26982 (SPIM -> OJAI):
+  Load: 265/360 (73.6%)
+Flight FSPEB23503 (SPIM -> EBCI):
+  Load: 307/360 (85.3%)
+Flight FSPSL22096 (SPIM -> SLLP):
+  Load: 261/320 (81.6%)
+Flight FSPSL22097 (SPIM -> SLLP):
+  Load: 320/320 (100.0%)
+Flight FSPSE6442 (SPIM -> SEQM):
+  Load: 300/300 (100.0%)
+Flight FSPUM23894 (SPIM -> UMMS):
+  Load: 145/360 (40.3%)
+Flight FSPEH24987 (SPIM -> EHAM):
+  Load: 360/360 (100.0%)
+Flight FSPSA22531 (SPIM -> SABE):
+  Load: 360/360 (100.0%)
+Flight FSPEK24824 (SPIM -> EKCH):
+  Load: 340/340 (100.0%)
+Flight FSPLD24495 (SPIM -> LDZA):
+  Load: 247/360 (68.6%)
+Flight FSPVI25320 (SPIM -> VIDP):
+  Load: 300/300 (100.0%)
+Flight FSPSC22406 (SPIM -> SCEL):
+  Load: 300/300 (100.0%)
+Flight FSPSC22407 (SPIM -> SCEL):
+  Load: 300/300 (100.0%)
+Flight FSPEH24988 (SPIM -> EHAM):
+  Load: 236/360 (65.6%)
+Flight FSPOS25506 (SPIM -> OSDI):
+  Load: 360/360 (100.0%)
+Flight FSPSE6441 (SPIM -> SEQM):
+  Load: 300/300 (100.0%)
+Flight FSPOJ26994 (SPIM -> OJAI):
+  Load: 360/360 (100.0%)
+Flight FUMSA37441 (UMMS -> SABE):
+  Load: 145/300 (48.3%)
+Flight FSPOA26064 (SPIM -> OAKB):
+  Load: 320/320 (100.0%)
+Flight FSPSU22882 (SPIM -> SUAA):
+  Load: 340/340 (100.0%)
+Flight FSPSE6357 (SPIM -> SEQM):
+  Load: 262/300 (87.3%)
+Flight FSPLK24316 (SPIM -> LKPR):
+  Load: 340/340 (100.0%)
+Flight FSPOP26562 (SPIM -> OPKC):
+  Load: 360/360 (100.0%)
+Flight FSPOP26563 (SPIM -> OPKC):
+  Load: 152/360 (42.2%)
+Flight FSPSU22880 (SPIM -> SUAA):
+  Load: 303/340 (89.1%)
+Flight FSPOO26239 (SPIM -> OOMS):
+  Load: 185/320 (57.8%)
+Flight FSPSE6359 (SPIM -> SEQM):
+  Load: 300/300 (100.0%)
+Flight FSPOP26561 (SPIM -> OPKC):
+  Load: 360/360 (100.0%)
+Flight FSPUM23748 (SPIM -> UMMS):
+  Load: 320/320 (100.0%)
+Flight FSPOO26230 (SPIM -> OOMS):
+  Load: 320/320 (100.0%)
+Flight FSPOM25816 (SPIM -> OMDB):
+  Load: 168/320 (52.5%)
+Flight FSPLA23088 (SPIM -> LATI):
+  Load: 294/360 (81.7%)
+Flight FSPLA23089 (SPIM -> LATI):
+  Load: 131/360 (36.4%)
+Flight FSPOJ26847 (SPIM -> OJAI):
+  Load: 360/360 (100.0%)
+Flight FSPOO26238 (SPIM -> OOMS):
+  Load: 320/320 (100.0%)
+Flight FSPEB23524 (SPIM -> EBCI):
+  Load: 0/360 (0.0%)
+Flight FSPEB23523 (SPIM -> EBCI):
+  Load: 360/360 (100.0%)
+Flight FSPLK24430 (SPIM -> LKPR):
+  Load: 320/320 (100.0%)
+Flight FSPEB23647 (SPIM -> EBCI):
+  Load: 360/360 (100.0%)
+Flight FSPOO26232 (SPIM -> OOMS):
+  Load: 320/320 (100.0%)
+Flight FSPEB23646 (SPIM -> EBCI):
+  Load: 360/360 (100.0%)
+Flight FSPOO26231 (SPIM -> OOMS):
+  Load: 320/320 (100.0%)
+Flight FSPEH25011 (SPIM -> EHAM):
+  Load: 181/360 (50.3%)
+Flight FSPSL22076 (SPIM -> SLLP):
+  Load: 320/320 (100.0%)
+Flight FSPSL22197 (SPIM -> SLLP):
+  Load: 320/320 (100.0%)
+Flight FSPSL22077 (SPIM -> SLLP):
+  Load: 320/320 (100.0%)
+Flight FSPUM23759 (SPIM -> UMMS):
+  Load: 109/320 (34.1%)
+Flight FSPEH25134 (SPIM -> EHAM):
+  Load: 229/300 (76.3%)
+Flight FSPLB24204 (SPIM -> LBSF):
+  Load: 360/360 (100.0%)
+Flight FSPOM25805 (SPIM -> OMDB):
+  Load: 320/320 (100.0%)
+Flight FSPSK676 (SPIM -> SKBO):
+  Load: 238/300 (79.3%)
+Flight FSPOJ26858 (SPIM -> OJAI):
+  Load: 360/360 (100.0%)
+Flight FSPSU22879 (SPIM -> SUAA):
+  Load: 340/340 (100.0%)
+Flight FSPEB23511 (SPIM -> EBCI):
+  Load: 360/360 (100.0%)
+Flight FSPOM25804 (SPIM -> OMDB):
+  Load: 320/320 (100.0%)
+Flight FSPOJ26971 (SPIM -> OJAI):
+  Load: 360/360 (100.0%)
+Flight FSPSL22073 (SPIM -> SLLP):
+  Load: 320/320 (100.0%)
+Flight FSPOS25432 (SPIM -> OSDI):
+  Load: 300/300 (100.0%)
+Flight FSPLD24688 (SPIM -> LDZA):
+  Load: 320/320 (100.0%)
+Flight FSPSA22445 (SPIM -> SABE):
+  Load: 189/300 (63.0%)
+Flight FSPLD24565 (SPIM -> LDZA):
+  Load: 360/360 (100.0%)
+Flight FSPLD24564 (SPIM -> LDZA):
+  Load: 360/360 (100.0%)
+Flight FSPSA22448 (SPIM -> SABE):
+  Load: 97/300 (32.3%)
+Flight FSPLD24680 (SPIM -> LDZA):
+  Load: 320/320 (100.0%)
+Flight FSPUB26685 (SPIM -> UBBB):
+  Load: 175/300 (58.3%)
+Flight FSPUB26684 (SPIM -> UBBB):
+  Load: 300/300 (100.0%)
+Flight FSPOO26170 (SPIM -> OOMS):
+  Load: 300/300 (100.0%)
+Flight FSPLA23066 (SPIM -> LATI):
+  Load: 136/360 (37.8%)
+Flight FSPSE6491 (SPIM -> SEQM):
+  Load: 128/320 (40.0%)
+Flight FSPSV11775 (SPIM -> SVMI):
+  Load: 237/320 (74.1%)
+Flight FSPED23398 (SPIM -> EDDI):
+  Load: 360/360 (100.0%)
+Flight FSPVI25258 (SPIM -> VIDP):
+  Load: 246/320 (76.9%)
+Flight FSPED23275 (SPIM -> EDDI):
+  Load: 124/320 (38.8%)
+Flight FSPOO26177 (SPIM -> OOMS):
+  Load: 300/300 (100.0%)
+Flight FSPSV11774 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPOO26176 (SPIM -> OOMS):
+  Load: 300/300 (100.0%)
+Flight FSPSE6368 (SPIM -> SEQM):
+  Load: 0/300 (0.0%)
+Flight FSPOS25545 (SPIM -> OSDI):
+  Load: 185/320 (57.8%)
+Flight FOJLO60939 (OJAI -> LOWW):
+  Load: 224/300 (74.7%)
+Flight FSPOS25421 (SPIM -> OSDI):
+  Load: 300/300 (100.0%)
+Flight FSPLO23461 (SPIM -> LOWW):
+  Load: 222/300 (74.0%)
+Flight FSPOS25548 (SPIM -> OSDI):
+  Load: 320/320 (100.0%)
+Flight FSPLK24306 (SPIM -> LKPR):
+  Load: 340/340 (100.0%)
+Flight FSPLO23460 (SPIM -> LOWW):
+  Load: 300/300 (100.0%)
+Flight FSPSU22890 (SPIM -> SUAA):
+  Load: 340/340 (100.0%)
+Flight FSPSB17093 (SPIM -> SBBR):
+  Load: 340/340 (100.0%)
+Flight FSPLB24142 (SPIM -> LBSF):
+  Load: 340/340 (100.0%)
+Flight FSPEH25072 (SPIM -> EHAM):
+  Load: 300/300 (100.0%)
+Flight FSPSU22891 (SPIM -> SUAA):
+  Load: 0/340 (0.0%)
+Flight FSPSB17094 (SPIM -> SBBR):
+  Load: 340/340 (100.0%)
+Flight FSPOS25425 (SPIM -> OSDI):
+  Load: 300/300 (100.0%)
+Flight FSPLD24577 (SPIM -> LDZA):
+  Load: 326/360 (90.6%)
+Flight FSPSC22332 (SPIM -> SCEL):
+  Load: 340/340 (100.0%)
+Flight FSPOY26313 (SPIM -> OYSN):
+  Load: 320/320 (100.0%)
+Flight FSPOY26436 (SPIM -> OYSN):
+  Load: 340/340 (100.0%)
+Flight FSPOY26437 (SPIM -> OYSN):
+  Load: 0/340 (0.0%)
+Flight FSPSA22457 (SPIM -> SABE):
+  Load: 300/300 (100.0%)
+Flight FSPSA22580 (SPIM -> SABE):
+  Load: 340/340 (100.0%)
+Flight FLBLA50822 (LBSF -> LATI):
+  Load: 323/360 (89.7%)
+Flight FSPLA23076 (SPIM -> LATI):
+  Load: 360/360 (100.0%)
+Flight FSPSE6480 (SPIM -> SEQM):
+  Load: 238/320 (74.4%)
+Flight FSPVI25246 (SPIM -> VIDP):
+  Load: 91/320 (28.4%)
+Flight FSPOO26188 (SPIM -> OOMS):
+  Load: 300/300 (100.0%)
+Flight FSPSE6483 (SPIM -> SEQM):
+  Load: 320/320 (100.0%)
+Flight FSPSV11755 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPSL22023 (SPIM -> SLLP):
+  Load: 75/300 (25.0%)
+Flight FSPSL22146 (SPIM -> SLLP):
+  Load: 300/300 (100.0%)
+Flight FSPLB24130 (SPIM -> LBSF):
+  Load: 340/340 (100.0%)
+Flight FSPEH25060 (SPIM -> EHAM):
+  Load: 29/300 (9.7%)
+Flight FSPLB24019 (SPIM -> LBSF):
+  Load: 338/360 (93.9%)
+Flight FSPOY26300 (SPIM -> OYSN):
+  Load: 320/320 (100.0%)
+Flight FSPOY26424 (SPIM -> OYSN):
+  Load: 234/340 (68.8%)
+Flight FSPSA22469 (SPIM -> SABE):
+  Load: 300/300 (100.0%)
+Flight FSCOJ35984 (SCEL -> OJAI):
+  Load: 224/360 (62.2%)
+Flight FSPOJ26809 (SPIM -> OJAI):
+  Load: 196/300 (65.3%)
+Flight FSPSA22593 (SPIM -> SABE):
+  Load: 153/340 (45.0%)
+Flight FSPEB23685 (SPIM -> EBCI):
+  Load: 273/320 (85.3%)
+Flight FSPSV11750 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPOJ26920 (SPIM -> OJAI):
+  Load: 297/360 (82.5%)
+Flight FSPEB23688 (SPIM -> EBCI):
+  Load: 320/320 (100.0%)
+Flight FSPSV11754 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPSV11751 (SPIM -> SVMI):
+  Load: 313/320 (97.8%)
+Flight FSPOS25445 (SPIM -> OSDI):
+  Load: 51/300 (17.0%)
+Flight FSPLB24122 (SPIM -> LBSF):
+  Load: 49/340 (14.4%)
+Flight FSAUB40387 (SABE -> UBBB):
+  Load: 145/300 (48.3%)
+Flight FSPOS25444 (SPIM -> OSDI):
+  Load: 300/300 (100.0%)
+Flight FSPEH25053 (SPIM -> EHAM):
+  Load: 300/300 (100.0%)
+Flight FSPSL22035 (SPIM -> SLLP):
+  Load: 300/300 (100.0%)
+Flight FSPOS25568 (SPIM -> OSDI):
+  Load: 320/320 (100.0%)
+Flight FSPLB24120 (SPIM -> LBSF):
+  Load: 340/340 (100.0%)
+Flight FSPOM25681 (SPIM -> OMDB):
+  Load: 340/340 (100.0%)
+Flight FSPSL22159 (SPIM -> SLLP):
+  Load: 268/300 (89.3%)
+Flight FSPLD24553 (SPIM -> LDZA):
+  Load: 345/360 (95.8%)
+Flight FSPEK24802 (SPIM -> EKCH):
+  Load: 8/340 (2.4%)
+Flight FSPOY26413 (SPIM -> OYSN):
+  Load: 340/340 (100.0%)
+Flight FSPLB24007 (SPIM -> LBSF):
+  Load: 347/360 (96.4%)
+Flight FSPOY26416 (SPIM -> OYSN):
+  Load: 340/340 (100.0%)
+Flight FSPSV11761 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPOJ26932 (SPIM -> OJAI):
+  Load: 360/360 (100.0%)
+Flight FSPSE6380 (SPIM -> SEQM):
+  Load: 300/300 (100.0%)
+Flight FSPOO26169 (SPIM -> OOMS):
+  Load: 300/300 (100.0%)
+Flight FSPOO26168 (SPIM -> OOMS):
+  Load: 300/300 (100.0%)
+Flight FSPSV11762 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPSK591 (SPIM -> SKBO):
+  Load: 143/340 (42.1%)
+Flight FSPOM25793 (SPIM -> OMDB):
+  Load: 82/320 (25.6%)
+Flight FSPOM25796 (SPIM -> OMDB):
+  Load: 320/320 (100.0%)
+Flight FSPEB23584 (SPIM -> EBCI):
+  Load: 320/320 (100.0%)
+Flight FSPOE25619 (SPIM -> OERK):
+  Load: 316/320 (98.8%)
+Flight FSPOE25618 (SPIM -> OERK):
+  Load: 320/320 (100.0%)
+Flight FSPOM25670 (SPIM -> OMDB):
+  Load: 340/340 (100.0%)
+Flight FSPOY26486 (SPIM -> OYSN):
+  Load: 172/360 (47.8%)
+Flight FSPOA26002 (SPIM -> OAKB):
+  Load: 320/320 (100.0%)
+Flight FSPOA26126 (SPIM -> OAKB):
+  Load: 225/320 (70.3%)
+Flight FSPOJ26909 (SPIM -> OJAI):
+  Load: 266/360 (73.9%)
+Flight FSPOY26375 (SPIM -> OYSN):
+  Load: 300/300 (100.0%)
+Flight FSPEB23585 (SPIM -> EBCI):
+  Load: 320/320 (100.0%)
+Flight FSPLA23026 (SPIM -> LATI):
+  Load: 320/320 (100.0%)
+Flight FSPLA23027 (SPIM -> LATI):
+  Load: 320/320 (100.0%)
+Flight FSPLB24192 (SPIM -> LBSF):
+  Load: 210/360 (58.3%)
+Flight FSPSE6298 (SPIM -> SEQM):
+  Load: 80/320 (25.0%)
+Flight FSPSE6295 (SPIM -> SEQM):
+  Load: 320/320 (100.0%)
+Flight FSPLB24068 (SPIM -> LBSF):
+  Load: 323/340 (95.0%)
+Flight FSPLB24184 (SPIM -> LBSF):
+  Load: 360/360 (100.0%)
+Flight FSPSL22012 (SPIM -> SLLP):
+  Load: 132/300 (44.0%)
+Flight FSPEB23573 (SPIM -> EBCI):
+  Load: 37/320 (11.6%)
+Flight FSPSL22135 (SPIM -> SLLP):
+  Load: 228/300 (76.0%)
+Flight FSPSL22015 (SPIM -> SLLP):
+  Load: 300/300 (100.0%)
+Flight FSPSL22016 (SPIM -> SLLP):
+  Load: 176/300 (58.7%)
+Flight FSPOY26354 (SPIM -> OYSN):
+  Load: 300/300 (100.0%)
+Flight FSPOY26475 (SPIM -> OYSN):
+  Load: 256/360 (71.1%)
+Flight FSPSL22138 (SPIM -> SLLP):
+  Load: 224/300 (74.7%)
+Flight FSPSL22139 (SPIM -> SLLP):
+  Load: 300/300 (100.0%)
+Flight FSPOY26478 (SPIM -> OYSN):
+  Load: 326/360 (90.6%)
+Flight FSPOA26114 (SPIM -> OAKB):
+  Load: 320/320 (100.0%)
+Flight FSPUM23933 (SPIM -> UMMS):
+  Load: 270/320 (84.4%)
+Flight FSPOA25940 (SPIM -> OAKB):
+  Load: 360/360 (100.0%)
+Flight FSPOE25631 (SPIM -> OERK):
+  Load: 248/320 (77.5%)
+Flight FSPSK737 (SPIM -> SKBO):
+  Load: 340/340 (100.0%)
+Flight FSPOE25630 (SPIM -> OERK):
+  Load: 217/320 (67.8%)
+Flight FSPLA23150 (SPIM -> LATI):
+  Load: 300/300 (100.0%)
+Flight FSPSK614 (SPIM -> SKBO):
+  Load: 340/340 (100.0%)
+Flight FSPOY26362 (SPIM -> OYSN):
+  Load: 300/300 (100.0%)
+Flight FSPEB23696 (SPIM -> EBCI):
+  Load: 266/320 (83.1%)
+Flight FSPLB24182 (SPIM -> LBSF):
+  Load: 25/360 (6.9%)
+Flight FSPLB24060 (SPIM -> LBSF):
+  Load: 340/340 (100.0%)
+Flight FSPLB24181 (SPIM -> LBSF):
+  Load: 360/360 (100.0%)
+Flight FSPSB17085 (SPIM -> SBBR):
+  Load: 340/340 (100.0%)
+Flight FSPSV11835 (SPIM -> SVMI):
+  Load: 269/320 (84.1%)
+Flight FSPSB17086 (SPIM -> SBBR):
+  Load: 53/340 (15.6%)
+Flight FSPLD24627 (SPIM -> LDZA):
+  Load: 265/320 (82.8%)
+Flight FSPLB24058 (SPIM -> LBSF):
+  Load: 340/340 (100.0%)
+Flight FSPLD24626 (SPIM -> LDZA):
+  Load: 320/320 (100.0%)
+Flight FSPED23378 (SPIM -> EDDI):
+  Load: 360/360 (100.0%)
+Flight FSPLB24057 (SPIM -> LBSF):
+  Load: 340/340 (100.0%)
+Flight FSPLD24503 (SPIM -> LDZA):
+  Load: 360/360 (100.0%)
+Flight FSPSB17082 (SPIM -> SBBR):
+  Load: 340/340 (100.0%)
+Flight FSPSV11836 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPSB17083 (SPIM -> SBBR):
+  Load: 340/340 (100.0%)
+Flight FSPSG22705 (SPIM -> SGAS):
+  Load: 198/320 (61.9%)
+Flight FSPOS25494 (SPIM -> OSDI):
+  Load: 317/360 (88.1%)
+Flight FSPOA26103 (SPIM -> OAKB):
+  Load: 320/320 (100.0%)
+Flight FSPSK725 (SPIM -> SKBO):
+  Load: 340/340 (100.0%)
+Flight FSPSK602 (SPIM -> SKBO):
+  Load: 53/340 (15.6%)
+Flight FSPOA25929 (SPIM -> OAKB):
+  Load: 336/360 (93.3%)
+Flight FSPOY26351 (SPIM -> OYSN):
+  Load: 11/300 (3.7%)
+Flight FSPED23251 (SPIM -> EDDI):
+  Load: 320/320 (100.0%)
+Flight FSPED23252 (SPIM -> EDDI):
+  Load: 52/320 (16.3%)
+Flight FSPLA23004 (SPIM -> LATI):
+  Load: 320/320 (100.0%)
+Flight FSPED23255 (SPIM -> EDDI):
+  Load: 107/320 (33.4%)
+Flight FSPLA23127 (SPIM -> LATI):
+  Load: 300/300 (100.0%)
+Flight FSPLD24638 (SPIM -> LDZA):
+  Load: 320/320 (100.0%)
+Flight FSPOS25487 (SPIM -> OSDI):
+  Load: 0/360 (0.0%)
+Flight FSPLD24515 (SPIM -> LDZA):
+  Load: 360/360 (100.0%)
+Flight FSPSE6503 (SPIM -> SEQM):
+  Load: 320/320 (100.0%)
+Flight FSPSE6504 (SPIM -> SEQM):
+  Load: 240/320 (75.0%)
+Flight FSPLB23998 (SPIM -> LBSF):
+  Load: 360/360 (100.0%)
+Flight FSPLO23442 (SPIM -> LOWW):
+  Load: 300/300 (100.0%)
+Flight FSPLO23441 (SPIM -> LOWW):
+  Load: 300/300 (100.0%)
+Flight FSPLB23999 (SPIM -> LBSF):
+  Load: 342/360 (95.0%)
+Flight FSPSG22717 (SPIM -> SGAS):
+  Load: 320/320 (100.0%)
+Flight FSPSG22718 (SPIM -> SGAS):
+  Load: 320/320 (100.0%)
+Flight FSPLB23996 (SPIM -> LBSF):
+  Load: 360/360 (100.0%)
+Flight FSPOS25483 (SPIM -> OSDI):
+  Load: 360/360 (100.0%)
+Flight FSPOS25363 (SPIM -> OSDI):
+  Load: 320/320 (100.0%)
+Flight FSPSK714 (SPIM -> SKBO):
+  Load: 340/340 (100.0%)
+Flight FSPUB26672 (SPIM -> UBBB):
+  Load: 177/300 (59.0%)
+Flight FSPUB26673 (SPIM -> UBBB):
+  Load: 252/300 (84.0%)
+Flight FSPSC22345 (SPIM -> SCEL):
+  Load: 340/340 (100.0%)
+Flight FSPLA23130 (SPIM -> LATI):
+  Load: 98/300 (32.7%)
+Flight FSPOA25918 (SPIM -> OAKB):
+  Load: 302/360 (83.9%)
+Flight FSPSC22346 (SPIM -> SCEL):
+  Load: 340/340 (100.0%)
+Flight FSPLA23014 (SPIM -> LATI):
+  Load: 320/320 (100.0%)
+Flight FSPLA23138 (SPIM -> LATI):
+  Load: 236/300 (78.7%)
+Flight FSPOE25612 (SPIM -> OERK):
+  Load: 320/320 (100.0%)
+Flight FSPOE25611 (SPIM -> OERK):
+  Load: 0/320 (0.0%)
+Flight FSPOE25610 (SPIM -> OERK):
+  Load: 43/320 (13.4%)
+Flight FSPSV11812 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPED23313 (SPIM -> EDDI):
+  Load: 199/320 (62.2%)
+Flight FSPSB17021 (SPIM -> SBBR):
+  Load: 300/300 (100.0%)
+Flight FSPSB17022 (SPIM -> SBBR):
+  Load: 143/300 (47.7%)
+Flight FSPSV11816 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPSV11817 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPSL22201 (SPIM -> SLLP):
+  Load: 320/320 (100.0%)
+Flight FSPSV11815 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPOA26041 (SPIM -> OAKB):
+  Load: 320/320 (100.0%)
+Flight FSPOY26289 (SPIM -> OYSN):
+  Load: 285/320 (89.1%)
+Flight FSPSL22208 (SPIM -> SLLP):
+  Load: 320/320 (100.0%)
+Flight FSPSB17024 (SPIM -> SBBR):
+  Load: 300/300 (100.0%)
+Flight FSPEB23708 (SPIM -> EBCI):
+  Load: 320/320 (100.0%)
+Flight FSPSU22828 (SPIM -> SUAA):
+  Load: 240/300 (80.0%)
+Flight FSPEK24739 (SPIM -> EKCH):
+  Load: 83/340 (24.4%)
+Flight FSPSU22829 (SPIM -> SUAA):
+  Load: 300/300 (100.0%)
+Flight FSPEB23709 (SPIM -> EBCI):
+  Load: 320/320 (100.0%)
+Flight FSPSU22820 (SPIM -> SUAA):
+  Load: 300/300 (100.0%)
+Flight FSPSU22941 (SPIM -> SUAA):
+  Load: 360/360 (100.0%)
+Flight FSPOJ26786 (SPIM -> OJAI):
+  Load: 150/300 (50.0%)
+Flight FSPLK24378 (SPIM -> LKPR):
+  Load: 244/360 (67.8%)
+Flight FSPOJ26785 (SPIM -> OJAI):
+  Load: 300/300 (100.0%)
+Flight FSPSU22944 (SPIM -> SUAA):
+  Load: 21/360 (5.8%)
+Flight FSPSV11823 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPLD24618 (SPIM -> LDZA):
+  Load: 320/320 (100.0%)
+Flight FSPEH25111 (SPIM -> EHAM):
+  Load: 300/300 (100.0%)
+Flight FSPSV11824 (SPIM -> SVMI):
+  Load: 320/320 (100.0%)
+Flight FSPEK24740 (SPIM -> EKCH):
+  Load: 340/340 (100.0%)
+Flight FSPSG22778 (SPIM -> SGAS):
+  Load: 360/360 (100.0%)
+Flight FSPOS25383 (SPIM -> OSDI):
+  Load: 320/320 (100.0%)
+Flight FSPSG22779 (SPIM -> SGAS):
+  Load: 360/360 (100.0%)
+Flight FSPOA25982 (SPIM -> OAKB):
+  Load: 147/320 (45.9%)
+Flight FSPUB26603 (SPIM -> UBBB):
+  Load: 171/340 (50.3%)
+Flight FSPEH25115 (SPIM -> EHAM):
+  Load: 229/300 (76.3%)
+Flight FSPEK24742 (SPIM -> EKCH):
+  Load: 247/340 (72.6%)
+Flight FSPEK24863 (SPIM -> EKCH):
+  Load: 340/340 (100.0%)
+Flight FSPEH24949 (SPIM -> EHAM):
+  Load: 340/340 (100.0%)
+Flight FSPSU22817 (SPIM -> SUAA):
+  Load: 71/300 (23.7%)
+Flight FSPSK655 (SPIM -> SKBO):
+  Load: 285/300 (95.0%)
+Flight FSPSU22818 (SPIM -> SUAA):
+  Load: 300/300 (100.0%)
+Flight FSPOM25867 (SPIM -> OMDB):
+  Load: 63/360 (17.5%)
+Flight FSPOM25743 (SPIM -> OMDB):
+  Load: 320/320 (100.0%)
+Flight FSPED23201 (SPIM -> EDDI):
+  Load: 166/340 (48.8%)
+Flight FSPLK24267 (SPIM -> LKPR):
+  Load: 283/360 (78.6%)
+Flight FSPOM25866 (SPIM -> OMDB):
+  Load: 360/360 (100.0%)
+Flight FSPED23213 (SPIM -> EDDI):
+  Load: 340/340 (100.0%)
+Flight FSPSU22840 (SPIM -> SUAA):
+  Load: 241/300 (80.3%)
+Flight FSPSU22841 (SPIM -> SUAA):
+  Load: 128/300 (42.7%)
+Flight FSPSB17044 (SPIM -> SBBR):
+  Load: 300/300 (100.0%)
+Flight FSPEK24750 (SPIM -> EKCH):
+  Load: 278/340 (81.8%)
+Flight FSPLD24700 (SPIM -> LDZA):
+  Load: 320/320 (100.0%)
+Flight FSPSE6318 (SPIM -> SEQM):
+  Load: 320/320 (100.0%)
+Flight FSPUM23820 (SPIM -> UMMS):
+  Load: 320/320 (100.0%)
+Flight FSPSC22282 (SPIM -> SCEL):
+  Load: 224/340 (65.9%)
+Flight FSPSC22283 (SPIM -> SCEL):
+  Load: 340/340 (100.0%)
+Flight FSPUB26734 (SPIM -> UBBB):
+  Load: 340/340 (100.0%)
+Flight FSPSC22284 (SPIM -> SCEL):
+  Load: 340/340 (100.0%)
+Flight FSPUB26610 (SPIM -> UBBB):
+  Load: 340/340 (100.0%)
+Flight FSPUB26611 (SPIM -> UBBB):
+  Load: 340/340 (100.0%)
+Flight FSPVI25197 (SPIM -> VIDP):
+  Load: 286/360 (79.4%)
+Flight FSPSG22755 (SPIM -> SGAS):
+  Load: 360/360 (100.0%)
+Flight FSPOM25858 (SPIM -> OMDB):
+  Load: 349/360 (96.9%)
+Flight FSPOM25732 (SPIM -> OMDB):
+  Load: 201/320 (62.8%)
+Flight FSPSE6430 (SPIM -> SEQM):
+  Load: 234/300 (78.0%)
+Flight FSPOM25731 (SPIM -> OMDB):
+  Load: 320/320 (100.0%)
+Flight FSPOM25855 (SPIM -> OMDB):
+  Load: 360/360 (100.0%)
+Flight FSPSA22519 (SPIM -> SABE):
+  Load: 12/360 (3.3%)
+Flight FSPLK24368 (SPIM -> LKPR):
+  Load: 360/360 (100.0%)
+Flight FSPSB17032 (SPIM -> SBBR):
+  Load: 300/300 (100.0%)
+Flight FSPSB17033 (SPIM -> SBBR):
+  Load: 300/300 (100.0%)
+Flight FSPSE6421 (SPIM -> SEQM):
+  Load: 300/300 (100.0%)
+Flight FSPSE6306 (SPIM -> SEQM):
+  Load: 320/320 (100.0%)
+Flight FSPSG22756 (SPIM -> SGAS):
+  Load: 344/360 (95.6%)
+Flight FSPOY26498 (SPIM -> OYSN):
+  Load: 360/360 (100.0%)
+Flight FSPUB26746 (SPIM -> UBBB):
+  Load: 285/340 (83.8%)
+Flight FSPSG22758 (SPIM -> SGAS):
+  Load: 360/360 (100.0%)
+Flight FSPSE6429 (SPIM -> SEQM):
+  Load: 300/300 (100.0%)
+Flight FSPSG22759 (SPIM -> SGAS):
+  Load: 360/360 (100.0%)
+Flight FSPUB26623 (SPIM -> UBBB):
+  Load: 340/340 (100.0%)
+Flight FSPEK24763 (SPIM -> EKCH):
+  Load: 257/340 (75.6%)
+Flight FSPSC22394 (SPIM -> SCEL):
+  Load: 260/300 (86.7%)
+Flight FSPUM23956 (SPIM -> UMMS):
+  Load: 120/320 (37.5%)
+Flight FSPEK24886 (SPIM -> EKCH):
+  Load: 340/340 (100.0%)
+Flight FSPEH24928 (SPIM -> EHAM):
+  Load: 340/340 (100.0%)
+Flight FSPEH24929 (SPIM -> EHAM):
+  Load: 340/340 (100.0%)
+Flight FSPEH24926 (SPIM -> EHAM):
+  Load: 340/340 (100.0%)
+Flight FSPEH24925 (SPIM -> EHAM):
+  Load: 340/340 (100.0%)
+Flight FSPSG22766 (SPIM -> SGAS):
+  Load: 360/360 (100.0%)
+Flight FSPSU22952 (SPIM -> SUAA):
+  Load: 360/360 (100.0%)
+Flight FSPLK24244 (SPIM -> LKPR):
+  Load: 360/360 (100.0%)
+Flight FSPOP26538 (SPIM -> OPKC):
+  Load: 360/360 (100.0%)
+Flight FSPLK24245 (SPIM -> LKPR):
+  Load: 53/360 (14.7%)
+Flight FSPOP26539 (SPIM -> OPKC):
+  Load: 83/360 (23.1%)
+
+Average flight utilization: 83.3%
+
+=== Delivery Time Statistics ===
+UNSPECIFIED:
+  Average delivery time: 18.4 hours
+  Shipments: 139
+  On-time deliveries: 100.0%
+ASIA:
+  Average delivery time: 13.4 hours
+  Shipments: 124
+  On-time deliveries: 92.7%
+EUROPE:
+  Average delivery time: 31.6 hours
+  Shipments: 138
+  On-time deliveries: 94.9%
+
+=== Hub Utilization ===
+SPIM (Lima):
+  Packages processed: 94974
+EBCI (Brussels):
+  Packages processed: 0
+UBBB (Baku):
+  Packages processed: 0

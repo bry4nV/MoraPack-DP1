@@ -3,7 +3,6 @@ package pe.edu.pucp.morapack.algos.algorithm.tabu;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import pe.edu.pucp.morapack.model.Flight;
 import pe.edu.pucp.morapack.model.Shipment;
@@ -12,11 +11,9 @@ import pe.edu.pucp.morapack.algos.entities.PlannerSegment;
 import pe.edu.pucp.morapack.algos.entities.Solution;
 
 public class TabuSearchCancellationHandler {
-    private final TabuSearchConfig config;
     private final TabuSearchConstraints constraints;
 
-    public TabuSearchCancellationHandler(TabuSearchConfig config, TabuSearchConstraints constraints) {
-        this.config = config;
+    public TabuSearchCancellationHandler(TabuSearchConstraints constraints) {
         this.constraints = constraints;
     }
 
@@ -29,9 +26,11 @@ public class TabuSearchCancellationHandler {
 
         // Replanificar cada envío afectado
         for (Shipment shipment : affectedShipments) {
-            PlannerRoute currentRoute = currentSolution.getRouteMap().get(shipment);
-            PlannerRoute newRoute = findAlternativeRoute(shipment, cancelledFlight, currentRoute, availableFlights);
-            newSolution.getRouteMap().put(shipment, newRoute);
+            PlannerRoute currentRoute = findRouteForShipment(currentSolution, shipment);
+            if (currentRoute != null) {
+                PlannerRoute newRoute = findAlternativeRoute(shipment, cancelledFlight, currentRoute, availableFlights);
+                updateRouteInSolution(newSolution, shipment, newRoute);
+            }
         }
 
         return newSolution;
@@ -40,15 +39,51 @@ public class TabuSearchCancellationHandler {
     private List<Shipment> findAffectedShipments(Flight cancelledFlight, Solution solution) {
         List<Shipment> affected = new ArrayList<>();
         
-        for (Map.Entry<Shipment, PlannerRoute> entry : solution.getRouteMap().entrySet()) {
-            PlannerRoute route = entry.getValue();
+        for (PlannerRoute route : solution.getRoutes()) {
             if (route.getSegments().stream()
                     .anyMatch(segment -> segment.getFlight().equals(cancelledFlight))) {
-                affected.add(entry.getKey());
+                affected.addAll(route.getShipments());
             }
         }
         
         return affected;
+    }
+
+    private PlannerRoute findRouteForShipment(Solution solution, Shipment shipment) {
+        for (PlannerRoute route : solution.getRoutes()) {
+            if (route.getShipments().contains(shipment)) {
+                return route;
+            }
+        }
+        return null;
+    }
+
+    private void updateRouteInSolution(Solution solution, Shipment shipment, PlannerRoute newRoute) {
+        // Primero, remover el envío de su ruta actual si existe
+        for (PlannerRoute route : solution.getRoutes()) {
+            if (route.getShipments().contains(shipment)) {
+                route.getShipments().remove(shipment);
+                // Si la ruta queda vacía, removerla de la solución
+                if (route.getShipments().isEmpty()) {
+                    solution.getRoutes().remove(route);
+                }
+                break;
+            }
+        }
+
+        // Luego, agregar el envío a la nueva ruta
+        if (newRoute != null) {
+            // Buscar si ya existe una ruta con el mismo vuelo
+            for (PlannerRoute route : solution.getRoutes()) {
+                if (route.getFlight().equals(newRoute.getFlight())) {
+                    route.getShipments().add(shipment);
+                    return;
+                }
+            }
+            // Si no existe, agregar la nueva ruta
+            newRoute.getShipments().add(shipment);
+            solution.getRoutes().add(newRoute);
+        }
     }
 
     private PlannerRoute findAlternativeRoute(
@@ -88,10 +123,11 @@ public class TabuSearchCancellationHandler {
                         PlannerRoute tempRoute = new PlannerRoute();
                         tempRoute.getSegments().add(new PlannerSegment(firstLeg));
                         tempRoute.getSegments().add(new PlannerSegment(secondLeg));
+                        tempRoute.getShipments().add(shipment);
 
                         // Verificar viabilidad de la ruta con las restricciones existentes
-                        Solution tempSolution = new Solution(currentRoute);
-                        tempSolution.getRouteMap().put(shipment, tempRoute);
+                        Solution tempSolution = new Solution();
+                        tempSolution.getRoutes().add(tempRoute);
                         
                         if (constraints.isSolutionFeasible(tempSolution)) {
                             return tempRoute;
@@ -102,10 +138,11 @@ public class TabuSearchCancellationHandler {
         } else {
             // Si hay vuelos directos disponibles, usar el primero viable
             Flight directFlight = directFlights.get(0);
-            newRoute.getSegments().add(new PlannerSegment(directFlight));
+            newRoute = new PlannerRoute(directFlight);
+            newRoute.getShipments().add(shipment);
             
-            Solution tempSolution = new Solution(currentRoute);
-            tempSolution.getRouteMap().put(shipment, newRoute);
+            Solution tempSolution = new Solution();
+            tempSolution.getRoutes().add(newRoute);
             
             if (constraints.isSolutionFeasible(tempSolution)) {
                 return newRoute;

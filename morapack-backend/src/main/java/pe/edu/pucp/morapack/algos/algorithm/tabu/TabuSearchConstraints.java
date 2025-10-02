@@ -3,15 +3,12 @@ package pe.edu.pucp.morapack.algos.algorithm.tabu;
 import pe.edu.pucp.morapack.algos.entities.Solution;
 import pe.edu.pucp.morapack.algos.entities.PlannerRoute;
 import pe.edu.pucp.morapack.algos.entities.PlannerSegment;
-import pe.edu.pucp.morapack.model.Airport;
 import pe.edu.pucp.morapack.model.Flight;
-import pe.edu.pucp.morapack.model.Order;
 import pe.edu.pucp.morapack.model.Shipment;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.Map.Entry;
 
 public class TabuSearchConstraints {
     private final TabuSearchConfig config;
@@ -43,24 +40,26 @@ public class TabuSearchConstraints {
 
     private double evaluateCapacityConstraints(Solution solution) {
         double penalty = 0;
-        Map<Flight, Integer> loadPerFlight = new HashMap<>();
+        Map<Flight, Double> loadPerFlight = new HashMap<>();
         
         // Calcular la carga por vuelo
-        for (Entry<Shipment, PlannerRoute> entry : solution.getRouteMap().entrySet()) {
-            Shipment shipment = entry.getKey();
-            PlannerRoute route = entry.getValue();
-            
+        for (PlannerRoute route : solution.getRoutes()) {
             for (PlannerSegment segment : route.getSegments()) {
                 Flight flight = segment.getFlight();
-                loadPerFlight.merge(flight, shipment.getQuantity(), Integer::sum);
+                double routeQuantity = route.getShipments().stream()
+                        .mapToDouble(Shipment::getQuantity)
+                        .sum();
+                loadPerFlight.merge(flight, routeQuantity, Double::sum);
             }
         }
         
         // Evaluar violaciones de capacidad
-        for (Entry<Flight, Integer> entry : loadPerFlight.entrySet()) {
-            if (entry.getValue() > entry.getKey().getCapacity()) {
+        for (Map.Entry<Flight, Double> entry : loadPerFlight.entrySet()) {
+            Flight flight = entry.getKey();
+            double load = entry.getValue();
+            if (load > flight.getCapacity()) {
                 penalty += config.getCapacityViolationPenalty() * 
-                          (entry.getValue() - entry.getKey().getCapacity());
+                          (load - flight.getCapacity());
             }
         }
         
@@ -70,8 +69,8 @@ public class TabuSearchConstraints {
     private double evaluateEmptyRoutes(Solution solution) {
         double penalty = 0;
         
-        for (Entry<Shipment, PlannerRoute> entry : solution.getRouteMap().entrySet()) {
-            if (entry.getValue().getSegments().isEmpty()) {
+        for (PlannerRoute route : solution.getRoutes()) {
+            if (route.getSegments().isEmpty() || route.getShipments().isEmpty()) {
                 penalty += config.getEmptyRoutePenalty();
             }
         }
@@ -82,31 +81,30 @@ public class TabuSearchConstraints {
     private double evaluateDeliveryDelays(Solution solution) {
         double penalty = 0;
         
-        for (Entry<Shipment, PlannerRoute> entry : solution.getRouteMap().entrySet()) {
-            Shipment shipment = entry.getKey();
-            PlannerRoute route = entry.getValue();
-            
+        for (PlannerRoute route : solution.getRoutes()) {
             if (route.getSegments().isEmpty()) {
                 continue;
             }
-            
-            LocalDateTime orderTime = shipment.getParentOrder().getOrderTime();
-            LocalDateTime deliveryTime = route.getFinalArrivalTime();
-            
-            // Considerar tiempo de procesamiento (2 horas) y zona horaria del destino
-            deliveryTime = deliveryTime.plusHours(2);
-            
-            long totalHours = ChronoUnit.HOURS.between(orderTime, deliveryTime);
-            
-            // Ajustar por zona horaria del destino
-            totalHours += shipment.getDestination().getGmt();
-            
-            // Verificar si excede el tiempo máximo de entrega
-            long maxHours = shipment.isInterContinental() ? 72 : 48;
-            if (totalHours > maxHours) {
-                long delayHours = totalHours - maxHours;
-                penalty += config.getDelayBasePenalty() + 
-                          (delayHours * config.getDelayHourPenalty());
+
+            for (Shipment shipment : route.getShipments()) {
+                LocalDateTime orderTime = shipment.getParentOrder().getOrderTime();
+                LocalDateTime deliveryTime = route.getFinalArrivalTime();
+                
+                // Considerar tiempo de procesamiento (2 horas) y zona horaria del destino
+                deliveryTime = deliveryTime.plusHours(2);
+                
+                long totalHours = ChronoUnit.HOURS.between(orderTime, deliveryTime);
+                
+                // Ajustar por zona horaria del destino
+                totalHours += shipment.getDestination().getGmt();
+                
+                // Verificar si excede el tiempo máximo de entrega
+                long maxHours = shipment.isInterContinental() ? 72 : 48;
+                if (totalHours > maxHours) {
+                    long delayHours = totalHours - maxHours;
+                    penalty += config.getDelayBasePenalty() + 
+                              (delayHours * config.getDelayHourPenalty());
+                }
             }
         }
         
@@ -116,8 +114,7 @@ public class TabuSearchConstraints {
     private double evaluateStopoverConstraints(Solution solution) {
         double penalty = 0;
         
-        for (Entry<Shipment, PlannerRoute> entry : solution.getRouteMap().entrySet()) {
-            PlannerRoute route = entry.getValue();
+        for (PlannerRoute route : solution.getRoutes()) {
             List<PlannerSegment> segments = route.getSegments();
             
             // Penalizar por número de escalas
@@ -155,18 +152,26 @@ public class TabuSearchConstraints {
     
     public boolean isPreplannedRouteRespected(Solution solution) {
         // Asegurar que las rutas preplaneadas se mantienen
-        for (Entry<Shipment, PlannerRoute> entry : solution.getRouteMap().entrySet()) {
-            PlannerRoute route = entry.getValue();
-            
+        Map<Flight, PlannerRoute> originalRoutes = new HashMap<>();
+        
+        // Primero recopilamos las rutas originales por vuelo preplaneado
+        for (PlannerRoute route : solution.getRoutes()) {
             for (PlannerSegment segment : route.getSegments()) {
                 Flight flight = segment.getFlight();
-                if (flight != null && !route.getSegments().isEmpty()) {
-                    // Si es un vuelo preplaneado, verificar que se mantiene la ruta
-                    if (flight.isPreplanned()) {
-                        PlannerRoute originalRoute = entry.getValue();
-                        if (!originalRoute.getSegments().contains(segment)) {
-                            return false;
-                        }
+                if (flight != null && flight.isPreplanned()) {
+                    originalRoutes.put(flight, route);
+                }
+            }
+        }
+        
+        // Luego verificamos que las rutas preplaneadas se mantienen
+        for (PlannerRoute route : solution.getRoutes()) {
+            for (PlannerSegment segment : route.getSegments()) {
+                Flight flight = segment.getFlight();
+                if (flight != null && flight.isPreplanned()) {
+                    PlannerRoute originalRoute = originalRoutes.get(flight);
+                    if (originalRoute != null && !originalRoute.getSegments().contains(segment)) {
+                        return false;
                     }
                 }
             }
@@ -177,9 +182,7 @@ public class TabuSearchConstraints {
     private double evaluateReplanificationPenalties(Solution solution) {
         double penalty = 0;
         
-        for (Entry<Shipment, PlannerRoute> entry : solution.getRouteMap().entrySet()) {
-            PlannerRoute route = entry.getValue();
-            
+        for (PlannerRoute route : solution.getRoutes()) {
             // Penalizar vuelos cancelados en la ruta
             penalty += route.getSegments().stream()
                 .filter(s -> s.getFlight().getStatus() == Flight.Status.CANCELLED)

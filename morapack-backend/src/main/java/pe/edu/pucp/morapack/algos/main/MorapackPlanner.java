@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 public class MorapackPlanner {
     private static final String DEFAULT_AIRPORTS_FILE = "data/airports.txt";
     private static final String DEFAULT_FLIGHTS_FILE = "data/flights.csv";
-    private static final String DEFAULT_ORDERS_FILE = "data/pedidos_generados.csv";
+    private static final String DEFAULT_ORDERS_FILE = "data/pedidos.csv";
 
     public static void main(String[] args) {
         String airportsFile = args.length > 0 ? args[0] : DEFAULT_AIRPORTS_FILE;
@@ -50,16 +50,9 @@ public class MorapackPlanner {
                                  " (Deadline: " + p.getMaxDeliveryHours() + "h)")
             );
 
-            System.out.println("\n--- Partitioning Orders into Shipments ---");
-            List<Shipment> shipmentsToSchedule = partitionOrdersIntoShipments(pendingOrders, availableFlights);
-            
-            System.out.println("Total of Orders partitioned into " + shipmentsToSchedule.size() + 
-                             " shipments to schedule:");
-            shipmentsToSchedule.forEach(s -> 
-                System.out.println("  - Shipment ID: " + s.getId() + " (from Order #" + 
-                                 s.getParentOrder().getId() + "), Products: " + 
-                                 s.getQuantity())
-            );
+            System.out.println("\n--- Starting Product-to-Flight Assignment Optimization ---");
+            System.out.println("The optimizer will assign products directly to flights,");
+            System.out.println("then generate shipments automatically based on those assignments.");
 
             // Create planner and execute
             IOptimizer planner = new TabuSearchPlanner();
@@ -68,6 +61,10 @@ public class MorapackPlanner {
             // Print results
             System.out.println("\n[PLANNING RESULT]");
             printSolution(solution);
+            
+            // Print detailed statistics
+            System.out.println("\n=== FINAL STATISTICS ===");
+            printDetailedStatistics(solution, pendingOrders);
 
         } catch (IOException e) {
             System.err.println("Error loading data files: " + e.getMessage());
@@ -78,57 +75,93 @@ public class MorapackPlanner {
         System.out.println("\n--- Test Finished ---");
     }
 
-
-
-    private static List<Shipment> partitionOrdersIntoShipments(List<Order> orders, List<Flight> availableFlights) {
-        List<Shipment> shipments = new ArrayList<>();
-        int shipmentIdCounter = 100;
-
-        for (Order o : orders) {
-            int remainingQuantity = o.getTotalQuantity();
-
-            // Strategy: Try to fill direct flights first
-            List<Flight> directFlights = availableFlights.stream()
-                .filter(f -> f.getOrigin().equals(o.getOrigin()) && f.getDestination().equals(o.getDestination()))
-                .sorted(Comparator.comparingInt(Flight::getCapacity).reversed())
-                .collect(Collectors.toList());
-
-            for (Flight direct : directFlights) {
-                if (remainingQuantity > 0) {
-                    int quantityToShip = Math.min(remainingQuantity, direct.getCapacity());
-                    shipments.add(new Shipment(shipmentIdCounter++, o, quantityToShip, o.getOrigin(), o.getDestination()));
-                    remainingQuantity -= quantityToShip;
-                }
-            }
-
-            while (remainingQuantity > 0) {
-                int referenceCapacity = 200; // Reference capacity for multi-stop routes
-                int quantityInThisShipment = Math.min(remainingQuantity, referenceCapacity);
-                shipments.add(new Shipment(shipmentIdCounter++, o, quantityInThisShipment, o.getOrigin(), o.getDestination()));
-                remainingQuantity -= quantityInThisShipment;
-            }
+    private static void printDetailedStatistics(Solution solution, List<Order> originalOrders) {
+        if (solution == null) {
+            System.out.println("No solution to analyze.");
+            return;
         }
-        return shipments;
+        
+        // Count assigned shipments and products
+        int totalShipments = solution.getRoutes().stream()
+            .mapToInt(r -> r.getShipments().size())
+            .sum();
+            
+        int assignedProducts = solution.getRoutes().stream()
+            .flatMap(r -> r.getShipments().stream())
+            .mapToInt(s -> s.getQuantity())
+            .sum();
+            
+        int totalProducts = originalOrders.stream()
+            .mapToInt(Order::getTotalQuantity)
+            .sum();
+            
+        // Count completed orders
+        int completedOrders = 0;
+        int totalOrders = originalOrders.size();
+        
+        for (Order order : originalOrders) {
+            boolean isComplete = solution.getRoutes().stream()
+                .flatMap(r -> r.getShipments().stream())
+                .filter(s -> s.getParentOrder().getId() == order.getId())
+                .mapToInt(Shipment::getQuantity)
+                .sum() == order.getTotalQuantity();
+                
+            if (isComplete) completedOrders++;
+        }
+        
+        // Count routes with assignments
+        long assignedRoutes = solution.getRoutes().stream()
+            .filter(r -> !r.getShipments().isEmpty() && !r.getSegments().isEmpty())
+            .count();
+            
+        long emptyRoutes = solution.getRoutes().stream()
+            .filter(r -> r.getShipments().isEmpty() || r.getSegments().isEmpty())
+            .count();
+        
+        // Print statistics
+        System.out.println("Total Orders: " + totalOrders);
+        System.out.println("Completed Orders: " + completedOrders + " (" + 
+            String.format("%.1f%%", (double) completedOrders / totalOrders * 100) + ")");
+        System.out.println("Incomplete Orders: " + (totalOrders - completedOrders));
+        
+        System.out.println("\nProduct Assignment:");
+        System.out.println("Total Products: " + totalProducts);
+        System.out.println("Assigned Products: " + assignedProducts + " (" + 
+            String.format("%.1f%%", (double) assignedProducts / totalProducts * 100) + ")");
+        System.out.println("Unassigned Products: " + (totalProducts - assignedProducts));
+        
+        System.out.println("\nRoute Statistics:");
+        System.out.println("Total Routes: " + solution.getRoutes().size());
+        System.out.println("Assigned Routes: " + assignedRoutes);
+        System.out.println("Empty Routes: " + emptyRoutes);
+        System.out.println("Total Shipments: " + totalShipments);
+        
+        if (assignedProducts > 0) {
+            System.out.printf("Average Products per Shipment: %.1f\n", 
+                (double) assignedProducts / totalShipments);
+        }
     }
 
     private static void printSolution(Solution solution) {
-        if (solution != null && !solution.getRouteMap().isEmpty()) {
+        if (solution != null && !solution.getRoutes().isEmpty()) {
             System.out.println("Solution found!");
-            solution.getRouteMap().forEach((shipment, route) -> {
-                System.out.println("\n  > For Shipment #" + shipment.getId() + 
-                                 " (from Order #" + shipment.getParentOrder().getId() + 
-                                 " with " + shipment.getQuantity() + " products)");
-                if (route.getSegments().isEmpty()) {
-                    System.out.println("    Route: Could not assign a route!");
-                } else {
-                    String routeStr = route.getSegments().stream()
-                        .map(s -> s.getFlight().getCode() + " (" + 
-                                s.getFlight().getOrigin().getName() + " -> " + 
-                                s.getFlight().getDestination().getName() + ")")
-                        .collect(Collectors.joining(" | "));
-                    System.out.println("    Route: " + routeStr);
-                    System.out.println("    Estimated arrival: " + route.getFinalArrivalTime());
-                }
+            solution.getRoutes().forEach(route -> {
+                route.getShipments().forEach(shipment -> {
+                    System.out.println("\n  > For Shipment #" + shipment.getId() + 
+                                     " (from Order #" + shipment.getParentOrder().getId() + 
+                                     " with " + shipment.getQuantity() + " products)");
+                    if (route.getSegments().isEmpty()) {
+                        System.out.println("    Route: Could not assign a route!");
+                    } else {
+                        String routeStr = route.getSegments().stream()
+                            .map(s -> s.getFlight().getCode() + " (" + 
+                                    s.getFlight().getOrigin().getName() + " -> " + 
+                                    s.getFlight().getDestination().getName() + ")")
+                            .collect(Collectors.joining(" | "));
+                        System.out.println("    Route: " + routeStr);
+                        System.out.println("    Estimated arrival: " + route.getFinalArrivalTime());
+                    }
+                });
             });
         } else {
             System.out.println("Could not find a solution.");
