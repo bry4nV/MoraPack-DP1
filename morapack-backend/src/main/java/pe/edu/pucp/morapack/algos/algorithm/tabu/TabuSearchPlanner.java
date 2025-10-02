@@ -53,6 +53,85 @@ public class TabuSearchPlanner implements IOptimizer {
     private static final double MIN_SIGNIFICANT_IMPROVEMENT = 0.003; // 0.3% minimum improvement per iteration
     private static final double MIN_AVG_IMPROVEMENT = 0.0005; // 0.05% minimum average improvement to continue
     private static final int IMPROVEMENT_WINDOW = 15; // Larger window for average improvement calculation
+    
+    // Adaptive Memory System
+    private static class AdaptiveMemory {
+        private Map<String, Integer> moveFrequency = new HashMap<>();
+        private List<Double> improvementHistory = new ArrayList<>();
+        private List<Double> costHistory = new ArrayList<>();
+        private int baseTabuTenure;
+        private int currentTabuTenure;
+        private double avgImprovement = 0.0;
+        private int consecutiveNoImprovement = 0;
+        private boolean inIntensificationPhase = false;
+        
+        public AdaptiveMemory(int baseTabuTenure) {
+            this.baseTabuTenure = baseTabuTenure;
+            this.currentTabuTenure = baseTabuTenure;
+        }
+        
+        public void recordMove(String moveSignature) {
+            moveFrequency.put(moveSignature, moveFrequency.getOrDefault(moveSignature, 0) + 1);
+        }
+        
+        public void recordImprovement(double improvementPercentage, double currentCost) {
+            improvementHistory.add(improvementPercentage);
+            costHistory.add(currentCost);
+            
+            // Keep only last 20 improvements for adaptive calculation
+            if (improvementHistory.size() > 20) {
+                improvementHistory.remove(0);
+                costHistory.remove(0);
+            }
+            
+            // Calculate running average improvement
+            avgImprovement = improvementHistory.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+            
+            if (improvementPercentage > 0.01) { // Significant improvement (>0.01%)
+                consecutiveNoImprovement = 0;
+                inIntensificationPhase = true;
+            } else {
+                consecutiveNoImprovement++;
+                if (consecutiveNoImprovement > 8) {
+                    inIntensificationPhase = false;
+                }
+            }
+        }
+        
+        public int adaptTabuTenure() {
+            if (inIntensificationPhase) {
+                // Intensification: shorter tenure to explore local area
+                currentTabuTenure = Math.max(baseTabuTenure - 3, 5);
+            } else if (consecutiveNoImprovement > 15) {
+                // Strong diversification: much longer tenure
+                currentTabuTenure = Math.min(baseTabuTenure + 8, 35);
+            } else if (consecutiveNoImprovement > 8) {
+                // Moderate diversification
+                currentTabuTenure = baseTabuTenure + 3;
+            } else {
+                // Normal operation
+                currentTabuTenure = baseTabuTenure;
+            }
+            
+            return currentTabuTenure;
+        }
+        
+        public double getMoveFrequencyPenalty(String moveSignature) {
+            int frequency = moveFrequency.getOrDefault(moveSignature, 0);
+            // Higher penalty for frequently used moves to encourage diversification
+            return 1.0 + (frequency * 0.02); // 2% penalty per previous use
+        }
+        
+        public boolean shouldDiversify() {
+            return consecutiveNoImprovement > 12 && avgImprovement < 0.001;
+        }
+        
+        public String getPhaseInfo() {
+            return String.format("Phase: %s, Tenure: %d, NoImprove: %d, AvgImpr: %.4f%%",
+                inIntensificationPhase ? "INTENSIFY" : "DIVERSIFY",
+                currentTabuTenure, consecutiveNoImprovement, avgImprovement * 100);
+        }
+    }
 
     public TabuSearchPlanner() {
         this(50, 20);  // Reduced iterations for memory management
@@ -103,6 +182,9 @@ public class TabuSearchPlanner implements IOptimizer {
         int iterationsWithoutImprovement = 0;
         double bestGlobalCost = Double.POSITIVE_INFINITY;
         
+        // Initialize Adaptive Memory System
+        AdaptiveMemory adaptiveMemory = new AdaptiveMemory(15); // Base tenure of 15
+        
         // Dynamic tabu list parameters with adaptive size
         int minTabuSize = 5;
         int maxTabuSize = 30;
@@ -110,7 +192,6 @@ public class TabuSearchPlanner implements IOptimizer {
         double tabuSizeIncreaseFactor = 1.5;
         int currentTabuSize = baseTabuSize;
         double intensificationThreshold = 0.03;
-        boolean isIntensifying = false;
         int stagnationThreshold = 10;
         
         System.out.println("\n=== Starting Tabu Search ===");
@@ -168,6 +249,13 @@ public class TabuSearchPlanner implements IOptimizer {
                 TabuMove move = deduceMove(currentSolution, neighbor);
                 double neighborCost = TabuSearchPlannerCostFunction.calculateCost(neighbor, flights, airports, i, maxIterations);
                 
+                // Apply frequency penalty from adaptive memory
+                if (move != null) {
+                    String moveSignature = generateMoveSignature(move);
+                    double frequencyPenalty = adaptiveMemory.getMoveFrequencyPenalty(moveSignature);
+                    neighborCost *= frequencyPenalty; // Penalize frequently used moves
+                }
+                
                 boolean isTabu = tabuList.contains(move);
                 double bestCurrentCost = TabuSearchPlannerCostFunction.calculateCost(bestSolution[0], flights, airports, i, maxIterations);
                 
@@ -198,20 +286,18 @@ public class TabuSearchPlanner implements IOptimizer {
                 currentSolution = bestIterationNeighbor;
                 TabuMove movePerformed = deduceMove(currentSolution, bestIterationNeighbor);
                 if(movePerformed != null) {
+                    // Record move in adaptive memory
+                    String moveSignature = generateMoveSignature(movePerformed);
+                    adaptiveMemory.recordMove(moveSignature);
+                    
                     tabuList.add(movePerformed);
                     
-                    // Adaptive tabu list management
-                    if (bestNeighborCost < bestGlobalCost) {
-                        // Good move found - intensify search
-                        isIntensifying = true;
-                        currentTabuSize = Math.min((int)(currentTabuSize * tabuSizeIncreaseFactor), maxTabuSize);
-                    } else {
-                        // Regular move - maintain or slightly reduce list
-                        isIntensifying = false;
-                        if (iterationsWithoutImprovement > stagnationThreshold) {
-                            currentTabuSize = Math.max(currentTabuSize - 1, minTabuSize);
-                        }
-                    }
+                    // Adaptive tabu list management using adaptive memory
+                    double improvementPercentage = (currentCostForComparison - bestNeighborCost) / currentCostForComparison * 100;
+                    adaptiveMemory.recordImprovement(improvementPercentage, bestNeighborCost);
+                    
+                    // Update tabu tenure based on adaptive memory
+                    currentTabuSize = adaptiveMemory.adaptTabuTenure();
                     
                     // Maintain tabu list size
                     while (tabuList.size() > currentTabuSize) {
@@ -219,16 +305,19 @@ public class TabuSearchPlanner implements IOptimizer {
                     }
                 }
                 double improvementPercentage = (currentCostForComparison - bestNeighborCost) / currentCostForComparison * 100;
-                System.out.printf("Found better solution with cost: %.2f (Improvement: %.2f%%, Tabu size: %d)\n", 
-                                bestNeighborCost, improvementPercentage, currentTabuSize);
+                System.out.printf("Found better solution with cost: %.2f (Improvement: %.2f%%, %s)\n", 
+                                bestNeighborCost, improvementPercentage, adaptiveMemory.getPhaseInfo());
             } else {
                 System.out.println("No improvement found in this iteration - Adjusting tabu strategy...");
                 
-                // Adjust tabu list size based on search state
-                if (iterationsWithoutImprovement > stagnationThreshold) {
+                // Adjust tabu list size based on search state with adaptive memory
+                if (adaptiveMemory.shouldDiversify()) {
+                    // Strong diversification triggered by adaptive memory
+                    currentTabuSize = minTabuSize;
+                    System.out.println("Adaptive memory triggered diversification - Reducing tabu size to minimum");
+                } else if (iterationsWithoutImprovement > stagnationThreshold) {
                     // Long stagnation - aggressive diversification
                     currentTabuSize = minTabuSize;
-                    isIntensifying = false;
                     System.out.println("Aggressive diversification - Reducing tabu size to minimum");
                 } else {
                     // Short-term stagnation - moderate adjustment
@@ -1123,10 +1212,10 @@ public class TabuSearchPlanner implements IOptimizer {
         List<TabuSolution> neighbors = new ArrayList<>();
         Random rand = new Random();
         
-        // Strict memory management
-        final int MAX_NEIGHBORS = 15; // Hard limit to prevent OOM
-        final int MAX_ROUTES_TO_PROCESS = 8; // Process only subset of routes
-        final int MAX_SHIPMENTS_PER_ROUTE = 3; // Limit shipments per route
+        // Phase 2A: Diversified neighborhood with intelligent move selection
+        final int MAX_NEIGHBORS = 24; // Increased for more diverse exploration
+        final int MAX_ROUTES_TO_PROCESS = 10; // More routes for better coverage
+        final int MAX_SHIPMENTS_PER_ROUTE = 4; // More shipments per route
         
         // Get assigned routes for exploration
         List<PlannerRoute> assignedRoutes = current.getAssignedRoutes();
@@ -1228,17 +1317,111 @@ public class TabuSearchPlanner implements IOptimizer {
                                 oldRoute.removeShipment(shipment);
                                 
                                 // Try adding to existing route
-                                PlannerRoute targetRoute = neighbor.findRouteForShipment(compatibleRoute.getShipments().get(0));
-                                if (targetRoute != null && canAddShipmentToRoute(targetRoute, shipment)) {
-                                    targetRoute.addShipment(shipment);
-                                    neighbors.add(neighbor);
+                                if (!compatibleRoute.getShipments().isEmpty()) {
+                                    PlannerRoute targetRoute = neighbor.findRouteForShipment(compatibleRoute.getShipments().get(0));
+                                    if (targetRoute != null && canAddShipmentToRoute(targetRoute, shipment)) {
+                                        targetRoute.addShipment(shipment);
+                                        neighbors.add(neighbor);
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // Add empty route with very low probability
-                    if (rand.nextDouble() < 0.1 && neighbors.size() < MAX_NEIGHBORS - 1) { // 10% chance
+                    // PHASE 2A: New Intelligent Move Types
+                    
+                    // 1. Shipment Splitting: Split large shipments into smaller ones for better optimization
+                    if (rand.nextDouble() < 0.15 && shipment.getQuantity() > 200 && neighbors.size() < MAX_NEIGHBORS - 2) {
+                        TabuSolution neighbor = new TabuSolution(current);
+                        PlannerRoute oldRoute = neighbor.findRouteForShipment(shipment);
+                        if (oldRoute != null) {
+                            oldRoute.removeShipment(shipment);
+                            
+                            // Split into two shipments
+                            int half = shipment.getQuantity() / 2;
+                            Shipment split1 = new Shipment(shipment.getId() + 1000, shipment.getOrder(), half, 
+                                                          shipment.getOrigin(), shipment.getDestination());
+                            Shipment split2 = new Shipment(shipment.getId() + 2000, shipment.getOrder(), 
+                                                          shipment.getQuantity() - half, shipment.getOrigin(), shipment.getDestination());
+                            
+                            // Try to place splits in different routes
+                            oldRoute.addShipment(split1);
+                            
+                            // Find alternative route for split2
+                            PlannerRoute altRoute = current.getAssignedRoutes().stream()
+                                .filter(r -> !r.equals(currentRoute) && canAddShipmentToRoute(r, split2))
+                                .findFirst().orElse(null);
+                            
+                            if (altRoute != null && !altRoute.getShipments().isEmpty()) {
+                                PlannerRoute targetRoute = neighbor.findRouteForShipment(altRoute.getShipments().get(0));
+                                if (targetRoute != null) {
+                                    targetRoute.addShipment(split2);
+                                    neighbors.add(neighbor);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 2. Route Swapping: Swap entire routes between shipments
+                    if (rand.nextDouble() < 0.12 && neighbors.size() < MAX_NEIGHBORS - 2) {
+                        List<PlannerRoute> otherRoutes = current.getAssignedRoutes().stream()
+                            .filter(r -> !r.equals(currentRoute) && !r.getShipments().isEmpty())
+                            .limit(2).collect(Collectors.toList());
+                            
+                        for (PlannerRoute otherRoute : otherRoutes) {
+                            if (neighbors.size() >= MAX_NEIGHBORS) break;
+                            
+                            if (otherRoute.getShipments().isEmpty()) continue;
+                            Shipment otherShipment = otherRoute.getShipments().get(0);
+                            
+                            // Check if swapping makes sense (different destinations)
+                            if (!shipment.getDestination().equals(otherShipment.getDestination())) {
+                                TabuSolution neighbor = new TabuSolution(current);
+                                
+                                // Find routes in neighbor
+                                PlannerRoute route1 = neighbor.findRouteForShipment(shipment);
+                                PlannerRoute route2 = neighbor.findRouteForShipment(otherShipment);
+                                
+                                if (route1 != null && route2 != null) {
+                                    // Swap shipments between routes
+                                    route1.removeShipment(shipment);
+                                    route2.removeShipment(otherShipment);
+                                    route1.addShipment(otherShipment);
+                                    route2.addShipment(shipment);
+                                    neighbors.add(neighbor);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 3. Capacity Optimization: Try to fill underutilized routes
+                    if (rand.nextDouble() < 0.18 && neighbors.size() < MAX_NEIGHBORS - 1) {
+                        // Find underutilized routes (with spare capacity for this shipment)
+                        List<PlannerRoute> underutilizedRoutes = current.getAssignedRoutes().stream()
+                            .filter(r -> !r.equals(currentRoute) && 
+                                   !r.getShipments().isEmpty() &&
+                                   canAddShipmentToRoute(r, shipment))
+                            .limit(2).collect(Collectors.toList());
+                            
+                        for (PlannerRoute underRoute : underutilizedRoutes) {
+                            if (neighbors.size() >= MAX_NEIGHBORS) break;
+                            
+                            if (underRoute.getShipments().isEmpty()) continue;
+                            
+                            TabuSolution neighbor = new TabuSolution(current);
+                            PlannerRoute oldRoute = neighbor.findRouteForShipment(shipment);
+                            PlannerRoute targetRoute = neighbor.findRouteForShipment(underRoute.getShipments().get(0));
+                            
+                            if (oldRoute != null && targetRoute != null) {
+                                oldRoute.removeShipment(shipment);
+                                targetRoute.addShipment(shipment);
+                                neighbors.add(neighbor);
+                            }
+                        }
+                    }
+
+                    // 4. Original empty route move (reduced probability)
+                    if (rand.nextDouble() < 0.08 && neighbors.size() < MAX_NEIGHBORS - 1) { // Reduced from 10% to 8%
                         TabuSolution neighbor = new TabuSolution(current);
                         PlannerRoute oldRoute = neighbor.findRouteForShipment(shipment);
                         if (oldRoute != null) {
@@ -1623,5 +1806,19 @@ public class TabuSearchPlanner implements IOptimizer {
         public List<Flight> getFlights() { return flights; }
         public Airport getCurrentAirport() { return currentAirport; }
         public LocalDateTime getLastArrivalTime() { return lastArrivalTime; }
+    }
+    
+    /**
+     * Generates a unique signature for a TabuMove to track frequency in adaptive memory
+     */
+    private String generateMoveSignature(TabuMove move) {
+        if (move == null) return "NULL_MOVE";
+        
+        // Generate signature based on shipment and routes involved
+        String fromRouteId = (move.fromRoute != null) ? String.valueOf(move.fromRoute.hashCode()) : "NULL";
+        String toRouteId = (move.toRoute != null) ? String.valueOf(move.toRoute.hashCode()) : "NULL";
+        String shipmentId = (move.shipment != null) ? String.valueOf(move.shipment.hashCode()) : "NULL";
+        
+        return String.format("MOVE_%s_%s_%s", fromRouteId, toRouteId, shipmentId);
     }
 }

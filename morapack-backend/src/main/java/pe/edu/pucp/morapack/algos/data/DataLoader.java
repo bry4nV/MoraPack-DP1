@@ -183,10 +183,10 @@ public class DataLoader {
                     continue;
                 }
                 
-                // Por ahora asumimos que todos los pedidos salen de Lima (SPIM)
-                Airport origin = airportMap.get("SPIM");
+                // Determine origin based on destination continent and proximity
+                Airport origin = determineOptimalOrigin(destination, airportMap);
                 if (origin == null) {
-                    System.out.println("Error: Could not find Lima airport (SPIM)");
+                    System.out.println("Error: Could not determine origin for destination: " + destCode);
                     continue;
                 }
                 
@@ -201,5 +201,172 @@ public class DataLoader {
         }
         
         return orders;
+    }
+    
+    /**
+     * Determines the optimal origin (MoraPack distribution center) using completely dynamic assignment.
+     * Prioritizes flight availability and operational efficiency over geographic restrictions.
+     * Any hub can serve any destination if it provides the best service.
+     * MoraPack has 3 distribution centers:
+     * - Lima, Peru (SPIM) 
+     * - Brussels, Belgium (EBCI)  
+     * - Baku, Azerbaijan (UBBB)
+     */
+    private static Airport determineOptimalOrigin(Airport destination, Map<String, Airport> airportMap) {
+        String destCode = destination.getCode();
+        
+        // Calculate dynamic scores for each distribution center
+        double limaScore = calculateDynamicOriginScore(destCode, "SPIM", isSouthAmerica(destCode));
+        double brusselsScore = calculateDynamicOriginScore(destCode, "EBCI", isEurope(destCode));
+        double bakuScore = calculateDynamicOriginScore(destCode, "UBBB", isAsia(destCode));
+        
+        // Select the origin with highest score
+        String selectedOrigin;
+        if (limaScore >= brusselsScore && limaScore >= bakuScore) {
+            selectedOrigin = "SPIM";
+        } else if (brusselsScore >= bakuScore) {
+            selectedOrigin = "EBCI";
+        } else {
+            selectedOrigin = "UBBB";
+        }
+        
+        // Debug output to track dynamic assignments (3% sample for cleaner output)
+        if (Math.random() < 0.03) {
+            System.out.printf("🎯 Dynamic: %s -> %s (L=%.1f, B=%.1f, K=%.1f) %s%n",
+                destCode, selectedOrigin, limaScore, brusselsScore, bakuScore,
+                getRegionLabel(destCode));
+        }
+        
+        return airportMap.get(selectedOrigin);
+    }
+    
+    /**
+     * Calculates dynamic score with adaptive regional weights for optimal assignment.
+     * Uses different scoring strategies per region for better performance.
+     */
+    private static double calculateDynamicOriginScore(String destCode, String originCode, boolean isContinentalMatch) {
+        double flightScore = getFlightAvailabilityScore(originCode, destCode);
+        double operationalScore = getOperationalScore(originCode);
+        double proximityScore = isContinentalMatch ? 20.0 : 8.0;
+        
+        // Adaptive weights based on destination region for optimal performance
+        double flightWeight, operationalWeight, proximityWeight;
+        
+        if (isSouthAmerica(destCode)) {
+            // South America: Prioritize geographic proximity (Lima advantage)
+            flightWeight = 0.3;
+            operationalWeight = 0.2;
+            proximityWeight = 0.5;
+        } else if (isEurope(destCode)) {
+            // Europe: Prioritize flight availability (Brussels hub advantage)
+            flightWeight = 0.6;
+            operationalWeight = 0.3;
+            proximityWeight = 0.1;
+        } else if (isAsia(destCode)) {
+            // Asia/Middle East: Balance operational efficiency (Baku strategic position)
+            flightWeight = 0.4;
+            operationalWeight = 0.4;
+            proximityWeight = 0.2;
+        } else {
+            // Default balanced approach for other regions
+            flightWeight = 0.5;
+            operationalWeight = 0.3;
+            proximityWeight = 0.2;
+        }
+        
+        return (flightScore * flightWeight) + (operationalScore * operationalWeight) + (proximityScore * proximityWeight);
+    }
+    
+    /**
+     * Returns flight availability score based on hub capacity and route diversity.
+     * Higher scores for hubs with more flights and better connectivity.
+     */
+    private static double getFlightAvailabilityScore(String originCode, String destCode) {
+        double baseScore = 0.0;
+        switch (originCode) {
+            case "SPIM": baseScore = 46.0; break;   // 92 flights -> 46% of max score
+            case "EBCI": baseScore = 53.0; break;  // 106 flights -> 53% of max score  
+            case "UBBB": baseScore = 53.5; break; // 107 flights -> 53.5% of max score
+        }
+        
+        // Additional bonus for hub specialization and route optimization
+        // European destinations often have better connections from Brussels
+        if (originCode.equals("EBCI") && isEurope(destCode)) {
+            baseScore += 7.0;
+        }
+        // Asian destinations might benefit from Baku's strategic positioning
+        if (originCode.equals("UBBB") && isAsia(destCode)) {
+            baseScore += 7.0;
+        }
+        // South American routes optimized from Lima
+        if (originCode.equals("SPIM") && isSouthAmerica(destCode)) {
+            baseScore += 7.0;
+        }
+        
+        return baseScore;
+    }
+    
+    /**
+     * Returns a region label for debugging purposes.
+     */
+    private static String getRegionLabel(String airportCode) {
+        if (isSouthAmerica(airportCode)) return "[SA]";
+        if (isEurope(airportCode)) return "[EU]";  
+        if (isAsia(airportCode)) return "[AS]";
+        return "[??]";
+    }
+    
+    /**
+     * Returns operational efficiency score based on hub characteristics and capacity.
+     */
+    private static double getOperationalScore(String originCode) {
+        switch (originCode) {
+            case "SPIM": return 29.0;  // Lima: good capacity (440), moderate efficiency
+            case "EBCI": return 30.0;  // Brussels: excellent European hub (440), highest efficiency
+            case "UBBB": return 28.0;  // Baku: good capacity (400), strategic Eurasian location
+            default: return 25.0;
+        }
+    }
+    
+    private static boolean isSouthAmerica(String airportCode) {
+        // South American ICAO codes typically start with S
+        return airportCode.startsWith("SK") ||  // Colombia
+               airportCode.startsWith("SE") ||  // Ecuador  
+               airportCode.startsWith("SV") ||  // Venezuela
+               airportCode.startsWith("SB") ||  // Brazil
+               airportCode.startsWith("SP") ||  // Peru
+               airportCode.startsWith("SL") ||  // Bolivia
+               airportCode.startsWith("SC") ||  // Chile
+               airportCode.startsWith("SA") ||  // Argentina
+               airportCode.startsWith("SG") ||  // Paraguay
+               airportCode.startsWith("SU");    // Uruguay
+    }
+    
+    private static boolean isEurope(String airportCode) {
+        // European ICAO codes
+        return airportCode.startsWith("LA") ||  // Albania
+               airportCode.startsWith("ED") ||  // Germany
+               airportCode.startsWith("LO") ||  // Austria
+               airportCode.startsWith("EB") ||  // Belgium
+               airportCode.startsWith("UM") ||  // Belarus
+               airportCode.startsWith("LB") ||  // Bulgaria
+               airportCode.startsWith("LK") ||  // Czech Republic
+               airportCode.startsWith("LD") ||  // Croatia
+               airportCode.startsWith("EK") ||  // Denmark
+               airportCode.startsWith("EH");    // Netherlands
+    }
+    
+    private static boolean isAsia(String airportCode) {
+        // Asian ICAO codes
+        return airportCode.startsWith("VI") ||  // India
+               airportCode.startsWith("OS") ||  // Syria
+               airportCode.startsWith("OE") ||  // Saudi Arabia
+               airportCode.startsWith("OM") ||  // UAE
+               airportCode.startsWith("OA") ||  // Afghanistan
+               airportCode.startsWith("OO") ||  // Oman
+               airportCode.startsWith("OY") ||  // Yemen
+               airportCode.startsWith("OP") ||  // Pakistan
+               airportCode.startsWith("UB") ||  // Azerbaijan
+               airportCode.startsWith("OJ");    // Jordan
     }
 }
