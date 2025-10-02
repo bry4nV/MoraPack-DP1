@@ -12,8 +12,8 @@ public class Grafo {
         adyacencias.putIfAbsent(a, new ArrayList<>());
     }
 
-    public void agregarArista(Aeropuerto origen, Aeropuerto destino, int capacidad, double tiempo) {
-        Arista arista = new Arista(origen, destino, capacidad, tiempo);
+    public void agregarArista(Aeropuerto origen, Aeropuerto destino, int capacidad, int horaSalida, int horaLlegada) {
+        Arista arista = new Arista(origen, destino, capacidad, horaSalida, horaLlegada);
         adyacencias.get(origen).add(arista);
     }
 

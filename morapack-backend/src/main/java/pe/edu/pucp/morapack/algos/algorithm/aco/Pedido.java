@@ -67,6 +67,10 @@ public class Pedido {
         this.idCliente = idCliente;
     }
 
+    public int getHoraPedidoEnMinutos() {
+        return hora * 60 + minuto;
+    }
+
     @Override
     public String toString() {
         return "Pedido{" +

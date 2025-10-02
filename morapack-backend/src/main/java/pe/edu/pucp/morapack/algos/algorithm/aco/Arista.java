@@ -4,14 +4,22 @@ public class Arista {
     public Aeropuerto origen;
     public Aeropuerto destino;
     public int capacidad;
-    public double tiempo; // tiempo de vuelo en horas o días
-    public double feromona; // cantidad de feromona en esta ruta
+    public int horaSalida;    // en minutos desde medianoche
+    public int horaLlegada;   // en minutos desde medianoche
+    public double feromona;
 
-    public Arista(Aeropuerto origen, Aeropuerto destino, int capacidad, double tiempo) {
+    public Arista(Aeropuerto origen, Aeropuerto destino, int capacidad, int horaSalida, int horaLlegada) {
         this.origen = origen;
         this.destino = destino;
         this.capacidad = capacidad;
-        this.tiempo = tiempo;
-        this.feromona = 0.1; // valor inicial de feromona
+        this.horaSalida = horaSalida;
+        this.horaLlegada = horaLlegada;
+        this.feromona = 0.1;
+    }
+
+    public int getDuracionMinutos() {
+        int duracion = horaLlegada - horaSalida;
+        if (duracion < 0) duracion += 24 * 60;
+        return duracion;
     }
 }

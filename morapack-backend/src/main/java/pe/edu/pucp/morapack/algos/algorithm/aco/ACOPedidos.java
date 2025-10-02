@@ -28,10 +28,12 @@ public class ACOPedidos {
     public Map<Pedido, Hormiga> solucionar(List<Pedido> pedidos, Map<String, Aeropuerto> aeropuertoPorCodigo) {
         Map<Pedido, Hormiga> mejorRutaPorPedido = new HashMap<>();
         int cant;
+        int horapedido;
         for (Pedido pedido : pedidos) {
             Hormiga mejorHormiga = null;
-            double plazoMax = calcularPlazoMaximo(sedes.get(0), aeropuertoPorCodigo.get(pedido.getDestino()));
-                cant = pedido.getCantidadPaquetes();
+            int plazoMax = calcularPlazoMaximo(sedes.get(0), aeropuertoPorCodigo.get(pedido.getDestino()));
+            cant = pedido.getCantidadPaquetes();
+            horapedido=pedido.getHoraPedidoEnMinutos(); 
             for (int iter = 0; iter < numIteraciones; iter++) {
                 List<Hormiga> hormigas = new ArrayList<>();
 
@@ -43,7 +45,8 @@ public class ACOPedidos {
                                 aeropuertoPorCodigo.get(pedido.getDestino()),   
                                 cant,
                                 plazoMax,
-                                random  // Pasamos el random con la semilla fija
+                                random,
+                                horapedido  // Pasamos el random con la semilla fija
                         );
                         hormigas.add(hormiga);
                     }
@@ -109,8 +112,8 @@ public class ACOPedidos {
     /**
      * Cálculo de plazo máximo de entrega
      */
-    private double calcularPlazoMaximo(Aeropuerto origen, Aeropuerto destino) {
-        double plazoBase = origen.continente.equals(destino.continente) ? 48.0 : 72.0; //para vuelos dentro del mismo continente
+    private int calcularPlazoMaximo(Aeropuerto origen, Aeropuerto destino) {
+        int plazoBase = origen.continente.equals(destino.continente) ? 48*60: 72*60; //para vuelos dentro del mismo continente
         return plazoBase;
     }
 }

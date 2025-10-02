@@ -1,87 +1,97 @@
 package pe.edu.pucp.morapack.algos.algorithm.aco;
+
+import java.time.LocalTime;
 import java.util.*;
 
 public class Hormiga {
     private Aeropuerto sedeInicial;
     private Aeropuerto destinoPedido;
     private int cantidadPaquetes;
-    private double plazoMaximo;
-    double tiempoTotal = 0.0;
+    private int plazoMaximo; // en minutos
+    double tiempoTotal = 0.0; // en minutos
     private Set<Aeropuerto> visitados = new HashSet<>();
     List<Arista> ruta = new ArrayList<>();
-    private Random random;  // Para el control de aleatoriedad
-    private int horaactual;
-    // Constructor de la hormiga
-    public Hormiga(Aeropuerto sedeInicial, Aeropuerto destinoPedido, int cantidadPaquetes, double plazoMaximo, Random random) {
+    private Random random;
+
+    // Hora actual de la hormiga en minutos desde medianoche
+    private int horaActual;
+
+    public Hormiga(Aeropuerto sedeInicial, Aeropuerto destinoPedido, int cantidadPaquetes, int plazoMaximo, Random random,int horaRegistro) {
         this.sedeInicial = sedeInicial;
         this.destinoPedido = destinoPedido;
         this.cantidadPaquetes = cantidadPaquetes;
         this.plazoMaximo = plazoMaximo;
-        this.random = random;  // Usar el random con semilla fija
-        //this.horaactual=sedeInicial.husoHorario;
-        visitados.add(sedeInicial);  // Agregar la sede inicial a los visitados
-    }
-
-    // Método para construir la ruta
-    public void construirRuta(Grafo grafo) {
-        Aeropuerto actual = sedeInicial;  // La sede de inicio es el punto inicial de la ruta
-
-        // Mientras no haya llegado al destino, la hormiga continúa buscando aristas
-        while (!actual.equals(destinoPedido)) {
-            // Elegir la siguiente arista basada en la probabilidad
-            Arista siguienteArista = elegirSiguienteArista(grafo, actual);
-
-            if (siguienteArista == null) {
-                break;  // Si no hay aristas válidas, detener el proceso
-            }
-
-            //int tiempoDeEspera = calcularTiempoEspera(actual, siguienteArista.destino);
-            //horaactual += tiempoDeEspera;
-
-            // Actualizar tiempo total y agregar la arista a la ruta
-            tiempoTotal += siguienteArista.tiempo;
-            ruta.add(siguienteArista);
-            visitados.add(siguienteArista.destino);
-            actual = siguienteArista.destino;  // Mover al siguiente aeropuerto
-        }
-    }
-
-    // Método para elegir la siguiente arista con base en la probabilidad
-    public Arista elegirSiguienteArista(Grafo grafo, Aeropuerto actual) {
-        List<Arista> posibles = grafo.obtenerAristasDesde(actual);  // Obtener las aristas desde el aeropuerto actual
-        List<Arista> candidatas = new ArrayList<>();
+        this.random = random;
+        this.horaActual = horaRegistro; 
+        visitados.add(sedeInicial);
         
-        // Filtrar aristas válidas que no hayan sido visitadas y que respeten el plazo máximo
-        for (Arista arista : posibles) {
-            if (!visitados.contains(arista.destino) && (tiempoTotal + arista.tiempo <= plazoMaximo)) {
-                candidatas.add(arista);
+    }
+
+    // Construir la ruta del pedido
+    public void construirRuta(Grafo grafo) {
+        Aeropuerto actual = sedeInicial;
+
+        while (!actual.equals(destinoPedido)) {
+            Arista siguiente = elegirSiguienteArista(grafo, actual);
+            if (siguiente == null) break; // No hay ruta válida
+
+            // Calcular tiempo de espera si llega antes del vuelo
+            int horaSalidaVuelo = siguiente.horaSalida; // en minutos
+            int tiempoEspera = horaSalidaVuelo - horaActual;
+            if (tiempoEspera < 0) tiempoEspera = 0;
+
+            // Calcular duración del vuelo
+            int tiempoVuelo = siguiente.getDuracionMinutos();
+
+            // Actualizar hora actual y tiempo total
+            horaActual = horaSalidaVuelo + tiempoVuelo;
+            tiempoTotal += tiempoEspera + tiempoVuelo;
+
+            // Agregar arista a la ruta
+            ruta.add(siguiente);
+            visitados.add(siguiente.destino);
+            actual = siguiente.destino;
+        }
+    }
+
+    // Seleccionar la siguiente arista según probabilidad (feromonas + heurística)
+    private Arista elegirSiguienteArista(Grafo grafo, Aeropuerto actual) {
+        List<Arista> posibles = grafo.obtenerAristasDesde(actual);
+        List<Arista> candidatas = new ArrayList<>();
+
+        for (Arista a : posibles) {
+            // No visitar nodos repetidos y respetar plazo máximo
+            int tiempoVuelo = a.getDuracionMinutos();
+            int tiempoEspera = Math.max(a.horaSalida - horaActual, 0);
+            int tiempoTotalEstimado = (int) tiempoTotal + tiempoVuelo + tiempoEspera;
+
+            if (!visitados.contains(a.destino) && tiempoTotalEstimado <= plazoMaximo) {
+                candidatas.add(a);
             }
         }
 
-        if (candidatas.isEmpty()) {
-            return null;  // Si no hay aristas válidas, retornar null
+        if (candidatas.isEmpty()) return null;
+
+        // Calcular probabilidades
+        double sumaProb = 0.0;
+        Map<Arista, Double> probabilidades = new HashMap<>();
+        for (Arista a : candidatas) {
+            int tiempoVuelo = a.getDuracionMinutos();
+            int tiempoEspera = Math.max(a.horaSalida - horaActual, 0);
+            double heuristica = 1.0 / (tiempoVuelo + tiempoEspera); // preferir vuelos cortos
+            double prob = Math.pow(a.feromona, 1) * Math.pow(heuristica, 2);
+            probabilidades.put(a, prob);
+            sumaProb += prob;
         }
 
-        // Calcular la probabilidad de cada arista basada en las feromonas y el tiempo de vuelo
-        double sumaProbabilidades = 0.0;
-        for (Arista arista : candidatas) {
-            double heuristica = 1.0 / arista.tiempo;  // Preferir las aristas con menos tiempo de vuelo
-            double probabilidad = Math.pow(arista.feromona, 1) * Math.pow(heuristica, 2);  // Ajustar los exponente para feromonas y heurística
-            sumaProbabilidades += probabilidad;
+        // Elegir arista aleatoriamente según probabilidades
+        double rand = random.nextDouble() * sumaProb;
+        double acum = 0.0;
+        for (Arista a : candidatas) {
+            acum += probabilidades.get(a);
+            if (rand <= acum) return a;
         }
 
-        // Elegir aleatoriamente una arista basada en las probabilidades
-        double rand = random.nextDouble() * sumaProbabilidades;
-        double acumulado = 0.0;
-        for (Arista arista : candidatas) {
-            double probabilidad = Math.pow(arista.feromona, 1) * Math.pow(1.0 / arista.tiempo, 2) / sumaProbabilidades;
-            acumulado += probabilidad;
-            if (rand <= acumulado) {
-                return arista;
-            }
-        }
-
-        // En caso de que haya un problema, devolver la última opción (esto debería ser muy raro)
         return candidatas.get(candidatas.size() - 1);
     }
 }

@@ -6,7 +6,7 @@ import java.util.*;
 
 public class App {
     public static void main(String[] args) {
-        long startTime = System.nanoTime();
+        
 
 
         // Cargar aeropuertos
@@ -39,8 +39,17 @@ public class App {
 
         // Agregar vuelos como aristas
         for (Vuelo v : vuelos) {
-            double tiempoVuelo = v.origen.continente.equals(v.destino.continente) ? 12 : 24; // ejemplo: 12 horas dentro de continente, 24 entre continentes
-            grafo.agregarArista(v.origen, v.destino,v.capacidadMax,tiempoVuelo);
+            int horaSalida = v.horaOrigen.getHour() * 60 + v.horaOrigen.getMinute();
+            int horaLlegada = v.horaDestino.getHour() * 60 + v.horaDestino.getMinute();
+            int plazoMax = v.origen.continente.equals(v.destino.continente) ? 12*60 : 24*60;
+
+            int duracionVuelo = (horaLlegada - horaSalida + 24*60) % (24*60);
+            if (duracionVuelo <= plazoMax) {
+                grafo.agregarArista(v.origen, v.destino, v.capacidadMax, horaSalida, horaLlegada);
+            } else {
+                System.out.printf("Vuelo %s -> %s excede plazo máximo (%d min) y no se agrega%n",
+                        v.origen.codigo, v.destino.codigo, plazoMax);
+            }
         }
 
 
@@ -59,8 +68,8 @@ public class App {
         ACOPedidos ac = new ACOPedidos(
             grafo,
             sedes,
-            10,    // número de hormigas
-            100,    // número de iteraciones
+            5,    // número de hormigas
+            50,    // número de iteraciones
             0.1,   // tasa de evaporación
             100.0,  // incremento de feromona
             random // semilla fija para reproducibilidad
@@ -69,7 +78,14 @@ public class App {
         double tiempoTotalEntrega=0.0;
         int totalPedidos=pedidos.size();
         // Ejecutar ACO sobre los pedidos
+        long startTime = System.nanoTime();
         Map<Pedido, Hormiga> rutasOptimas = ac.solucionar(pedidos, aeropuertoPorCodigo);
+        long endTime = System.nanoTime(); 
+         // Calcular el tiempo total de ejecución en milisegundos
+        long duration = (endTime - startTime) / 1000000; 
+
+
+
         System.out.println("\n--- Resumen de rutas optimas ---");
          for (Pedido p : rutasOptimas.keySet()) {
             Hormiga h = rutasOptimas.get(p);
@@ -78,7 +94,7 @@ public class App {
                 for (Arista a : h.ruta) {
                     System.out.print(a.origen.codigo + "->" + a.destino.codigo + " ");
                 }
-                System.out.println("| Tiempo total: " + h.tiempoTotal + "h");
+                System.out.println("| Tiempo total: " + h.tiempoTotal + "min");
                 tiempoTotalEntrega += h.tiempoTotal;
             } else {
                 System.out.println("Pedido " + p.getIdCliente() + ": No se pudo generar ruta");
@@ -86,17 +102,14 @@ public class App {
          }
 
 
-         long endTime = System.nanoTime(); 
-         // Calcular el tiempo total de ejecución en milisegundos
-        long duration = (endTime - startTime) / 1000000;  // Convertimos de nanosegundos a milisegundos
+        
 
         // Mostrar el tiempo total de ejecución
         System.out.println("\nTiempo total de ejecución: " + duration + " ms");
         double tiempoPromedioEntrega = tiempoTotalEntrega / totalPedidos;
 
         // Mostrar el tiempo promedio de entrega en minutos
-        double tiempoPromedioMinutos = tiempoPromedioEntrega * 60;  // Convertir horas a minutos
-        System.out.println("\nTiempo promedio de entrega de los pedidos: " + tiempoPromedioMinutos + " minutos");
+        System.out.println("\nTiempo promedio de entrega de los pedidos: " + tiempoPromedioEntrega + " minutos");
 
 
     }
@@ -185,6 +198,8 @@ public class App {
 
                 String origen = partes[0].trim();
                 String destino = partes[1].trim();
+                String horaOrigenStr = partes[2].trim(); // HH:mm
+                String horaDestinoStr = partes[3].trim(); // HH:mm
                 int capacidad = Integer.parseInt(partes[4].trim());
 
                 Aeropuerto ao = aeropuertoPorCodigo.get(origen);
@@ -195,7 +210,7 @@ public class App {
                 }
 
                 // id incremental simple; frecuencia 1 por defecto
-                Vuelo vuelo = new Vuelo(vuelos.size(), ao, ad, capacidad, 1);
+                Vuelo vuelo = new Vuelo(vuelos.size(), ao, ad, horaOrigenStr, horaDestinoStr, capacidad, 1);
                 vuelos.add(vuelo);
             }
         } catch (Exception e) {
