@@ -50,21 +50,59 @@ public class MorapackPlanner {
                                  " (Deadline: " + p.getMaxDeliveryHours() + "h)")
             );
 
-            System.out.println("\n--- Starting Product-to-Flight Assignment Optimization ---");
-            System.out.println("The optimizer will assign products directly to flights,");
-            System.out.println("then generate shipments automatically based on those assignments.");
-
-            // Create planner and execute
-            IOptimizer planner = new TabuSearchPlanner();
-            Solution solution = planner.optimize(pendingOrders, availableFlights, airports);
-
-            // Print results
-            System.out.println("\n[PLANNING RESULT]");
-            printSolution(solution);
+            System.out.println("\n=== EXPERIMENT: 20 ALGORITHM EXECUTIONS FOR DUAL FACTOR ANALYSIS ===");
+            System.out.println("Running TabuSearch algorithm 20 times to measure:");
+            System.out.println("- Factor 1: Execution time (milliseconds)");
+            System.out.println("- Factor 2: Average delivery time (minutes)");
+            
+            // Arrays to store both factors
+            double[] executionTimes = new double[20];      // Factor 1: Execution time (ms)
+            double[] averageDeliveryTimes = new double[20]; // Factor 2: Average delivery time (minutes)
+            Solution bestSolution = null;
+            double bestExecutionTime = 0;
+            
+            // Execute algorithm 20 times
+            for (int run = 1; run <= 20; run++) {
+                System.out.println("\n--- Execution " + run + "/20 ---");
+                
+                // Measure execution time (Factor 1)
+                long startTime = System.nanoTime();
+                
+                TabuSearchPlanner planner = new TabuSearchPlanner();
+                Solution solution = planner.optimize(pendingOrders, availableFlights, airports);
+                
+                long endTime = System.nanoTime();
+                double executionTimeMs = (endTime - startTime) / 1_000_000.0; // Convert to milliseconds
+                executionTimes[run - 1] = executionTimeMs;
+                
+                // Get average delivery time (Factor 2)
+                double avgDeliveryTimeMinutes = planner.getAverageDeliveryTimeMinutes();
+                averageDeliveryTimes[run - 1] = avgDeliveryTimeMinutes;
+                
+                // Keep the best solution for final display
+                if (bestSolution == null) {
+                    bestSolution = solution;
+                    bestExecutionTime = executionTimeMs;
+                }
+                
+                System.out.printf("Execution %d completed - Time: %.3f ms, Avg Delivery: %.2f min%n", 
+                                run, executionTimeMs, avgDeliveryTimeMinutes);
+            }
+            
+            // Store arrays for final printing
+            double[] finalExecutionTimes = executionTimes.clone();
+            double[] finalDeliveryTimes = averageDeliveryTimes.clone();
+            
+            // Print results of best solution
+            System.out.println("\n[BEST SOLUTION RESULT]");
+            printSolution(bestSolution);
             
             // Print detailed statistics
             System.out.println("\n=== FINAL STATISTICS ===");
-            printDetailedStatistics(solution, pendingOrders);
+            printDetailedStatistics(bestSolution, pendingOrders);
+
+            // Print experimental data for both factors
+            printExperimentalResults(finalExecutionTimes, finalDeliveryTimes);
 
         } catch (IOException e) {
             System.err.println("Error loading data files: " + e.getMessage());
@@ -166,5 +204,87 @@ public class MorapackPlanner {
         } else {
             System.out.println("Could not find a solution.");
         }
+    }
+    
+    /**
+     * EXPERIMENTAL: Print results for both factors (execution time and delivery time)
+     * Formatted for statistical analysis in R
+     */
+    private static void printExperimentalResults(double[] executionTimes, double[] deliveryTimes) {
+        System.out.println("\n=== EXPERIMENTAL RESULTS FOR STATISTICAL ANALYSIS ===");
+        System.out.println("TABÚ SEARCH ALGORITHM - 20 EXECUTIONS");
+        System.out.println("=".repeat(80));
+        
+        // Print table header
+        System.out.println("\n📊 DUAL FACTOR EXPERIMENTAL DATA:");
+        System.out.println("-".repeat(80));
+        System.out.printf("%-10s | %-20s | %-25s%n", "Execution", "Factor 1 (ms)", "Factor 2 (minutes)");
+        System.out.printf("%-10s | %-20s | %-25s%n", "Number", "Execution Time", "Avg Delivery Time");
+        System.out.println("-".repeat(80));
+        
+        // Print all data points
+        for (int i = 0; i < executionTimes.length; i++) {
+            System.out.printf("%-10d | %-20.3f | %-25.2f%n", 
+                            (i + 1), executionTimes[i], deliveryTimes[i]);
+        }
+        
+        // Calculate and print statistics for both factors
+        System.out.println("\n📈 STATISTICAL SUMMARY:");
+        System.out.println("=".repeat(80));
+        
+        // Factor 1 Statistics (Execution Time)
+        double minExecTime = Arrays.stream(executionTimes).min().orElse(0);
+        double maxExecTime = Arrays.stream(executionTimes).max().orElse(0);
+        double avgExecTime = Arrays.stream(executionTimes).average().orElse(0);
+        double totalExecTime = Arrays.stream(executionTimes).sum();
+        double stdExecTime = calculateStandardDeviation(executionTimes, avgExecTime);
+        
+        // Factor 2 Statistics (Delivery Time)
+        double minDelTime = Arrays.stream(deliveryTimes).min().orElse(0);
+        double maxDelTime = Arrays.stream(deliveryTimes).max().orElse(0);
+        double avgDelTime = Arrays.stream(deliveryTimes).average().orElse(0);
+        double totalDelTime = Arrays.stream(deliveryTimes).sum();
+        double stdDelTime = calculateStandardDeviation(deliveryTimes, avgDelTime);
+        
+        System.out.println("\nFACTOR 1 - EXECUTION TIME (milliseconds):");
+        System.out.printf("  Minimum:        %10.3f ms%n", minExecTime);
+        System.out.printf("  Maximum:        %10.3f ms%n", maxExecTime);
+        System.out.printf("  Average:        %10.3f ms%n", avgExecTime);
+        System.out.printf("  Total:          %10.3f ms%n", totalExecTime);
+        System.out.printf("  Std Deviation:  %10.3f ms%n", stdExecTime);
+        
+        System.out.println("\nFACTOR 2 - AVERAGE DELIVERY TIME (minutes):");
+        System.out.printf("  Minimum:        %10.2f min%n", minDelTime);
+        System.out.printf("  Maximum:        %10.2f min%n", maxDelTime);
+        System.out.printf("  Average:        %10.2f min%n", avgDelTime);
+        System.out.printf("  Total:          %10.2f min%n", totalDelTime);
+        System.out.printf("  Std Deviation:  %10.2f min%n", stdDelTime);
+        
+        // Print data for easy copy-paste to R
+        System.out.println("\n🔬 DATA FOR R ANALYSIS:");
+        System.out.println("-".repeat(50));
+        System.out.print("execution_times_tabu <- c(");
+        for (int i = 0; i < executionTimes.length; i++) {
+            System.out.printf("%.3f", executionTimes[i]);
+            if (i < executionTimes.length - 1) System.out.print(", ");
+        }
+        System.out.println(")");
+        
+        System.out.print("delivery_times_tabu <- c(");
+        for (int i = 0; i < deliveryTimes.length; i++) {
+            System.out.printf("%.2f", deliveryTimes[i]);
+            if (i < deliveryTimes.length - 1) System.out.print(", ");
+        }
+        System.out.println(")");
+        
+        System.out.println("\n✅ Ready for statistical analysis with Shapiro-Wilk and Wilcoxon/T-Student tests");
+    }
+    
+    private static double calculateStandardDeviation(double[] values, double mean) {
+        double sum = 0.0;
+        for (double value : values) {
+            sum += Math.pow(value - mean, 2);
+        }
+        return Math.sqrt(sum / values.length);
     }
 }

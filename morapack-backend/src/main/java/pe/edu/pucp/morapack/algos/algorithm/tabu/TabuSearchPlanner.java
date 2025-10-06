@@ -16,6 +16,7 @@ import pe.edu.pucp.morapack.model.Order;
 import pe.edu.pucp.morapack.model.Flight;
 import pe.edu.pucp.morapack.model.Shipment;
 import pe.edu.pucp.morapack.model.Airport;
+import pe.edu.pucp.morapack.model.AirportStorageManager;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -54,87 +55,14 @@ public class TabuSearchPlanner implements IOptimizer {
     private static final double MIN_AVG_IMPROVEMENT = 0.0005; // 0.05% minimum average improvement to continue
     private static final int IMPROVEMENT_WINDOW = 15; // Larger window for average improvement calculation
     
-    // Adaptive Memory System
-    private static class AdaptiveMemory {
-        private Map<String, Integer> moveFrequency = new HashMap<>();
-        private List<Double> improvementHistory = new ArrayList<>();
-        private List<Double> costHistory = new ArrayList<>();
-        private int baseTabuTenure;
-        private int currentTabuTenure;
-        private double avgImprovement = 0.0;
-        private int consecutiveNoImprovement = 0;
-        private boolean inIntensificationPhase = false;
-        
-        public AdaptiveMemory(int baseTabuTenure) {
-            this.baseTabuTenure = baseTabuTenure;
-            this.currentTabuTenure = baseTabuTenure;
-        }
-        
-        public void recordMove(String moveSignature) {
-            moveFrequency.put(moveSignature, moveFrequency.getOrDefault(moveSignature, 0) + 1);
-        }
-        
-        public void recordImprovement(double improvementPercentage, double currentCost) {
-            improvementHistory.add(improvementPercentage);
-            costHistory.add(currentCost);
-            
-            // Keep only last 20 improvements for adaptive calculation
-            if (improvementHistory.size() > 20) {
-                improvementHistory.remove(0);
-                costHistory.remove(0);
-            }
-            
-            // Calculate running average improvement
-            avgImprovement = improvementHistory.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-            
-            if (improvementPercentage > 0.01) { // Significant improvement (>0.01%)
-                consecutiveNoImprovement = 0;
-                inIntensificationPhase = true;
-            } else {
-                consecutiveNoImprovement++;
-                if (consecutiveNoImprovement > 8) {
-                    inIntensificationPhase = false;
-                }
-            }
-        }
-        
-        public int adaptTabuTenure() {
-            if (inIntensificationPhase) {
-                // Intensification: shorter tenure to explore local area
-                currentTabuTenure = Math.max(baseTabuTenure - 3, 5);
-            } else if (consecutiveNoImprovement > 15) {
-                // Strong diversification: much longer tenure
-                currentTabuTenure = Math.min(baseTabuTenure + 8, 35);
-            } else if (consecutiveNoImprovement > 8) {
-                // Moderate diversification
-                currentTabuTenure = baseTabuTenure + 3;
-            } else {
-                // Normal operation
-                currentTabuTenure = baseTabuTenure;
-            }
-            
-            return currentTabuTenure;
-        }
-        
-        public double getMoveFrequencyPenalty(String moveSignature) {
-            int frequency = moveFrequency.getOrDefault(moveSignature, 0);
-            // Higher penalty for frequently used moves to encourage diversification
-            return 1.0 + (frequency * 0.02); // 2% penalty per previous use
-        }
-        
-        public boolean shouldDiversify() {
-            return consecutiveNoImprovement > 12 && avgImprovement < 0.001;
-        }
-        
-        public String getPhaseInfo() {
-            return String.format("Phase: %s, Tenure: %d, NoImprove: %d, AvgImpr: %.4f%%",
-                inIntensificationPhase ? "INTENSIFY" : "DIVERSIFY",
-                currentTabuTenure, consecutiveNoImprovement, avgImprovement * 100);
-        }
-    }
+    // EXPERIMENTAL: Store average delivery time for analysis
+    private double averageDeliveryTimeMinutes = 0.0;
+    
+    // Airport storage management
+    private AirportStorageManager storageManager;
 
     public TabuSearchPlanner() {
-        this(50, 20);  // Reduced iterations for memory management
+        this(20, 10);  // EXPERIMENT: 20 iterations for timing measurement
     }
     
     public TabuSearchPlanner(int maxIter, int maxWithoutImprovement) {
@@ -142,6 +70,11 @@ public class TabuSearchPlanner implements IOptimizer {
         this.maxIterationsWithoutImprovement = maxWithoutImprovement;
         this.config = new TabuSearchConfig();
         this.constraints = new TabuSearchConstraints(this.config);
+    }
+    
+    // EXPERIMENTAL: Getter for average delivery time (Factor 2)
+    public double getAverageDeliveryTimeMinutes() {
+        return averageDeliveryTimeMinutes;
     }
 
     @Override
@@ -183,7 +116,7 @@ public class TabuSearchPlanner implements IOptimizer {
         double bestGlobalCost = Double.POSITIVE_INFINITY;
         
         // Initialize Adaptive Memory System
-        AdaptiveMemory adaptiveMemory = new AdaptiveMemory(15); // Base tenure of 15
+        TabuAdaptiveMemory adaptiveMemory = new TabuAdaptiveMemory(15); // Base tenure of 15
         
         // Dynamic tabu list parameters with adaptive size
         int minTabuSize = 5;
@@ -195,6 +128,14 @@ public class TabuSearchPlanner implements IOptimizer {
         int stagnationThreshold = 10;
         
         System.out.println("\n=== Starting Tabu Search ===");
+        System.out.println("EXPERIMENT: Running with " + maxIterations + " iterations");
+        
+        // ⏱️ START TIMING MEASUREMENT
+        long tabuStartTime = System.nanoTime();
+        
+        // Array to store iteration times in milliseconds
+        double[] iterationTimes = new double[maxIterations];
+        
         // Create handler for cancellations
         TabuSearchCancellationHandler cancellationHandler = new TabuSearchCancellationHandler(constraints);
 
@@ -204,6 +145,9 @@ public class TabuSearchPlanner implements IOptimizer {
             .toList();
 
         for (int i = 0; i < maxIterations; i++) {
+            // ⏱️ START ITERATION TIMING
+            long iterationStartTime = System.nanoTime();
+            
             List<TabuSolution> neighborhood = generateNeighborhood(currentSolution, activeFlights).stream()
                 .map(s -> {
                     TabuSolution ts = new TabuSolution(s);
@@ -405,7 +349,43 @@ public class TabuSearchPlanner implements IOptimizer {
                     System.out.println("Found better solution after handling cancellations");
                 }
             }
+            
+            // ⏱️ END ITERATION TIMING - Convert to milliseconds
+            long iterationEndTime = System.nanoTime();
+            iterationTimes[i] = (iterationEndTime - iterationStartTime) / 1_000_000.0; // Convert to ms
         }
+
+        // ⏱️ END TIMING MEASUREMENT
+        long tabuEndTime = System.nanoTime();
+        double tabuExecutionTimeSeconds = (tabuEndTime - tabuStartTime) / 1_000_000_000.0;
+        
+        System.out.println("\n=== EXPERIMENT TIMING RESULTS ===");
+        System.out.println("⏱️ TabuSearch Execution Time (20 iterations): " + String.format("%.6f", tabuExecutionTimeSeconds) + " seconds");
+        System.out.println("⏱️ Average time per iteration: " + String.format("%.6f", tabuExecutionTimeSeconds / maxIterations) + " seconds");
+        
+        // Print individual iteration times in milliseconds
+        System.out.println("\n📊 ITERATION TIMES (milliseconds):");
+        for (int i = 0; i < maxIterations; i++) {
+            System.out.printf("Iteration %2d: %8.3f ms%n", (i + 1), iterationTimes[i]);
+        }
+        
+        // Calculate statistics
+        double minTime = Double.MAX_VALUE;
+        double maxTime = Double.MIN_VALUE;
+        double totalTime = 0;
+        
+        for (double time : iterationTimes) {
+            if (time < minTime) minTime = time;
+            if (time > maxTime) maxTime = time;
+            totalTime += time;
+        }
+        
+        System.out.println("\n📈 STATISTICS:");
+        System.out.printf("Min time: %8.3f ms%n", minTime);
+        System.out.printf("Max time: %8.3f ms%n", maxTime);
+        System.out.printf("Avg time: %8.3f ms%n", totalTime / maxIterations);
+        System.out.printf("Total:    %8.3f ms%n", totalTime);
+        System.out.println("================================================");
 
         long endTime = System.currentTimeMillis();
         
@@ -590,6 +570,13 @@ public class TabuSearchPlanner implements IOptimizer {
         System.out.println("Final solution routes: " + totalRoutes);
         System.out.println("Assigned routes: " + finalAssignedCount);
         System.out.println("Empty routes: " + finalEmptyRoutes);
+        
+        // EXPERIMENTAL: Calculate average delivery time (Factor 2)
+        this.averageDeliveryTimeMinutes = calculateAverageDeliveryTime(orders);
+        System.out.println("Average delivery time: " + String.format("%.2f", averageDeliveryTimeMinutes) + " minutes");
+        
+        // EXPERIMENTAL: Analyze delivery time compliance with restrictions
+        analyzeDeliveryTimeCompliance(orders);
         
         return bestSolution[0];
     }
@@ -912,9 +899,17 @@ public class TabuSearchPlanner implements IOptimizer {
         LocalDateTime orderTime = order.getOrderTime();
         LocalDateTime deadline = orderTime.plusHours(order.getMaxDeliveryHours());
         
-        // Flight must depart after order time and arrive before deadline
-        return !flight.getDepartureTime().isBefore(orderTime) && 
-               !flight.getArrivalTime().isAfter(deadline);
+        boolean timeValid = !flight.getDepartureTime().isBefore(orderTime) && 
+                           !flight.getArrivalTime().isAfter(deadline);
+        
+        // Debug logging for temporal issues
+        if (!timeValid && flight.getDepartureTime().isBefore(orderTime)) {
+            System.out.println("DEBUG FLIGHT REJECTION: Order #" + order.getId() + 
+                " (OrderTime: " + orderTime + ") rejected flight departing at " + 
+                flight.getDepartureTime() + " - Flight departs BEFORE order time!");
+        }
+        
+        return timeValid;
     }
     
     /**
@@ -1806,6 +1801,114 @@ public class TabuSearchPlanner implements IOptimizer {
         public List<Flight> getFlights() { return flights; }
         public Airport getCurrentAirport() { return currentAirport; }
         public LocalDateTime getLastArrivalTime() { return lastArrivalTime; }
+    }
+    
+    /**
+     * EXPERIMENTAL: Calculate average delivery time for all orders (Factor 2)
+     * Returns the average delivery time in minutes
+     */
+    private double calculateAverageDeliveryTime(List<Order> orders) {
+        if (orders == null || orders.isEmpty()) {
+            return 0.0;
+        }
+        
+        double totalDeliveryMinutes = 0.0;
+        int ordersWithDeliveryTime = 0;
+        int negativeTimeOrders = 0;
+        
+        for (Order order : orders) {
+            Duration deliveryTime = order.getTotalDeliveryTime();
+            if (deliveryTime != null && !deliveryTime.isZero()) {
+                double minutes = deliveryTime.toMinutes();
+                if (minutes < 0) {
+                    negativeTimeOrders++;
+                    // Debug: Print negative delivery time cases (only first 2 to avoid spam)
+                    if (negativeTimeOrders <= 2) {
+                        System.err.printf("DEBUG: Order #%d has negative delivery time: %.2f minutes (OrderTime: %s)%n", 
+                                        order.getId(), minutes, order.getOrderTime());
+                        if (!order.getShipments().isEmpty()) {
+                            order.getShipments().forEach(s -> 
+                                System.err.printf("  -> Shipment #%d EstimatedArrival: %s%n", s.getId(), s.getEstimatedArrival()));
+                        } else {
+                            System.err.println("  -> No shipments found!");
+                        }
+                    }
+                }
+                totalDeliveryMinutes += minutes;
+                ordersWithDeliveryTime++;
+            }
+        }
+        
+        if (negativeTimeOrders > 0) {
+            System.err.printf("WARNING: Found %d orders with negative delivery times out of %d total orders%n", 
+                            negativeTimeOrders, ordersWithDeliveryTime);
+        }
+        
+        return ordersWithDeliveryTime > 0 ? totalDeliveryMinutes / ordersWithDeliveryTime : 0.0;
+    }
+    
+    /**
+     * EXPERIMENTAL: Analyze delivery time compliance with restrictions
+     * Reports how many orders exceed the time limits (48h intra-continental, 72h inter-continental)
+     */
+    private void analyzeDeliveryTimeCompliance(List<Order> orders) {
+        if (orders == null || orders.isEmpty()) {
+            System.out.println("=== DELIVERY TIME COMPLIANCE ANALYSIS ===");
+            System.out.println("No orders to analyze");
+            return;
+        }
+        
+        int totalOrders = 0;
+        int intraContinentalOrders = 0;
+        int interContinentalOrders = 0;
+        int intraContinentalViolations = 0;
+        int interContinentalViolations = 0;
+        double maxIntraDeliveryHours = 0;
+        double maxInterDeliveryHours = 0;
+        
+        System.out.println("=== DELIVERY TIME COMPLIANCE ANALYSIS ===");
+        
+        for (Order order : orders) {
+            Duration deliveryTime = order.getTotalDeliveryTime();
+            if (deliveryTime != null && !deliveryTime.isZero()) {
+                totalOrders++;
+                double deliveryHours = deliveryTime.toMinutes() / 60.0;
+                long maxAllowedHours = order.getMaxDeliveryHours();
+                
+                if (maxAllowedHours == 48) {
+                    // Intra-continental
+                    intraContinentalOrders++;
+                    maxIntraDeliveryHours = Math.max(maxIntraDeliveryHours, deliveryHours);
+                    if (deliveryHours > 48) {
+                        intraContinentalViolations++;
+                        System.out.printf("  VIOLATION: Intra-continental order #%d took %.2f hours (limit: 48h)%n", 
+                                        order.getId(), deliveryHours);
+                    }
+                } else if (maxAllowedHours == 72) {
+                    // Inter-continental
+                    interContinentalOrders++;
+                    maxInterDeliveryHours = Math.max(maxInterDeliveryHours, deliveryHours);
+                    if (deliveryHours > 72) {
+                        interContinentalViolations++;
+                        System.out.printf("  VIOLATION: Inter-continental order #%d took %.2f hours (limit: 72h)%n", 
+                                        order.getId(), deliveryHours);
+                    }
+                }
+            }
+        }
+        
+        System.out.printf("Total Orders Analyzed: %d%n", totalOrders);
+        System.out.printf("Intra-continental Orders: %d (Max delivery: %.2f hours)%n", 
+                        intraContinentalOrders, maxIntraDeliveryHours);
+        System.out.printf("Inter-continental Orders: %d (Max delivery: %.2f hours)%n", 
+                        interContinentalOrders, maxInterDeliveryHours);
+        System.out.printf("Intra-continental Violations: %d/%d (%.1f%%)%n", 
+                        intraContinentalViolations, intraContinentalOrders, 
+                        intraContinentalOrders > 0 ? (100.0 * intraContinentalViolations / intraContinentalOrders) : 0);
+        System.out.printf("Inter-continental Violations: %d/%d (%.1f%%)%n", 
+                        interContinentalViolations, interContinentalOrders,
+                        interContinentalOrders > 0 ? (100.0 * interContinentalViolations / interContinentalOrders) : 0);
+        System.out.println("=======================================");
     }
     
     /**

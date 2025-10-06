@@ -51,6 +51,7 @@ public class Order {
         
         LocalDateTime lastDelivery = shipments.stream()
             .map(Shipment::getEstimatedArrival)
+            .filter(arrival -> arrival != null)  // Filter out null values
             .max(LocalDateTime::compareTo)
             .orElse(orderTime);
             

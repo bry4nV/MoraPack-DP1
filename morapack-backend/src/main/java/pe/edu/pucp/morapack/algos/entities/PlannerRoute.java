@@ -33,6 +33,28 @@ public class PlannerRoute {
     
     public void addShipment(Shipment shipment) {
         this.shipments.add(shipment);
+        
+        // Set estimated arrival time from the flight only if it's chronologically valid
+        if (this.flight != null && this.flight.getArrivalTime() != null) {
+            // Validate that flight departs after order time
+            LocalDateTime orderTime = shipment.getOrder() != null ? 
+                shipment.getOrder().getOrderTime() : null;
+            
+            if (orderTime == null || !this.flight.getDepartureTime().isBefore(orderTime)) {
+                shipment.setEstimatedArrival(this.flight.getArrivalTime());
+            } else {
+                // Don't set arrival time for chronologically invalid flights
+                System.out.println("DEBUG: Skipping chronologically invalid flight - Order: " + 
+                    (shipment.getOrder() != null ? shipment.getOrder().getId() : "null") + 
+                    ", OrderTime: " + orderTime + 
+                    ", FlightDeparture: " + this.flight.getDepartureTime());
+            }
+        }
+        
+        // Add the shipment to the order so it can calculate delivery times
+        if (shipment.getOrder() != null) {
+            shipment.getOrder().addShipment(shipment);
+        }
     }
     
     public void removeShipment(Shipment shipment) {

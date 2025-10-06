@@ -35,6 +35,10 @@ public class TabuSearchPlannerCostFunction {
     private static final double UNDERUTILIZATION_PENALTY = 3000;  // Reduced to allow partial loads
     private static final double DISTRIBUTION_PENALTY = 4000;  // Reduced to focus on completion
     
+    // Airport capacity penalties
+    private static final double AIRPORT_CAPACITY_VIOLATION_PENALTY = 20000; // Heavy penalty for exceeding airport storage
+    private static final double AIRPORT_CAPACITY_UNIT_PENALTY = 150; // Per unit penalty for excess
+    
     // Time-based penalties
     private static final double DELIVERY_TIME_PENALTY = 600; // Balanced for completion and timeliness
     private static final double DELIVERY_TIME_THRESHOLD = 60; // Moderate increase for flexibility
@@ -299,6 +303,56 @@ public class TabuSearchPlannerCostFunction {
             }
         }
         
+        // Airport capacity violation penalties
+        totalCost += calculateAirportCapacityPenalties(assignedRoutes, airports, dynamicFactor);
+        
         return totalCost;
+    }
+    
+    /**
+     * Calculate penalties for airport capacity violations
+     */
+    private static double calculateAirportCapacityPenalties(List<PlannerRoute> routes, List<Airport> airports, double dynamicFactor) {
+        double penaltyCost = 0.0;
+        
+        // Calculate maximum concurrent load per airport
+        Map<Airport, Integer> airportLoads = new HashMap<>();
+        
+        for (PlannerRoute route : routes) {
+            for (PlannerSegment segment : route.getSegments()) {
+                Airport arrivalAirport = segment.getFlight().getDestination();
+                
+                // Skip if this is the final destination for all shipments in route
+                boolean isFinalDestination = route.getShipments().stream()
+                    .allMatch(shipment -> arrivalAirport.equals(shipment.getDestination()));
+                
+                if (!isFinalDestination) {
+                    int routeQuantity = route.getShipments().stream()
+                        .mapToInt(Shipment::getQuantity)
+                        .sum();
+                    
+                    airportLoads.merge(arrivalAirport, routeQuantity, Integer::sum);
+                }
+            }
+        }
+        
+        // Apply penalties for capacity violations
+        for (Map.Entry<Airport, Integer> entry : airportLoads.entrySet()) {
+            Airport airport = entry.getKey();
+            int totalLoad = entry.getValue();
+            int capacity = airport.getStorageCapacity();
+            
+            if (totalLoad > capacity) {
+                int excess = totalLoad - capacity;
+                
+                // Base penalty for violation
+                penaltyCost += AIRPORT_CAPACITY_VIOLATION_PENALTY * dynamicFactor;
+                
+                // Additional penalty per excess unit
+                penaltyCost += excess * AIRPORT_CAPACITY_UNIT_PENALTY * dynamicFactor;
+            }
+        }
+        
+        return penaltyCost;
     }
 }
