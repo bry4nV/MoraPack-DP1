@@ -9,20 +9,15 @@ import java.util.stream.Collectors;
  * Contiene la información básica de rutas y órdenes.
  */
 public class Solution {
-    protected List<PlannerRoute> routes;
     protected List<Order> completedOrders;
     protected List<Order> allOrders;
 
     public Solution() {
-        this.routes = new ArrayList<>();
         this.completedOrders = new ArrayList<>();
         this.allOrders = new ArrayList<>();
     }
 
     public Solution(Solution other) {
-        this.routes = other.routes.stream()
-            .map(PlannerRoute::new)
-            .collect(Collectors.toList());
         this.completedOrders = new ArrayList<>(other.completedOrders);
         this.allOrders = new ArrayList<>(other.allOrders);
     }
@@ -30,18 +25,6 @@ public class Solution {
     public Solution(List<Order> orders) {
         this();
         this.allOrders = new ArrayList<>(orders);
-    }
-
-    public List<PlannerRoute> getRoutes() {
-        return routes;
-    }
-
-    public void setRoutes(List<PlannerRoute> routes) {
-        this.routes = routes;
-    }
-
-    public void addRoute(PlannerRoute route) {
-        this.routes.add(route);
     }
 
     public List<Order> getCompletedOrders() {
@@ -60,27 +43,8 @@ public class Solution {
         this.allOrders = allOrders;
     }
 
-    public List<PlannerRoute> getAssignedRoutes() {
-        return routes.stream()
-            .filter(r -> !r.getShipments().isEmpty())
-            .collect(Collectors.toList());
-    }
-
-    public List<PlannerRoute> getEmptyRoutes() {
-        return routes.stream()
-            .filter(r -> r.getShipments().isEmpty())
-            .collect(Collectors.toList());
-    }
-
-    public double getTotalCost() {
-        return routes.stream()
-            .flatMapToDouble(r -> r.getSegments().stream()
-                .mapToDouble(s -> s.getFlight().getCost()))
-            .sum();
-    }
-
     @Override
     public String toString() {
-        return "Solution{routes=" + routes.size() + "}";
+        return "Solution{orders=" + allOrders.size() + "}";
     }
 }

@@ -61,6 +61,13 @@ public class Airport {
     public int getStorageCapacity() {
         return storageCapacity;
     }
+    
+    /**
+     * Obtiene el continente del aeropuerto
+     */
+    public Continent getContinent() {
+        return country != null ? country.getContinent() : null;
+    }
 
     @Override
     public boolean equals(Object o) {

@@ -1,5 +1,6 @@
-package pe.edu.pucp.morapack.model;
+package pe.edu.pucp.morapack.algos.utils;
 
+import pe.edu.pucp.morapack.model.Airport;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;

@@ -57,4 +57,20 @@ public class Order {
             
         return Duration.between(orderTime, lastDelivery);
     }
+    
+    /**
+     * Determina si el pedido es intercontinental
+     */
+    public boolean isInterContinental() {
+        if (origin == null || destination == null) return false;
+        if (origin.getCountry() == null || destination.getCountry() == null) return false;
+        
+        Continent originContinent = origin.getCountry().getContinent();
+        Continent destContinent = destination.getCountry().getContinent();
+        
+        // Si alguno de los continentes es null, asumimos que NO es intercontinental
+        if (originContinent == null || destContinent == null) return false;
+        
+        return !originContinent.equals(destContinent);
+    }
 }

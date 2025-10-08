@@ -50,59 +50,39 @@ public class MorapackPlanner {
                                  " (Deadline: " + p.getMaxDeliveryHours() + "h)")
             );
 
-            System.out.println("\n=== EXPERIMENT: 20 ALGORITHM EXECUTIONS FOR DUAL FACTOR ANALYSIS ===");
-            System.out.println("Running TabuSearch algorithm 20 times to measure:");
-            System.out.println("- Factor 1: Execution time (milliseconds)");
-            System.out.println("- Factor 2: Average delivery time (minutes)");
+            System.out.println("\n=== TESTING: ProductAssignment-first Implementation ===");
+            System.out.println("Running TabuSearch algorithm ONCE to test:");
+            System.out.println("- ProductAssignment-first approach");
+            System.out.println("- Initial solution quality comparison");
             
-            // Arrays to store both factors
-            double[] executionTimes = new double[20];      // Factor 1: Execution time (ms)
-            double[] averageDeliveryTimes = new double[20]; // Factor 2: Average delivery time (minutes)
-            Solution bestSolution = null;
-            double bestExecutionTime = 0;
+            Solution solution = null;
+            double executionTimeMs = 0;
             
-            // Execute algorithm 20 times
-            for (int run = 1; run <= 20; run++) {
-                System.out.println("\n--- Execution " + run + "/20 ---");
+            // Execute algorithm once for testing
+            System.out.println("\n--- Testing ProductAssignment-first ---");
                 
-                // Measure execution time (Factor 1)
-                long startTime = System.nanoTime();
-                
-                TabuSearchPlanner planner = new TabuSearchPlanner();
-                Solution solution = planner.optimize(pendingOrders, availableFlights, airports);
-                
-                long endTime = System.nanoTime();
-                double executionTimeMs = (endTime - startTime) / 1_000_000.0; // Convert to milliseconds
-                executionTimes[run - 1] = executionTimeMs;
-                
-                // Get average delivery time (Factor 2)
-                double avgDeliveryTimeMinutes = planner.getAverageDeliveryTimeMinutes();
-                averageDeliveryTimes[run - 1] = avgDeliveryTimeMinutes;
-                
-                // Keep the best solution for final display
-                if (bestSolution == null) {
-                    bestSolution = solution;
-                    bestExecutionTime = executionTimeMs;
-                }
-                
-                System.out.printf("Execution %d completed - Time: %.3f ms, Avg Delivery: %.2f min%n", 
-                                run, executionTimeMs, avgDeliveryTimeMinutes);
-            }
+            // Measure execution time
+            long startTime = System.nanoTime();
             
-            // Store arrays for final printing
-            double[] finalExecutionTimes = executionTimes.clone();
-            double[] finalDeliveryTimes = averageDeliveryTimes.clone();
+            TabuSearchPlanner planner = new TabuSearchPlanner();
+            solution = planner.optimize(pendingOrders, availableFlights, airports);
             
-            // Print results of best solution
-            System.out.println("\n[BEST SOLUTION RESULT]");
-            printSolution(bestSolution);
+            long endTime = System.nanoTime();
+            executionTimeMs = (endTime - startTime) / 1_000_000.0; // Convert to milliseconds
+            
+            // Get average delivery time
+            double avgDeliveryTimeMinutes = planner.getAverageDeliveryTimeMinutes();
+            
+            System.out.printf("Execution completed - Time: %.3f ms, Avg Delivery: %.2f min%n", 
+                            executionTimeMs, avgDeliveryTimeMinutes);
+            
+            // Print results (detailed order report is already printed by TabuSearchPlanner)
+            // System.out.println("\n[SOLUTION RESULT]");
+            // printSolution(solution);  // Commented: redundant, detailed report is shown during optimization
             
             // Print detailed statistics
             System.out.println("\n=== FINAL STATISTICS ===");
-            printDetailedStatistics(bestSolution, pendingOrders);
-
-            // Print experimental data for both factors
-            printExperimentalResults(finalExecutionTimes, finalDeliveryTimes);
+            printDetailedStatistics(solution, pendingOrders);
 
         } catch (IOException e) {
             System.err.println("Error loading data files: " + e.getMessage());
@@ -119,13 +99,18 @@ public class MorapackPlanner {
             return;
         }
         
+        if (!(solution instanceof pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution)) {
+            System.out.println("Solution is not a TabuSolution.");
+            return;
+        }
+        
+        pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution tabuSolution = 
+            (pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution) solution;
+        
         // Count assigned shipments and products
-        int totalShipments = solution.getRoutes().stream()
-            .mapToInt(r -> r.getShipments().size())
-            .sum();
+        int totalShipments = tabuSolution.getPlannerShipments().size();
             
-        int assignedProducts = solution.getRoutes().stream()
-            .flatMap(r -> r.getShipments().stream())
+        int assignedProducts = tabuSolution.getPlannerShipments().stream()
             .mapToInt(s -> s.getQuantity())
             .sum();
             
@@ -133,27 +118,31 @@ public class MorapackPlanner {
             .mapToInt(Order::getTotalQuantity)
             .sum();
             
-        // Count completed orders
+        // Count completed orders (100% quantity AND all on-time)
         int completedOrders = 0;
         int totalOrders = originalOrders.size();
         
         for (Order order : originalOrders) {
-            boolean isComplete = solution.getRoutes().stream()
-                .flatMap(r -> r.getShipments().stream())
-                .filter(s -> s.getParentOrder().getId() == order.getId())
-                .mapToInt(Shipment::getQuantity)
-                .sum() == order.getTotalQuantity();
-                
-            if (isComplete) completedOrders++;
+            List<pe.edu.pucp.morapack.algos.entities.PlannerShipment> orderShipments = 
+                tabuSolution.getPlannerShipments().stream()
+                    .filter(s -> s.getOrder().getId() == order.getId())
+                    .collect(java.util.stream.Collectors.toList());
+            
+            int assignedQty = orderShipments.stream().mapToInt(s -> s.getQuantity()).sum();
+            boolean fullQuantity = (assignedQty == order.getTotalQuantity());
+            boolean allOnTime = orderShipments.stream().allMatch(s -> s.meetsDeadline());
+            
+            // Solo cuenta como completada si tiene 100% cantidad Y todo llegó a tiempo
+            if (fullQuantity && allOnTime) completedOrders++;
         }
         
-        // Count routes with assignments
-        long assignedRoutes = solution.getRoutes().stream()
-            .filter(r -> !r.getShipments().isEmpty() && !r.getSegments().isEmpty())
+        // Count routes with valid assignments
+        long assignedRoutes = tabuSolution.getPlannerShipments().stream()
+            .filter(s -> s.getFlights() != null && !s.getFlights().isEmpty())
             .count();
             
-        long emptyRoutes = solution.getRoutes().stream()
-            .filter(r -> r.getShipments().isEmpty() || r.getSegments().isEmpty())
+        long emptyRoutes = tabuSolution.getPlannerShipments().stream()
+            .filter(s -> s.getFlights() == null || s.getFlights().isEmpty())
             .count();
         
         // Print statistics
@@ -169,7 +158,6 @@ public class MorapackPlanner {
         System.out.println("Unassigned Products: " + (totalProducts - assignedProducts));
         
         System.out.println("\nRoute Statistics:");
-        System.out.println("Total Routes: " + solution.getRoutes().size());
         System.out.println("Assigned Routes: " + assignedRoutes);
         System.out.println("Empty Routes: " + emptyRoutes);
         System.out.println("Total Shipments: " + totalShipments);
@@ -181,26 +169,36 @@ public class MorapackPlanner {
     }
 
     private static void printSolution(Solution solution) {
-        if (solution != null && !solution.getRoutes().isEmpty()) {
-            System.out.println("Solution found!");
-            solution.getRoutes().forEach(route -> {
-                route.getShipments().forEach(shipment -> {
-                    System.out.println("\n  > For Shipment #" + shipment.getId() + 
-                                     " (from Order #" + shipment.getParentOrder().getId() + 
+        if (solution != null && solution instanceof pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution) {
+            pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution tabuSolution = 
+                (pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution) solution;
+            
+            if (!tabuSolution.getPlannerShipments().isEmpty()) {
+                System.out.println("Solution found!");
+                System.out.println("Total PlannerShipments: " + tabuSolution.getPlannerShipments().size());
+                
+                tabuSolution.getPlannerShipments().forEach(shipment -> {
+                    System.out.println("\n  > PlannerShipment #" + shipment.getId() + 
+                                     " (from Order #" + shipment.getOrder().getId() + 
                                      " with " + shipment.getQuantity() + " products)");
-                    if (route.getSegments().isEmpty()) {
+                    if (shipment.getFlights() == null || shipment.getFlights().isEmpty()) {
                         System.out.println("    Route: Could not assign a route!");
                     } else {
-                        String routeStr = route.getSegments().stream()
-                            .map(s -> s.getFlight().getCode() + " (" + 
-                                    s.getFlight().getOrigin().getName() + " -> " + 
-                                    s.getFlight().getDestination().getName() + ")")
+                        String routeStr = shipment.getFlights().stream()
+                            .map(f -> f.getCode() + " (" + 
+                                    f.getOrigin().getCity() + " -> " + 
+                                    f.getDestination().getCity() + ")")
                             .collect(Collectors.joining(" | "));
                         System.out.println("    Route: " + routeStr);
-                        System.out.println("    Estimated arrival: " + route.getFinalArrivalTime());
+                        System.out.println("    Type: " + (shipment.isDirect() ? "DIRECT" : 
+                                          "WITH CONNECTIONS (" + shipment.getNumberOfStops() + " stops)"));
+                        System.out.println("    Estimated arrival: " + shipment.getFinalArrivalTime());
+                        System.out.println("    On time: " + (shipment.meetsDeadline() ? "YES" : "NO"));
                     }
                 });
-            });
+            } else {
+                System.out.println("Could not find a solution.");
+            }
         } else {
             System.out.println("Could not find a solution.");
         }
@@ -216,7 +214,7 @@ public class MorapackPlanner {
         System.out.println("=".repeat(80));
         
         // Print table header
-        System.out.println("\n📊 DUAL FACTOR EXPERIMENTAL DATA:");
+        System.out.println("\nDUAL FACTOR EXPERIMENTAL DATA:");
         System.out.println("-".repeat(80));
         System.out.printf("%-10s | %-20s | %-25s%n", "Execution", "Factor 1 (ms)", "Factor 2 (minutes)");
         System.out.printf("%-10s | %-20s | %-25s%n", "Number", "Execution Time", "Avg Delivery Time");
@@ -229,7 +227,7 @@ public class MorapackPlanner {
         }
         
         // Calculate and print statistics for both factors
-        System.out.println("\n📈 STATISTICAL SUMMARY:");
+        System.out.println("\nSTATISTICAL SUMMARY:");
         System.out.println("=".repeat(80));
         
         // Factor 1 Statistics (Execution Time)
@@ -277,7 +275,7 @@ public class MorapackPlanner {
         }
         System.out.println(")");
         
-        System.out.println("\n✅ Ready for statistical analysis with Shapiro-Wilk and Wilcoxon/T-Student tests");
+        System.out.println("\nReady for statistical analysis with Shapiro-Wilk and Wilcoxon/T-Student tests");
     }
     
     private static double calculateStandardDeviation(double[] values, double mean) {
