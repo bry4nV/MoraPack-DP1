@@ -315,9 +315,7 @@ public class MorapackPlanner {
         List<Order> daily = new ArrayList<>();
         for (PendingOrder p : backlog) {
             if (p.getRemainingQuantity() <= 0) continue;
-            // Constructor real de tu Order: (id, quantity, origin, destination)
             Order o = new Order(p.getId(), p.getRemainingQuantity(), p.getOrigin(), p.getDestination());
-            // Mantén el tiempo original para que la deadline funcione
             o.setOrderTime(p.getOrderTime());
             daily.add(o);
         }
