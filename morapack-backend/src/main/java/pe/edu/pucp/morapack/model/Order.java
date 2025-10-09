@@ -1,5 +1,5 @@
 package pe.edu.pucp.morapack.model;
-
+import pe.edu.pucp.morapack.sim.PendingOrder;   
 import java.time.LocalDateTime;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -73,4 +73,20 @@ public class Order {
         
         return !originContinent.equals(destContinent);
     }
+
+    private static List<Order> buildDailyOrdersFromPending(List<PendingOrder> backlog) {
+    List<Order> daily = new ArrayList<>();
+    for (PendingOrder p : backlog) {
+        if (p.getRemainingQuantity() <= 0) continue;
+        // Crea una Order efímera con la cantidad pendiente.
+        Order o = new Order(p.getId(), p.getRemainingQuantity(), p.getOrigin(), p.getDestination());
+        // Respetar el orderTime original para que el deadline se calcule correctamente.
+        o.setOrderTime(p.getOrderTime());
+        // maxDeliveryHours se calcula en el constructor según continentes (no hay setter).
+        daily.add(o);
+    }
+    return daily;
+}
+
+
 }
