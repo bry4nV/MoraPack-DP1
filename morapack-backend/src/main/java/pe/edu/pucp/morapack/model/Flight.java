@@ -1,5 +1,6 @@
 package pe.edu.pucp.morapack.model;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import java.lang.Math;
@@ -107,4 +108,25 @@ public class Flight {
     public int hashCode() {
         return Objects.hash(code);
     }
+
+    public boolean isOnDay(LocalDate day) {
+    return departureTime != null && departureTime.toLocalDate().isEqual(day);
+    }
+
+    public void cancel() {
+        this.status = Status.CANCELLED;
+    }
+
+    public boolean isActive() {
+        return this.status != Status.CANCELLED && this.status != Status.COMPLETED;
+    }
+
+    
+    public void resetDailyStatus() {
+        if (this.status == Status.COMPLETED) return; 
+        this.status = Status.SCHEDULED;
+    }
+
+    
+
 }
