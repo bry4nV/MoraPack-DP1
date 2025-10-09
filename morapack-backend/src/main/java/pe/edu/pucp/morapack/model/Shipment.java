@@ -46,4 +46,12 @@ public class Shipment {
     public int hashCode() {
         return Objects.hash(id);
     }
+
+    public boolean meetsDeadline() {
+    if (parentOrder == null || estimatedArrival == null) return false;
+    var ddl = parentOrder.getOrderTime().plusHours(parentOrder.getMaxDeliveryHours());
+    return !estimatedArrival.isAfter(ddl);
+    }
+
+
 }
