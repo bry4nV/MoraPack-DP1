@@ -2,156 +2,243 @@ package pe.edu.pucp.morapack.algos.algorithm.tabu;
 
 import pe.edu.pucp.morapack.model.Airport;
 import pe.edu.pucp.morapack.model.Flight;
-import pe.edu.pucp.morapack.model.Shipment;
-import pe.edu.pucp.morapack.algos.entities.Solution;
-import pe.edu.pucp.morapack.algos.entities.PlannerRoute;
-import pe.edu.pucp.morapack.algos.entities.PlannerSegment;
+import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
+import pe.edu.pucp.morapack.model.Order;
 
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.time.LocalDateTime;
 
-
+/**
+ * Función de costo para Tabu Search basada en PlannerShipments.
+ * Calcula penalizaciones por violaciones de restricciones y preferencias.
+ */
 public class TabuSearchPlannerCostFunction {
-    // Base penalties
-    private static final double CAPACITY_VIOLATION_PENALTY = 20000;
-    private static final double EMPTY_ROUTE_PENALTY = 50000;
+    // Penalty constants
+    private static final double CAPACITY_VIOLATION_PENALTY = 25000;
     private static final double DELAY_BASE_PENALTY = 10000;
-    private static final double DELAY_HOUR_PENALTY = 100;
-    private static final double STOPOVER_PENALTY = 100;
-    private static final double INVALID_STOPOVER_TIME_PENALTY = 15000;
-    
-    // Load balancing penalties
-    private static final double LOAD_BALANCE_PENALTY = 5000;
-    private static final double UTILIZATION_TARGET = 0.75; // Target load factor 75%
-    private static final double UNDERUTILIZATION_PENALTY = 2000;  // Penalty for using too few flights
-    private static final double DISTRIBUTION_PENALTY = 3000;  // Penalty for poor load distribution
-    
-    public static double calculateCost(Solution solution, List<Flight> flights, List<Airport> airports, int currentIteration, int maxIterations) {
+    private static final double DELAY_HOUR_PENALTY = 300;
+    private static final double STOPOVER_PENALTY = 600;
+    private static final double INVALID_STOPOVER_TIME_PENALTY = 22000;
+    private static final double AIRPORT_CAPACITY_VIOLATION_PENALTY = 20000;
+    private static final double AIRPORT_CAPACITY_UNIT_PENALTY = 150;
+    private static final double INCOMPLETE_ORDER_PENALTY = 50000;  // Orden no completada
+    private static final double INVALID_SEQUENCE_PENALTY = 30000;  // Secuencia de vuelos inválida
+
+    /**
+     * Calcular costo total de una solución
+     */
+    public static double calculateCost(TabuSolution solution, List<Flight> flights, 
+                                       List<Airport> airports, int currentIteration, int maxIterations) {
         double totalCost = 0.0;
-        Map<Flight, Integer> loadPerFlight = new HashMap<>();
-        
-        // Calculate load per flight
-        for (PlannerRoute route : solution.getRouteMap().values()) {
-            for (PlannerSegment segment : route.getSegments()) {
-                Flight flight = segment.getFlight();
-                Shipment associatedShipment = solution.getRouteMap().entrySet().stream()
-                    .filter(entry -> entry.getValue().equals(route))
-                    .map(Map.Entry::getKey)
-                    .findFirst()
-                    .orElse(null);
-                
-                if (associatedShipment != null) {
-                    loadPerFlight.merge(flight, associatedShipment.getQuantity(), Integer::sum);
-                }
-            }
-        }
-        
-        // Dynamic factor increases penalties as iterations progress
-        double dynamicFactor = 1.0 + ((double) currentIteration / maxIterations);
-        
-        // Calculate load balance penalties
-        double totalLoadDeviation = 0.0;
-        double totalUtilization = 0.0;
-        double minUtilization = 1.0;
-        double maxUtilization = 0.0;
-        
-        for (Map.Entry<Flight, Integer> entry : loadPerFlight.entrySet()) {
-            Flight flight = entry.getKey();
-            int load = entry.getValue();
-            double utilizationRate = (double) load / flight.getCapacity();
-            
-            // Track utilization statistics
-            totalUtilization += utilizationRate;
-            minUtilization = Math.min(minUtilization, utilizationRate);
-            maxUtilization = Math.max(maxUtilization, utilizationRate);
-            
-            // Calculate deviation from target utilization
-            double deviation = Math.abs(utilizationRate - UTILIZATION_TARGET);
-            totalLoadDeviation += deviation;
-        }
-        
-        // Add load balance penalties
-        if (!loadPerFlight.isEmpty()) {
-            double avgUtilization = totalUtilization / loadPerFlight.size();
-            double avgDeviation = totalLoadDeviation / loadPerFlight.size();
-            
-            // Penalize deviation from target utilization
-            totalCost += LOAD_BALANCE_PENALTY * avgDeviation * dynamicFactor;
-            
-            // Penalize underutilization
-            if (avgUtilization < UTILIZATION_TARGET) {
-                totalCost += UNDERUTILIZATION_PENALTY * (UTILIZATION_TARGET - avgUtilization) * dynamicFactor;
-            }
-            
-            // Penalize poor load distribution
-            double distributionSpread = maxUtilization - minUtilization;
-            totalCost += DISTRIBUTION_PENALTY * distributionSpread * dynamicFactor;
-        }
-        
-        // Capacity violation penalty
-        for (Map.Entry<Flight, Integer> entry : loadPerFlight.entrySet()) {
-            // Dynamic capacity violation penalty that increases with iterations
-            double iterationFactor = 1.0 + ((double) currentIteration / maxIterations);
-            if (entry.getValue() > entry.getKey().getCapacity()) {
-                totalCost += CAPACITY_VIOLATION_PENALTY * iterationFactor;
-            }
-        }
-        
-        // Route validations and penalties
-        for (Map.Entry<Shipment, PlannerRoute> entry : solution.getRouteMap().entrySet()) {
-            Shipment shipment = entry.getKey();
-            PlannerRoute route = entry.getValue();
-            
-            if (route.getSegments().isEmpty()) {
-                totalCost += EMPTY_ROUTE_PENALTY;
-                continue;
-            }
-            
-            // Validate minimum stopover times (1 hour)
-            List<PlannerSegment> segments = route.getSegments();
-            for (int i = 0; i < segments.size() - 1; i++) {
-                Flight current = segments.get(i).getFlight();
-                Flight next = segments.get(i + 1).getFlight();
-                
-                long stopoverHours = ChronoUnit.HOURS.between(
-                    current.getArrivalTime(),
-                    next.getDepartureTime()
-                );
-                
-                if (stopoverHours < 1) {
-                    totalCost += INVALID_STOPOVER_TIME_PENALTY;
-                }
-            }
-            
-            // Delay penalty (considering destination timezone and 2-hour processing)
-            long totalHours = ChronoUnit.HOURS.between(
-                shipment.getParentOrder().getOrderTime(),
-                route.getFinalArrivalTime().plusHours(2) // Add 2 hours for processing
-            );
-            
-            // Adjust for destination timezone
-            Airport destAirport = airports.stream()
-                .filter(a -> a.getCode().equals(shipment.getDestination().getCode()))
-                .findFirst()
-                .orElse(null);
-                
-            if (destAirport != null) {
-                totalHours += destAirport.getGmt(); // Adjust for destination timezone
-            }
-            
-            // Check if max delivery time is exceeded
-            long maxHours = shipment.isInterContinental() ? 72 : 48; // 3 days or 2 days
-            if (totalHours > maxHours) {
-                long delayHours = totalHours - maxHours;
-                totalCost += DELAY_BASE_PENALTY + (delayHours * DELAY_HOUR_PENALTY);
-            }
-            
-            // Cost per stopover (considering both flight changes and processing time)
-            totalCost += segments.size() * STOPOVER_PENALTY;
-        }
-        
+        List<PlannerShipment> shipments = solution.getPlannerShipments();
+
+        // 1. Penalización por violación de capacidad de vuelos
+        totalCost += calculateFlightCapacityPenalty(shipments, solution);
+
+        // 2. Penalización por retrasos en entregas
+        totalCost += calculateDeliveryDelayPenalty(shipments);
+
+        // 3. Penalización por escalas
+        totalCost += calculateStopoverPenalty(shipments);
+
+        // 4. Penalización por secuencias inválidas
+        totalCost += calculateInvalidSequencePenalty(shipments);
+
+        // 5. Penalización por capacidad de almacenes
+        totalCost += calculateAirportCapacityPenalty(shipments, airports);
+
+        // 6. Penalización por órdenes incompletas
+        totalCost += calculateIncompleteOrderPenalty(shipments, solution);
+
         return totalCost;
     }
+
+    /**
+     * 1. Violación de capacidad de vuelos
+     */
+    private static double calculateFlightCapacityPenalty(List<PlannerShipment> shipments, 
+                                                          TabuSolution solution) {
+        double penalty = 0.0;
+        Map<Flight, Integer> flightLoads = new HashMap<>();
+
+        // Calcular carga de cada vuelo
+        for (PlannerShipment shipment : shipments) {
+            for (Flight flight : shipment.getFlights()) {
+                flightLoads.merge(flight, shipment.getQuantity(), Integer::sum);
+            }
+        }
+
+        // Penalizar excesos de capacidad
+        for (Map.Entry<Flight, Integer> entry : flightLoads.entrySet()) {
+            Flight flight = entry.getKey();
+            int load = entry.getValue();
+            if (load > flight.getCapacity()) {
+                int excess = load - flight.getCapacity();
+                penalty += CAPACITY_VIOLATION_PENALTY * excess;
+            }
+        }
+
+        return penalty;
+    }
+
+    /**
+     * 2. Retrasos en entregas (por Order)
+     */
+    private static double calculateDeliveryDelayPenalty(List<PlannerShipment> shipments) {
+        double penalty = 0.0;
+        
+        // Agrupar shipments por Order
+        Map<Order, List<PlannerShipment>> byOrder = new HashMap<>();
+        for (PlannerShipment shipment : shipments) {
+            byOrder.computeIfAbsent(shipment.getOrder(), k -> new ArrayList<>()).add(shipment);
+        }
+
+        // Evaluar cada Order
+        for (Map.Entry<Order, List<PlannerShipment>> entry : byOrder.entrySet()) {
+            Order order = entry.getKey();
+            List<PlannerShipment> orderShipments = entry.getValue();
+
+            // El plazo se cumple cuando el ÚLTIMO shipment llega
+            LocalDateTime latestArrival = orderShipments.stream()
+                .map(PlannerShipment::getFinalArrivalTime)
+                .filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(order.getOrderTime());
+
+            // Calcular tiempo de entrega
+            long deliveryHours = ChronoUnit.HOURS.between(
+                order.getOrderTime(), 
+                latestArrival
+            );
+
+            // Ajustar por zona horaria
+            int gmt = order.getDestination().getGmt();
+            deliveryHours += gmt;
+
+            // Obtener plazo máximo
+            long maxHours = order.getMaxDeliveryHours();
+
+            // Penalizar si excede el plazo
+            if (deliveryHours > maxHours) {
+                long delayHours = deliveryHours - maxHours;
+                penalty += DELAY_BASE_PENALTY + (delayHours * DELAY_HOUR_PENALTY);
+            }
+        }
+
+        return penalty;
+    }
+
+    /**
+     * 3. Penalización por escalas
+     */
+    private static double calculateStopoverPenalty(List<PlannerShipment> shipments) {
+        double penalty = 0.0;
+
+        for (PlannerShipment shipment : shipments) {
+            int stops = shipment.getNumberOfStops();
+            
+            // Penalizar cada escala
+            penalty += stops * STOPOVER_PENALTY;
+
+            // Validar tiempos de conexión
+            if (stops > 0) {
+                List<Flight> flights = shipment.getFlights();
+                for (int i = 0; i < flights.size() - 1; i++) {
+                    Flight current = flights.get(i);
+                    Flight next = flights.get(i + 1);
+
+                    long connectionHours = ChronoUnit.HOURS.between(
+                        current.getArrivalTime(),
+                        next.getDepartureTime()
+                    );
+
+                    // Penalizar conexiones demasiado cortas o largas
+                    if (connectionHours < 1 || connectionHours > 24) {
+                        penalty += INVALID_STOPOVER_TIME_PENALTY;
+                    }
+                }
+            }
+        }
+
+        return penalty;
+    }
+
+    /**
+     * 4. Penalización por secuencias inválidas
+     */
+    private static double calculateInvalidSequencePenalty(List<PlannerShipment> shipments) {
+        double penalty = 0.0;
+
+        for (PlannerShipment shipment : shipments) {
+            if (!shipment.isValidSequence()) {
+                penalty += INVALID_SEQUENCE_PENALTY;
+            }
+        }
+
+        return penalty;
+    }
+
+    /**
+     * 5. Penalización por capacidad de almacenes en aeropuertos
+     */
+    private static double calculateAirportCapacityPenalty(List<PlannerShipment> shipments, 
+                                                           List<Airport> airports) {
+        double penalty = 0.0;
+        Map<Airport, Integer> airportLoads = new HashMap<>();
+
+        // Calcular productos en tránsito por aeropuerto (escalas)
+        for (PlannerShipment shipment : shipments) {
+            List<Flight> flights = shipment.getFlights();
+            
+            // Solo contar aeropuertos intermedios (escalas)
+            for (int i = 0; i < flights.size() - 1; i++) {
+                Airport stopover = flights.get(i).getDestination();
+                airportLoads.merge(stopover, shipment.getQuantity(), Integer::sum);
+            }
+        }
+
+        // Penalizar excesos de capacidad
+        for (Map.Entry<Airport, Integer> entry : airportLoads.entrySet()) {
+            Airport airport = entry.getKey();
+            int load = entry.getValue();
+            int capacity = airport.getStorageCapacity();
+
+            if (load > capacity) {
+                int excess = load - capacity;
+                penalty += AIRPORT_CAPACITY_VIOLATION_PENALTY;
+                penalty += excess * AIRPORT_CAPACITY_UNIT_PENALTY;
+            }
+        }
+
+        return penalty;
+    }
+
+    /**
+     * 6. Penalización por órdenes incompletas
+     */
+    private static double calculateIncompleteOrderPenalty(List<PlannerShipment> shipments, 
+                                                           TabuSolution solution) {
+        double penalty = 0.0;
+        
+        // Obtener todas las órdenes únicas
+        Set<Order> allOrders = new HashSet<>();
+        for (PlannerShipment shipment : shipments) {
+            allOrders.add(shipment.getOrder());
+        }
+
+        // Verificar si cada orden está completamente asignada
+        for (Order order : allOrders) {
+            int assigned = solution.getAssignedQuantityForOrder(order);
+            int required = order.getTotalQuantity();
+
+            if (assigned < required) {
+                int missing = required - assigned;
+                penalty += INCOMPLETE_ORDER_PENALTY * missing;
+            }
+        }
+
+        return penalty;
+    }
 }
+

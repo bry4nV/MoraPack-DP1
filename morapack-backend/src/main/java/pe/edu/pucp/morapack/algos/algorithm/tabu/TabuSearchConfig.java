@@ -50,22 +50,22 @@ public class TabuSearchConfig {
         this.replanificationPenalty = replanificationPenalty;
     }
 
-    // Constructor con valores por defecto
+    // Constructor con valores por defecto optimizados para mayor exploración
     public TabuSearchConfig() {
-        this(10,     // tabuListSize
-             100,    // maxIterations
-             20,     // maxIterationsWithoutImprovement
-             70,     // directRouteProbability (70%)
-             80,     // oneStopRouteProbability (80%)
+        this(22,     // tabuListSize - Phase 1 optimization - Better memory
+             220,    // maxIterations - Phase 1 - More exploration time
+             45,     // maxIterationsWithoutImprovement - More patience
+             50,     // directRouteProbability (50%) - Reducido para considerar más escalas
+             90,     // oneStopRouteProbability (90%) - Aumentado para favorecer escalas
              200,    // bottleneckCapacity
-             20000,  // capacityViolationPenalty
-             50000,  // emptyRoutePenalty
+             22000,  // capacityViolationPenalty ↑2k - Maintain capacity discipline
+             25000,  // emptyRoutePenalty ↓5k - More flexibility for empty routes
              10000,  // delayBasePenalty
              100,    // delayHourPenalty
-             100,    // stopoverPenalty
-             15000,  // invalidStopoverTimePenalty
-             25000,  // cancellationPenalty
-             5000); // replanificationPenalty
+             40,     // stopoverPenalty ↓10 - Encourage more stopovers
+             6000,   // invalidStopoverTimePenalty ↓2k - Less temporal rigidity
+             23000,  // cancellationPenalty ↓2k - More cancellation flexibility
+             4500);  // replanificationPenalty ↓500 - Encourage replanning
     }
 
     // Getters

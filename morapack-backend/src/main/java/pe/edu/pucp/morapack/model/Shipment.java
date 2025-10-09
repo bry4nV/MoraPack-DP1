@@ -1,5 +1,6 @@
 package pe.edu.pucp.morapack.model;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 
 public class Shipment {
@@ -8,6 +9,7 @@ public class Shipment {
     private int quantity;
     private Airport origin;
     private Airport destination;
+    private LocalDateTime estimatedArrival;
 
     public Shipment(int id, Order order, int quantity, Airport origin, Airport destination) {
         this.id = id;
@@ -18,6 +20,12 @@ public class Shipment {
     }
 
     public int getId() { return id; }
+    
+    public Order getOrder() { return parentOrder; }
+    
+    public LocalDateTime getEstimatedArrival() { return estimatedArrival; }
+    
+    public void setEstimatedArrival(LocalDateTime arrival) { this.estimatedArrival = arrival; }
     public Order getParentOrder() { return parentOrder; }
     public int getQuantity() { return quantity; }
     public Airport getOrigin() { return origin; }

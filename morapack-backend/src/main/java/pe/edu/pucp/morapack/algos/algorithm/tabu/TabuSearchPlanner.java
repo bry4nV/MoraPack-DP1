@@ -2,432 +2,964 @@ package pe.edu.pucp.morapack.algos.algorithm.tabu;
 
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.time.Duration;
 import pe.edu.pucp.morapack.algos.algorithm.IOptimizer;
-import pe.edu.pucp.morapack.algos.entities.PlannerRoute;
-import pe.edu.pucp.morapack.algos.entities.PlannerSegment;
 import pe.edu.pucp.morapack.algos.entities.Solution;
-import pe.edu.pucp.morapack.model.Airport;
-import pe.edu.pucp.morapack.model.Flight;
 import pe.edu.pucp.morapack.model.Order;
-import pe.edu.pucp.morapack.model.Shipment;
+import pe.edu.pucp.morapack.model.Flight;
+import pe.edu.pucp.morapack.model.Airport;
+import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
+import pe.edu.pucp.morapack.algos.utils.RouteOption;
+import pe.edu.pucp.morapack.algos.algorithm.tabu.moves.*;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Implementación del algoritmo Tabu Search para planificación de rutas con PlannerShipments.
+ * 
+ * FLUJO:
+ * 1. Greedy dinámico: Asigna productos a rutas de manera eficiente
+ * 2. Tabu Search: Mejora la solución mediante movimientos (Split, Merge, Transfer, Reroute)
+ * 3. Validación: Verifica restricciones y calcula métricas finales
+ */
 @Service
 public class TabuSearchPlanner implements IOptimizer {
-    private final TabuSearchConfig config;
-    private final TabuSearchConstraints constraints;
-    private final int tabuListSize;
-    private final int maxIterations;
-    private final int maxIterationsWithoutImprovement;
-    private static final double UTILIZATION_TARGET = 0.75; // Target load factor 75%
+    // Configuración del algoritmo
+    private TabuSearchConfig config;
+    
+    // Main hubs para conexiones
+    private static final String LIMA_CODE = "SPIM";
+    private static final String BRUSSELS_CODE = "EBCI";
+    private static final String BAKU_CODE = "UBBB";
+    
+    // Métricas del algoritmo
+    private double averageDeliveryTimeMinutes = 0.0;
+    private int totalIterations = 0;
+    private int improvementIterations = 0;
+    private int nextShipmentId = 1;
+    
+    // Estadísticas de movimientos
+    private int splitMovesApplied = 0;
+    private int mergeMovesApplied = 0;
+    private int transferMovesApplied = 0;
+    private int rerouteMovesApplied = 0;
+    
+    // Generador de números aleatorios
+    private Random random;
+    private long randomSeed;
 
+    /**
+     * Constructor por defecto: Usa timestamp para VARIABILIDAD en cada ejecución
+     */
     public TabuSearchPlanner() {
-        this(10, 100, 20);
+        this(System.currentTimeMillis());
     }
     
-    public TabuSearchPlanner(int tabuSize, int maxIter, int maxWithoutImprovement) {
-        this.tabuListSize = tabuSize;
-        this.maxIterations = maxIter;
-        this.maxIterationsWithoutImprovement = maxWithoutImprovement;
-        this.config = new TabuSearchConfig();
-        this.constraints = new TabuSearchConstraints(this.config);
+    /**
+     * Constructor con semilla: Para REPRODUCIBILIDAD cuando se necesite
+     * @param seed Semilla para el generador aleatorio
+     */
+    public TabuSearchPlanner(long seed) {
+        this.randomSeed = seed;
+        this.random = new Random(seed);
+        initializeTabuSearchComponents();
+        System.out.println("[RANDOM] Tabu Search initialized with seed: " + seed);
+    }
+    
+    private void initializeTabuSearchComponents() {
+        this.config = new TabuSearchConfig(
+            20,     // tabuListSize inicial (se adapta dinámicamente)
+            500,    // maxIterations (aumentado para mejor exploración)
+            80,     // maxIterationsWithoutImprovement
+            70,     // directRouteProbability
+            25,     // oneStopRouteProbability
+            1000,   // bottleneckCapacity
+            25000,  // capacityViolationPenalty
+            35000,  // emptyRoutePenalty
+            10000,  // delayBasePenalty
+            300,    // delayHourPenalty
+            600,    // stopoverPenalty
+            22000,  // invalidStopoverTimePenalty
+            50000,  // cancellationPenalty
+            15000   // replanificationPenalty
+        );
     }
 
-    @Override
+    @Override  
     public Solution optimize(List<Order> orders, List<Flight> flights, List<Airport> airports) {
+        if (orders == null || orders.isEmpty()) return new TabuSolution();
+        
         long startTime = System.currentTimeMillis();
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("=== TABU SEARCH PLANNER - DYNAMIC SHIPMENT ALLOCATION ===");
+        System.out.println("=".repeat(80));
+        System.out.println("[ORDERS] To process: " + orders.size());
+        System.out.println("[FLIGHTS] Available: " + flights.size());
+        System.out.println("[AIRPORTS] Total: " + airports.size());
+        System.out.println();
         
-        if (orders == null || orders.isEmpty()) return new Solution();
+        // FASE 1: Generar solución inicial con greedy dinámico
+        TabuSolution currentSolution = generateInitialSolutionDynamic(orders, flights, airports);
+        TabuSolution bestSolution = new TabuSolution(currentSolution);
         
-        System.out.println("\n=== Starting Tabu Search Optimization ===");
-        System.out.println("Orders to process: " + orders.size());
-        System.out.println("Available flights: " + flights.size());
+        double initialCost = TabuSearchPlannerCostFunction.calculateCost(
+            currentSolution, flights, airports, 0, config.getMaxIterations());
+        System.out.println("\n[OK] Initial solution generated:");
+        System.out.println("   Cost: " + String.format("%.2f", initialCost));
+        printSolutionSummary(currentSolution);
         
-        // First convert orders to shipments
-        List<Shipment> shipments = partitionOrdersIntoShipments(orders, flights);
-        System.out.println("Generated shipments: " + shipments.size());
+        // FASE 2: Optimización con Tabu Search
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("=== STARTING TABU SEARCH OPTIMIZATION ===");
+        System.out.println("=".repeat(80));
+        System.out.println("[CONFIG] Max iterations: " + config.getMaxIterations());
+        System.out.println("[CONFIG] Max iterations without improvement: " + config.getMaxIterationsWithoutImprovement());
+        System.out.println("[CONFIG] Tabu list size: " + config.getTabuListSize());
+        System.out.println("\n[LEGEND]");
+        System.out.println("   Status: [OK]=Improving [>>]=Searching [...]=Waiting [!!]=Stale [XX]=Critical");
+        System.out.println("   Trend:  [vv]=Decreasing [v]=Slight decrease [==]=Stable [^]=Increasing");
+        System.out.println();
         
-        Solution currentSolution = generateInitialSolution(shipments, flights);
-        System.out.println("Initial solution routes: " + currentSolution.getRouteMap().size());
-        
-        final Solution[] bestSolution = {new Solution(currentSolution)};
-        Queue<TabuMove> tabuList = new LinkedList<>();
+        Set<String> tabuSet = new HashSet<>();
+        int tabuSetMaxSize = config.getTabuListSize();
         int iterationsWithoutImprovement = 0;
-
-        // Create handler for cancellations
-        TabuSearchCancellationHandler cancellationHandler = new TabuSearchCancellationHandler(config, constraints);
-
-        // Filter out cancelled flights
-        List<Flight> activeFlights = flights.stream()
-            .filter(f -> f.getStatus() != Flight.Status.CANCELLED)
-            .toList();
-
-        for (int i = 0; i < maxIterations; i++) {
-            List<Solution> neighborhood = generateNeighborhood(currentSolution, activeFlights);
-            if(neighborhood.isEmpty() && i == 0) return currentSolution;
-
-            Solution bestIterationNeighbor = null;
-            double bestNeighborCost = Double.POSITIVE_INFINITY;
-
-            for (Solution neighbor : neighborhood) {
-                TabuMove move = deduceMove(currentSolution, neighbor);
-                double neighborCost = TabuSearchPlannerCostFunction.calculateCost(neighbor, flights, airports, i, maxIterations);
-                
-                if (tabuList.contains(move)) {
-                    if (neighborCost < TabuSearchPlannerCostFunction.calculateCost(bestSolution[0], flights, airports, i, maxIterations)) {
-                        // Aspiration Criteria
-                    } else {
-                        continue;
-                    }
-                }
-                if (neighborCost < bestNeighborCost) {
-                    bestNeighborCost = neighborCost;
-                    bestIterationNeighbor = neighbor;
-                }
-            }
-
-            if (bestIterationNeighbor != null) {
-                currentSolution = bestIterationNeighbor;
-                TabuMove movePerformed = deduceMove(currentSolution, bestIterationNeighbor);
-                if(movePerformed != null) {
-                    tabuList.add(movePerformed);
-                    if (tabuList.size() > tabuListSize) {
-                        tabuList.poll();
-                    }
-                }
-                System.out.println("Found better solution with cost: " + bestNeighborCost);
-            } else {
-                System.out.println("No improvement found in this iteration");
-            }
-
-            double currentCost = TabuSearchPlannerCostFunction.calculateCost(currentSolution, flights, airports, i, maxIterations);
-            double bestCost = TabuSearchPlannerCostFunction.calculateCost(bestSolution[0], flights, airports, i, maxIterations);
-
-            if (currentCost < bestCost) {
-                bestSolution[0] = new Solution(currentSolution);
-                iterationsWithoutImprovement = 0;
-                System.out.println("New best global solution found!");
-                System.out.println("Current cost: " + currentCost);
-                System.out.println("Previous best: " + bestCost);
-            } else {
-                iterationsWithoutImprovement++;
-                System.out.println("Iterations without improvement: " + iterationsWithoutImprovement);
-            }
-
-            if (iterationsWithoutImprovement >= maxIterationsWithoutImprovement) {
-                System.out.println("Diversifying after " + iterationsWithoutImprovement + " iterations without improvement");
-                currentSolution = diversify(bestSolution[0], shipments, flights);
-                iterationsWithoutImprovement = 0;
-                tabuList.clear();
-            }
-            
-            // Verificar si hay vuelos cancelados y replanificar si es necesario
-            boolean hasCancellations = currentSolution.getRouteMap().values().stream()
-                .flatMap(r -> r.getSegments().stream())
-                .anyMatch(s -> s.getFlight().getStatus() == Flight.Status.CANCELLED);
-            
-            if (hasCancellations) {
-                System.out.println("Detected cancelled flights, replanning...");
-                currentSolution = cancellationHandler.handleCancellation(null, currentSolution, activeFlights);
-                currentCost = TabuSearchPlannerCostFunction.calculateCost(currentSolution, activeFlights, airports, i, maxIterations);
-                bestCost = TabuSearchPlannerCostFunction.calculateCost(bestSolution[0], activeFlights, airports, i, maxIterations);
-                if (currentCost < bestCost) {
-                    bestSolution[0] = new Solution(currentSolution);
-                    iterationsWithoutImprovement = 0;
-                    System.out.println("Found better solution after handling cancellations");
-                }
-            }
-        }
-
-        long endTime = System.currentTimeMillis();
-        // Find latest delivery time
-        LocalDateTime latestDelivery = bestSolution[0].getRouteMap().values().stream()
-            .map(PlannerRoute::getFinalArrivalTime)
-            .max(LocalDateTime::compareTo)
-            .orElse(null);
-            
-        System.out.println("\n=== Optimization Complete ===");
-        System.out.println("Algorithm execution time: " + (endTime - startTime) / 1000.0 + " seconds");
-        if (latestDelivery != null) {
-            System.out.println("Latest delivery time: " + latestDelivery);
-            Duration totalTimeRequired = Duration.between(LocalDateTime.now(), latestDelivery);
-            System.out.println("Total time required: " + 
-                String.format("%d days, %d hours, %d minutes",
-                    totalTimeRequired.toDays(),
-                    totalTimeRequired.toHoursPart(),
-                    totalTimeRequired.toMinutesPart()));
-        }
-        System.out.println("Final solution routes: " + bestSolution[0].getRouteMap().size());
-        System.out.println("Unassigned shipments: " + shipments.stream()
-            .filter(s -> !bestSolution[0].getRouteMap().containsKey(s) || 
-                        bestSolution[0].getRouteMap().get(s).getSegments().isEmpty())
-            .count());
+        totalIterations = 0;
         
-        return bestSolution[0];
+        // Resetear estadísticas de movimientos
+        splitMovesApplied = 0;
+        mergeMovesApplied = 0;
+        transferMovesApplied = 0;
+        rerouteMovesApplied = 0;
+        
+        double bestCostEver = initialCost;
+        List<Double> costHistory = new ArrayList<>();
+        costHistory.add(initialCost);
+        
+        while (totalIterations < config.getMaxIterations() && 
+               iterationsWithoutImprovement < config.getMaxIterationsWithoutImprovement()) {
+            
+            // Generar movimientos candidatos
+            List<TabuMoveBase> candidateMoves = generateCandidateMoves(currentSolution, flights, airports);
+            
+            if (candidateMoves.isEmpty()) {
+                System.out.println("[WARNING] No candidate moves available. Stopping.");
+                break;
+            }
+            
+            // SHUFFLE para variabilidad en cada ejecución
+            Collections.shuffle(candidateMoves, random);
+            
+            // Encontrar mejor movimiento no-tabú
+            TabuMoveBase bestMove = null;
+            double bestMoveCost = Double.MAX_VALUE;
+            
+            for (TabuMoveBase move : candidateMoves) {
+                String moveKey = move.getMoveKey();
+                
+                // Skip si está en lista tabú
+                if (tabuSet.contains(moveKey)) {
+                    continue;
+                }
+                
+                // Simular movimiento
+                TabuSolution testSolution = new TabuSolution(currentSolution);
+                move.apply(testSolution);
+                
+                // Calcular costo
+                double moveCost = TabuSearchPlannerCostFunction.calculateCost(
+                    testSolution, flights, airports, totalIterations, config.getMaxIterations());
+                
+                if (moveCost < bestMoveCost) {
+                    bestMoveCost = moveCost;
+                    bestMove = move;
+                }
+            }
+            
+            // Si encontramos un movimiento válido, aplicarlo
+            if (bestMove != null) {
+                // Contar tipo de movimiento
+                String moveType = bestMove.getMoveType();
+                switch (moveType) {
+                    case "SPLIT": splitMovesApplied++; break;
+                    case "MERGE": mergeMovesApplied++; break;
+                    case "TRANSFER": transferMovesApplied++; break;
+                    case "REROUTE": rerouteMovesApplied++; break;
+                }
+                
+                bestMove.apply(currentSolution);
+                
+                // Agregar a lista tabú
+                tabuSet.add(bestMove.getMoveKey());
+                if (tabuSet.size() > tabuSetMaxSize) {
+                    // Eliminar el más antiguo (simplificado - en producción usar cola)
+                    Iterator<String> it = tabuSet.iterator();
+                    if (it.hasNext()) it.next();
+                    it.remove();
+                }
+                
+                // Evaluar si mejora la mejor solución
+                double currentCost = TabuSearchPlannerCostFunction.calculateCost(
+                    currentSolution, flights, airports, totalIterations, config.getMaxIterations());
+                double bestCost = TabuSearchPlannerCostFunction.calculateCost(
+                    bestSolution, flights, airports, totalIterations, config.getMaxIterations());
+                
+                costHistory.add(currentCost);
+                
+                if (currentCost < bestCost) {
+                    bestSolution = new TabuSolution(currentSolution);
+                    iterationsWithoutImprovement = 0;
+                    improvementIterations++;
+                    
+                    double stepImprovement = ((bestCost - currentCost) / bestCost) * 100;
+                    double totalImprovement = ((initialCost - currentCost) / initialCost) * 100;
+                    bestCostEver = currentCost;
+                    
+                    // ADAPTATIVO: Reducir tamaño de lista tabú al encontrar mejora (intensificación)
+                    if (tabuSetMaxSize > 20) {
+                        tabuSetMaxSize = 20;
+                        System.out.println("   [DOWN] Tabu list reduced to " + tabuSetMaxSize + " (intensification)");
+                    }
+                    
+                    // Mensaje de mejora con detalles
+                    String improvementIcon = stepImprovement > 5 ? "[***]" : (stepImprovement > 1 ? "[**]" : "[*]");
+                    System.out.println(String.format("%s Iter %4d: NEW BEST! %.2f -> %.2f (Step: -%.2f%%, Total: %.2f%%) | Move: %s", 
+                        improvementIcon, totalIterations, bestCost, currentCost, stepImprovement, totalImprovement, moveType));
+                } else {
+                    iterationsWithoutImprovement++;
+                    
+                    // ADAPTATIVO: Aumentar tamaño de lista tabú si hay estancamiento (diversificación)
+                    if (iterationsWithoutImprovement == 40 && tabuSetMaxSize < 30) {
+                        tabuSetMaxSize = 30;
+                        System.out.println("   [UP] Tabu list increased to " + tabuSetMaxSize + " (diversification - stagnation detected)");
+                    }
+                }
+            }
+            
+            totalIterations++;
+            
+            // Log periódico mostrando ESTADO DE MEJORA
+            if (totalIterations % 20 == 0) {
+                double currentCost = TabuSearchPlannerCostFunction.calculateCost(
+                    currentSolution, flights, airports, totalIterations, config.getMaxIterations());
+                
+                // Calcular tendencia
+                String trendIcon = getTrendIcon(costHistory, currentCost);
+                String statusIcon = getStatusIcon(iterationsWithoutImprovement);
+                
+                // Calcular % de mejora total
+                double totalImprovement = ((initialCost - bestCostEver) / initialCost) * 100;
+                
+                // Racha de mejoras
+                int improvementStreak = improvementIterations;
+                
+                System.out.println(String.format("%s %s Iter %4d/%d | Current: %.2f | Best: %.2f %s | Improved: %.1f%% | Stale: %d/%d | Tabu: %d",
+                    statusIcon, trendIcon, 
+                    totalIterations, config.getMaxIterations(),
+                    currentCost, bestCostEver,
+                    getImprovementBadge(totalImprovement),
+                    totalImprovement,
+                    iterationsWithoutImprovement, config.getMaxIterationsWithoutImprovement(),
+                    tabuSetMaxSize));
+            }
+            
+            // Advertencia si no hay mejora por mucho tiempo
+            if (iterationsWithoutImprovement > 0 && iterationsWithoutImprovement % 30 == 0) {
+                double staleness = (double) iterationsWithoutImprovement / config.getMaxIterationsWithoutImprovement() * 100;
+                System.out.println(String.format("[WARNING] STAGNATION: %d iterations without improvement (%.0f%% to stop limit)",
+                    iterationsWithoutImprovement, staleness));
+            }
+            
+            // Celebrar hitos de mejora
+            if (improvementIterations > 0 && improvementIterations % 10 == 0 && iterationsWithoutImprovement == 0) {
+                System.out.println(String.format("[HOT] STREAK: %d improvements found! Keep going!", improvementIterations));
+            }
+        }
+        
+        long endTime = System.currentTimeMillis();
+        double executionTime = (endTime - startTime) / 1000.0;
+        
+        // Calcular métricas finales
+        calculateFinalMetrics(bestSolution);
+        
+        // Imprimir resultados finales
+        printFinalResults(bestSolution, flights, airports, executionTime, initialCost, bestCostEver, costHistory);
+
+        return bestSolution;
     }
     
-    private boolean canUseFlight(Flight flight, Shipment shipment, Map<Flight,Integer> currentLoads) {
-        // Check current load plus new shipment against capacity
-        int potentialLoad = currentLoads.getOrDefault(flight, 0) + shipment.getQuantity();
-        if (potentialLoad > flight.getCapacity()) {
-            return false;
-        }
-
-        // Flight must depart after order time and arrive within max time limit
-        LocalDateTime orderTime = shipment.getParentOrder().getOrderTime();
-        long maxHours = shipment.isInterContinental() ? 72 : 48;
-
-        return !flight.getDepartureTime().isBefore(orderTime) &&
-               ChronoUnit.HOURS.between(orderTime, flight.getArrivalTime().plusHours(2)) <= maxHours;
-    }
-
-    private Solution generateInitialSolution(List<Shipment> shipments, List<Flight> flights) {
-        System.out.println("\n=== Generating Initial Solution ===");
-        Solution sol = new Solution();
-        Map<Flight, Integer> currentLoads = new HashMap<>();
+    /**
+     * Obtener icono de tendencia del costo
+     */
+    private String getTrendIcon(List<Double> costHistory, double currentCost) {
+        if (costHistory.size() < 5) return "→";
         
-        // Sort shipments by priority (urgent first, then by size)
-        List<Shipment> sortedShipments = new ArrayList<>(shipments);
-        sortedShipments.sort((a, b) -> {
-            // First by urgency (earlier order time = more urgent)
-            int timeCompare = a.getParentOrder().getOrderTime().compareTo(b.getParentOrder().getOrderTime());
+        // Comparar con las últimas 5 iteraciones
+        double recentAvg = 0;
+        int count = 0;
+        for (int i = Math.max(0, costHistory.size() - 5); i < costHistory.size(); i++) {
+            recentAvg += costHistory.get(i);
+            count++;
+        }
+        recentAvg /= count;
+        
+        if (currentCost < recentAvg * 0.98) {
+            return "📉"; // Bajando significativamente
+        } else if (currentCost < recentAvg * 0.995) {
+            return "↘️"; // Bajando ligeramente
+        } else if (currentCost > recentAvg * 1.005) {
+            return "↗️"; // Subiendo
+        } else {
+            return "→"; // Estable
+        }
+    }
+    
+    /**
+     * Obtener icono de estado según iteraciones sin mejora
+     */
+    private String getStatusIcon(int iterationsWithoutImprovement) {
+        if (iterationsWithoutImprovement == 0) {
+            return "✅"; // Mejorando
+        } else if (iterationsWithoutImprovement < 10) {
+            return "🔄"; // Buscando
+        } else if (iterationsWithoutImprovement < 30) {
+            return "⏳"; // Esperando
+        } else if (iterationsWithoutImprovement < 50) {
+            return "⚠️"; // Advertencia
+        } else {
+            return "🛑"; // Crítico
+        }
+    }
+    
+    /**
+     * Obtener badge de mejora
+     */
+    private String getImprovementBadge(double improvementPercentage) {
+        if (improvementPercentage > 50) {
+            return "🌟🌟🌟"; // Excelente
+        } else if (improvementPercentage > 25) {
+            return "🌟🌟"; // Muy bueno
+        } else if (improvementPercentage > 10) {
+            return "🌟"; // Bueno
+        } else if (improvementPercentage > 5) {
+            return "⭐"; // Moderado
+        } else if (improvementPercentage > 0) {
+            return "✨"; // Leve
+        } else {
+            return ""; // Sin mejora
+        }
+    }
+    
+    // ========== GREEDY DINÁMICO ==========
+    
+    /**
+     * Genera solución inicial distribuyendo productos dinámicamente entre rutas disponibles
+     */
+    private TabuSolution generateInitialSolutionDynamic(List<Order> orders, List<Flight> flights, List<Airport> airports) {
+        System.out.println("\n" + "-".repeat(80));
+        System.out.println("FASE 1: GREEDY DYNAMIC ALLOCATION");
+        System.out.println("-".repeat(80));
+
+        TabuSolution solution = new TabuSolution();
+        Map<Flight, Integer> flightCapacityRemaining = new HashMap<>();
+
+        // Inicializar capacidades disponibles
+        for (Flight flight : flights) {
+            flightCapacityRemaining.put(flight, flight.getCapacity());
+        }
+        
+        // Ordenar pedidos por prioridad (urgencia) con algo de aleatoriedad
+        List<Order> prioritizedOrders = new ArrayList<>(orders);
+        prioritizedOrders.sort((a, b) -> {
+            int timeCompare = a.getOrderTime().compareTo(b.getOrderTime());
             if (timeCompare != 0) return timeCompare;
-            // Then by size (larger shipments first)
-            return Integer.compare(b.getQuantity(), a.getQuantity());
+            
+            // Agregar pequeña aleatoriedad en órdenes con misma urgencia
+            if (Math.abs(a.getMaxDeliveryHours() - b.getMaxDeliveryHours()) < 5) {
+                return random.nextBoolean() ? -1 : 1;  // Orden aleatorio si son similares
+            }
+            return Long.compare(a.getMaxDeliveryHours(), b.getMaxDeliveryHours());
         });
         
-        System.out.println("Processing " + sortedShipments.size() + " shipments in priority order...");
+        int ordersProcessed = 0;
+        int totalProductsAssigned = 0;
         
-        for(Shipment s : sortedShipments) {
-            List<Flight> availableFlights = flights.stream()
-                .filter(f -> canUseFlight(f, s, currentLoads))
-                .sorted((a, b) -> {
-                    // First by utilization (prefer flights closer to target utilization)
-                    double utilizationA = (double) (currentLoads.getOrDefault(a, 0) + s.getQuantity()) / a.getCapacity();
-                    double utilizationB = (double) (currentLoads.getOrDefault(b, 0) + s.getQuantity()) / b.getCapacity();
-                    double diffToTargetA = Math.abs(utilizationA - UTILIZATION_TARGET);
-                    double diffToTargetB = Math.abs(utilizationB - UTILIZATION_TARGET);
-                    int utilCompare = Double.compare(diffToTargetA, diffToTargetB);
-                    if (utilCompare != 0) return utilCompare;
+        for (Order order : prioritizedOrders) {
+            System.out.println(String.format("\nProcessing Order #%d: %d products, %s → %s, deadline: %d hours",
+                order.getId(), order.getTotalQuantity(), 
+                order.getOrigin().getCode(), order.getDestination().getCode(),
+                order.getMaxDeliveryHours()));
+            
+            int remainingProducts = order.getTotalQuantity();
+            List<PlannerShipment> orderShipments = new ArrayList<>();
+            
+            // 1. Intentar rutas directas PRIMERO
+            List<RouteOption> directRoutes = findDirectRoutes(order, flights, flightCapacityRemaining);
+            
+            // ✨ DIVERSIDAD: Mezclar rutas para no siempre elegir las mismas
+            if (directRoutes.size() > 1) {
+                Collections.shuffle(directRoutes.subList(0, Math.min(5, directRoutes.size())), random);
+            }
+            
+            for (RouteOption route : directRoutes) {
+                if (remainingProducts <= 0) break;
+                
+                int toAssign = Math.min(remainingProducts, route.getMinCapacity());
+                if (toAssign > 0) {
+                    PlannerShipment shipment = new PlannerShipment(
+                        nextShipmentId++,
+                        order,
+                        route.getFlights(),
+                        toAssign
+                    );
+                    orderShipments.add(shipment);
+                    updateCapacities(route.getFlights(), toAssign, flightCapacityRemaining);
+                    remainingProducts -= toAssign;
                     
-                    // Then by departure time (earlier better)
-                    return a.getDepartureTime().compareTo(b.getDepartureTime());
-                })
+                    System.out.println(String.format("   Assigned %d products to DIRECT route: %s",
+                        toAssign, shipment.getRouteDescription()));
+                }
+            }
+            
+            // 2. Si quedan productos, intentar rutas con CONEXIONES
+            if (remainingProducts > 0) {
+                List<RouteOption> connectionRoutes = findConnectionRoutes(order, flights, airports, flightCapacityRemaining);
+                
+                // ✨ DIVERSIDAD: Mezclar rutas con conexión también
+                if (connectionRoutes.size() > 1) {
+                    Collections.shuffle(connectionRoutes.subList(0, Math.min(5, connectionRoutes.size())), random);
+                }
+                
+                for (RouteOption route : connectionRoutes) {
+                    if (remainingProducts <= 0) break;
+                    
+                    int toAssign = Math.min(remainingProducts, route.getMinCapacity());
+                    if (toAssign > 0) {
+                        PlannerShipment shipment = new PlannerShipment(
+                            nextShipmentId++,
+                            order,
+                            route.getFlights(),
+                            toAssign
+                        );
+                        orderShipments.add(shipment);
+                        updateCapacities(route.getFlights(), toAssign, flightCapacityRemaining);
+                        remainingProducts -= toAssign;
+                        
+                        System.out.println(String.format("   Assigned %d products to CONNECTION route (%d stops): %s",
+                            toAssign, route.getNumberOfStops(), shipment.getRouteDescription()));
+                    }
+                }
+            }
+            
+            // Guardar shipments del pedido
+            solution.addAllPlannerShipments(orderShipments);
+            
+            if (remainingProducts > 0) {
+                System.out.println(String.format("   WARNING: %d products NOT assigned (no capacity/route available)",
+                    remainingProducts));
+            } else {
+                ordersProcessed++;
+                totalProductsAssigned += order.getTotalQuantity();
+            }
+        }
+        
+        solution.setAllOrders(orders);
+
+        System.out.println("\n" + "-".repeat(80));
+        System.out.println("GREEDY ALLOCATION COMPLETED");
+        System.out.println(String.format("   Orders fully assigned: %d/%d", ordersProcessed, orders.size()));
+        System.out.println(String.format("   Total products assigned: %d", totalProductsAssigned));
+        System.out.println("-".repeat(80));
+
+        return solution;
+    }
+
+    /**
+     * Buscar rutas directas disponibles
+     */
+    private List<RouteOption> findDirectRoutes(Order order, List<Flight> flights, 
+                                                Map<Flight, Integer> capacityRemaining) {
+        List<RouteOption> routes = new ArrayList<>();
+        
+        for (Flight flight : flights) {
+            if (flight.getOrigin().equals(order.getOrigin()) && 
+                flight.getDestination().equals(order.getDestination()) &&
+                isValidDepartureTime(order, flight)) {
+                
+                RouteOption route = new RouteOption(List.of(flight));
+                route.setMinCapacity(capacityRemaining.getOrDefault(flight, 0));
+                
+                if (route.getMinCapacity() > 0) {
+                    routes.add(route);
+                }
+            }
+        }
+        
+        // Ordenar por prioridad (tiempo, costo)
+        routes.sort(RouteOption::compareTo);
+        
+        return routes;
+    }
+    
+    /**
+     * Buscar rutas con conexiones disponibles
+     */
+    private List<RouteOption> findConnectionRoutes(Order order, List<Flight> flights, 
+                                                    List<Airport> airports,
+                                                    Map<Flight, Integer> capacityRemaining) {
+        List<RouteOption> routes = new ArrayList<>();
+        String[] hubCodes = {LIMA_CODE, BRUSSELS_CODE, BAKU_CODE};
+        
+        for (String hubCode : hubCodes) {
+            // Buscar vuelo: origen → hub
+            List<Flight> firstLegs = flights.stream()
+                .filter(f -> f.getOrigin().equals(order.getOrigin()) &&
+                             f.getDestination().getCode().equals(hubCode) &&
+                             isValidDepartureTime(order, f))
                 .collect(Collectors.toList());
+            
+            for (Flight firstLeg : firstLegs) {
+                // Buscar vuelo: hub → destino
+                List<Flight> secondLegs = flights.stream()
+                    .filter(f -> f.getOrigin().getCode().equals(hubCode) &&
+                                 f.getDestination().equals(order.getDestination()) &&
+                                 isValidConnection(firstLeg, f))
+                    .collect(Collectors.toList());
+                
+                for (Flight secondLeg : secondLegs) {
+                    List<Flight> routeFlights = List.of(firstLeg, secondLeg);
+                    RouteOption route = new RouteOption(routeFlights);
+                    
+                    // Capacidad = mínimo de ambos vuelos (cuello de botella)
+                    int minCap = Math.min(
+                        capacityRemaining.getOrDefault(firstLeg, 0),
+                        capacityRemaining.getOrDefault(secondLeg, 0)
+                    );
+                    route.setMinCapacity(minCap);
+                    
+                    if (route.getMinCapacity() > 0) {
+                        routes.add(route);
+                    }
+                }
+            }
+        }
+        
+        routes.sort(RouteOption::compareTo);
+        
+        return routes;
+    }
+    
+    private boolean isValidDepartureTime(Order order, Flight flight) {
+        long hoursUntilDeparture = ChronoUnit.HOURS.between(order.getOrderTime(), flight.getDepartureTime());
+        return hoursUntilDeparture >= 0 && hoursUntilDeparture <= order.getMaxDeliveryHours();
+    }
 
-            // Find direct flight if possible
-            Optional<Flight> directFlight = availableFlights.stream()
-                .filter(f -> f.getOrigin().equals(s.getOrigin()) &&
-                           f.getDestination().equals(s.getDestination()))
-                .findFirst();
-
-            if (directFlight.isPresent()) {
-                PlannerRoute route = new PlannerRoute();
-                route.getSegments().add(new PlannerSegment(directFlight.get()));
-                sol.getRouteMap().put(s, route);
-                currentLoads.merge(directFlight.get(), s.getQuantity(), Integer::sum);
-                System.out.println("Found direct flight for shipment " + s.getId() + 
-                                 " (" + s.getOrigin().getCode() + " -> " + s.getDestination().getCode() + 
-                                 ") quantity: " + s.getQuantity());
+    private boolean isValidConnection(Flight first, Flight second) {
+        long connectionHours = ChronoUnit.HOURS.between(first.getArrivalTime(), second.getDepartureTime());
+        return connectionHours >= 1 && connectionHours <= 24;
+    }
+    
+    private void updateCapacities(List<Flight> route, int quantity, Map<Flight, Integer> remaining) {
+        for (Flight flight : route) {
+            int current = remaining.get(flight);
+            remaining.put(flight, current - quantity);
+        }
+    }
+    
+    // ========== TABU SEARCH - GENERACIÓN DE MOVIMIENTOS ==========
+    
+    /**
+     * Generar movimientos candidatos
+     */
+    private List<TabuMoveBase> generateCandidateMoves(TabuSolution solution, List<Flight> flights, List<Airport> airports) {
+        List<TabuMoveBase> moves = new ArrayList<>();
+        List<PlannerShipment> shipments = solution.getPlannerShipments();
+        
+        int movesLimit = 50;
+        
+        for (PlannerShipment shipment : shipments) {
+            if (moves.size() >= movesLimit) break;
+            
+            // 1. Split: Dividir shipment grande
+            if (shipment.getQuantity() > 10) {
+                // ✨ Puntos de split con variabilidad
+                int[] splitPoints = {
+                    shipment.getQuantity() / 2,
+                    shipment.getQuantity() / 3,
+                    shipment.getQuantity() / 4,
+                    // Agregar puntos aleatorios para diversificar
+                    (int)(shipment.getQuantity() * (0.3 + random.nextDouble() * 0.4))  // 30%-70%
+                };
+                
+                for (int splitQty : splitPoints) {
+                    if (splitQty > 0 && splitQty < shipment.getQuantity()) {
+                        moves.add(new SplitShipmentMove(shipment, splitQty, nextShipmentId++));
+                        if (moves.size() >= movesLimit) break;
+                    }
+                }
+            }
+            
+            // 2. Merge: Fusionar con otros shipments del mismo order y ruta
+            for (PlannerShipment other : shipments) {
+                if (shipment.equals(other)) continue;
+                if (!shipment.getOrder().equals(other.getOrder())) continue;
+                if (!shipment.getFlights().equals(other.getFlights())) continue;
+                
+                moves.add(new MergeShipmentsMove(shipment, other));
+                if (moves.size() >= movesLimit) break;
+            }
+            
+            // 3. Transfer: Mover productos entre shipments del mismo order
+            for (PlannerShipment other : shipments) {
+                if (shipment.equals(other)) continue;
+                if (!shipment.getOrder().equals(other.getOrder())) continue;
+                
+                // ✨ Cantidad de transferencia con variabilidad
+                int maxTransfer = Math.max(1, shipment.getQuantity() / 3);
+                int transferQty = random.nextInt(maxTransfer) + 1;  // 1 a maxTransfer
+                
+                if (transferQty > 0 && transferQty < shipment.getQuantity()) {
+                    moves.add(new TransferQuantityMove(shipment, other, transferQty));
+                    if (moves.size() >= movesLimit) break;
+                }
+            }
+            
+            // 4. Reroute: Cambiar a ruta alternativa
+            List<List<Flight>> alternativeRoutes = findAlternativeRoutes(shipment, flights, airports);
+            for (List<Flight> newRoute : alternativeRoutes) {
+                if (!newRoute.equals(shipment.getFlights())) {
+                    moves.add(new RerouteShipmentMove(shipment, newRoute));
+                    if (moves.size() >= movesLimit) break;
+                }
+            }
+        }
+        
+        return moves;
+    }
+    
+    /**
+     * Encontrar rutas alternativas para un shipment
+     */
+    private List<List<Flight>> findAlternativeRoutes(PlannerShipment shipment, List<Flight> flights, List<Airport> airports) {
+        List<List<Flight>> alternatives = new ArrayList<>();
+        Order order = shipment.getOrder();
+        
+        // Rutas directas
+        for (Flight flight : flights) {
+            if (flight.getOrigin().equals(order.getOrigin()) &&
+                flight.getDestination().equals(order.getDestination()) &&
+                isValidDepartureTime(order, flight)) {
+                alternatives.add(List.of(flight));
+            }
+        }
+        
+        // Rutas con conexión (limitar a 2 para eficiencia)
+        String[] hubCodes = {LIMA_CODE, BRUSSELS_CODE, BAKU_CODE};
+        for (String hubCode : hubCodes) {
+            for (Flight firstLeg : flights) {
+                if (!firstLeg.getOrigin().equals(order.getOrigin())) continue;
+                if (!firstLeg.getDestination().getCode().equals(hubCode)) continue;
+                if (!isValidDepartureTime(order, firstLeg)) continue;
+                
+                for (Flight secondLeg : flights) {
+                    if (!secondLeg.getOrigin().getCode().equals(hubCode)) continue;
+                    if (!secondLeg.getDestination().equals(order.getDestination())) continue;
+                    if (!isValidConnection(firstLeg, secondLeg)) continue;
+                    
+                    alternatives.add(List.of(firstLeg, secondLeg));
+                }
+            }
+        }
+        
+        return alternatives.stream().limit(5).collect(Collectors.toList());
+    }
+    
+    // ========== MÉTRICAS Y REPORTING ==========
+    
+    private void calculateFinalMetrics(TabuSolution solution) {
+        List<PlannerShipment> shipments = solution.getPlannerShipments();
+        if (shipments.isEmpty()) {
+            this.averageDeliveryTimeMinutes = 0.0;
+            return;
+        }
+        
+        double totalMinutes = 0.0;
+        int count = 0;
+        
+        for (PlannerShipment shipment : shipments) {
+            long minutes = ChronoUnit.MINUTES.between(
+                shipment.getOrder().getOrderTime(),
+                shipment.getFinalArrivalTime()
+            );
+            totalMinutes += minutes;
+            count++;
+        }
+        
+        this.averageDeliveryTimeMinutes = count > 0 ? totalMinutes / count : 0.0;
+    }
+    
+    public double getAverageDeliveryTimeMinutes() {
+        return averageDeliveryTimeMinutes;
+    }
+    
+    private void printSolutionSummary(TabuSolution solution) {
+        Map<String, Object> stats = solution.getStatistics();
+        System.out.println("   Total shipments: " + stats.get("totalShipments"));
+        System.out.println("   Direct routes: " + stats.get("directShipments"));
+        System.out.println("   Connection routes: " + stats.get("connectionShipments"));
+        System.out.println("   Total products: " + stats.get("totalProducts"));
+    }
+    
+    private void printFinalResults(TabuSolution solution, List<Flight> flights, List<Airport> airports, 
+                                    double executionTime, double initialCost, double finalCost, List<Double> costHistory) {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("=== OPTIMIZATION COMPLETED ===");
+        System.out.println("=".repeat(80));
+        
+        // Tiempo y rendimiento
+        System.out.println("\n⏱️  PERFORMANCE METRICS:");
+        System.out.println("   Execution time: " + String.format("%.2f", executionTime) + " seconds");
+        System.out.println("   Iterations per second: " + String.format("%.1f", totalIterations / executionTime));
+        System.out.println("   Total iterations: " + totalIterations);
+        System.out.println("   Iterations with improvement: " + improvementIterations + " (" + 
+            String.format("%.1f%%", (double) improvementIterations / totalIterations * 100) + ")");
+        
+        // Costos
+        System.out.println("\nCOST ANALYSIS:");
+        double improvement = ((initialCost - finalCost) / initialCost) * 100;
+        System.out.println("   Initial cost: " + String.format("%.2f", initialCost));
+        System.out.println("   Final cost: " + String.format("%.2f", finalCost));
+        System.out.println("   Improvement: " + String.format("%.2f", initialCost - finalCost) + 
+            " (" + String.format("%.2f%%", improvement) + ")");
+        
+        // Movimientos aplicados
+        System.out.println("\nMOVES APPLIED:");
+        int totalMoves = splitMovesApplied + mergeMovesApplied + transferMovesApplied + rerouteMovesApplied;
+        System.out.println("   Split moves: " + splitMovesApplied + " (" + 
+            String.format("%.1f%%", totalMoves > 0 ? (double) splitMovesApplied / totalMoves * 100 : 0) + ")");
+        System.out.println("   Merge moves: " + mergeMovesApplied + " (" + 
+            String.format("%.1f%%", totalMoves > 0 ? (double) mergeMovesApplied / totalMoves * 100 : 0) + ")");
+        System.out.println("   Transfer moves: " + transferMovesApplied + " (" + 
+            String.format("%.1f%%", totalMoves > 0 ? (double) transferMovesApplied / totalMoves * 100 : 0) + ")");
+        System.out.println("   Reroute moves: " + rerouteMovesApplied + " (" + 
+            String.format("%.1f%%", totalMoves > 0 ? (double) rerouteMovesApplied / totalMoves * 100 : 0) + ")");
+        System.out.println("   TOTAL: " + totalMoves);
+        
+        // Entrega
+        System.out.println("\nDELIVERY METRICS:");
+        System.out.println("   Average delivery time: " + String.format("%.2f", averageDeliveryTimeMinutes) + " minutes");
+        System.out.println("   Average delivery time: " + String.format("%.2f", averageDeliveryTimeMinutes / 60.0) + " hours");
+        
+        // Solución
+        System.out.println("\nSOLUTION SUMMARY:");
+        printSolutionSummary(solution);
+        
+        // Análisis de completitud de órdenes
+        printOrderCompletionAnalysis(solution);
+        
+        // Gráfico de convergencia (ASCII art simple)
+        printCostConvergenceGraph(costHistory, initialCost);
+        
+        // Detailed report per order
+        printDetailedOrderReport(solution);
+    }
+    
+    /**
+     * Análisis de completitud de órdenes
+     */
+    private void printOrderCompletionAnalysis(TabuSolution solution) {
+        System.out.println("\nORDER COMPLETION ANALYSIS:");
+        System.out.println("   " + "-".repeat(60));
+        
+        List<Order> allOrders = solution.getAllOrders();
+        int fullyCompleted = 0;
+        int partiallyCompleted = 0;
+        int notCompleted = 0;
+        int onTime = 0;
+        int late = 0;
+        
+        for (Order order : allOrders) {
+            List<PlannerShipment> orderShipments = solution.getShipmentsForOrder(order);
+            int assignedQty = orderShipments.stream().mapToInt(PlannerShipment::getQuantity).sum();
+            int requiredQty = order.getTotalQuantity();
+            
+            if (assignedQty == 0) {
+                notCompleted++;
+            } else if (assignedQty < requiredQty) {
+                partiallyCompleted++;
+            } else {
+                fullyCompleted++;
+                
+                // Verificar si está a tiempo
+                boolean allOnTime = orderShipments.stream().allMatch(PlannerShipment::meetsDeadline);
+                if (allOnTime) {
+                    onTime++;
+                } else {
+                    late++;
+                }
+            }
+        }
+        
+        int totalOrders = allOrders.size();
+        double completionRate = totalOrders > 0 ? (double) fullyCompleted / totalOrders * 100 : 0;
+        double onTimeRate = fullyCompleted > 0 ? (double) onTime / fullyCompleted * 100 : 0;
+        
+        System.out.println(String.format("   Total orders: %d", totalOrders));
+        System.out.println(String.format("   Fully completed: %d (%.1f%%)", fullyCompleted, completionRate));
+        System.out.println(String.format("      └─ On time: %d (%.1f%% of completed)", onTime, onTimeRate));
+        System.out.println(String.format("      └─ Late: %d (%.1f%% of completed)", late, 
+            fullyCompleted > 0 ? (double) late / fullyCompleted * 100 : 0));
+        System.out.println(String.format("   Partially completed: %d (%.1f%%)", partiallyCompleted,
+            totalOrders > 0 ? (double) partiallyCompleted / totalOrders * 100 : 0));
+        System.out.println(String.format("   Not completed: %d (%.1f%%)", notCompleted,
+            totalOrders > 0 ? (double) notCompleted / totalOrders * 100 : 0));
+        
+        System.out.println("\n   📊 SUCCESS METRICS:");
+        System.out.println(String.format("      Completion rate: %.1f%% %s", 
+            completionRate, getCompletionRatingIcon(completionRate)));
+        System.out.println(String.format("      On-time delivery rate: %.1f%% %s", 
+            onTimeRate, getOnTimeRatingIcon(onTimeRate)));
+        
+        // Calcular productos
+        int totalProducts = allOrders.stream().mapToInt(Order::getTotalQuantity).sum();
+        int assignedProducts = solution.getPlannerShipments().stream()
+            .mapToInt(PlannerShipment::getQuantity).sum();
+        double productCompletionRate = totalProducts > 0 ? (double) assignedProducts / totalProducts * 100 : 0;
+        
+        System.out.println(String.format("      Product assignment rate: %.1f%% (%d/%d products)",
+            productCompletionRate, assignedProducts, totalProducts));
+        
+        System.out.println("   " + "-".repeat(60));
+    }
+    
+    private String getCompletionRatingIcon(double rate) {
+        if (rate >= 95) return "EXCELLENT";
+        if (rate >= 85) return "VERY GOOD";
+        if (rate >= 75) return "GOOD";
+        if (rate >= 60) return "ACCEPTABLE";
+        if (rate >= 40) return "NEEDS IMPROVEMENT";
+        return "CRITICAL";
+    }
+    
+    private String getOnTimeRatingIcon(double rate) {
+        if (rate >= 98) return "EXCELLENT";
+        if (rate >= 90) return "VERY GOOD";
+        if (rate >= 80) return "GOOD";
+        if (rate >= 70) return "ACCEPTABLE";
+        if (rate >= 50) return "NEEDS IMPROVEMENT";
+        return "CRITICAL";
+    }
+    
+    /**
+     * Imprimir gráfico de convergencia del costo
+     */
+    private void printCostConvergenceGraph(List<Double> costHistory, double initialCost) {
+        if (costHistory.size() < 2) return;
+        
+        System.out.println("\nCOST CONVERGENCE GRAPH:");
+        System.out.println("   " + "-".repeat(60));
+        
+        // Tomar muestras (máximo 30 puntos para que quepa en pantalla)
+        int samples = Math.min(30, costHistory.size());
+        int step = Math.max(1, costHistory.size() / samples);
+        
+        double minCost = costHistory.stream().min(Double::compare).orElse(0.0);
+        double maxCost = costHistory.stream().max(Double::compare).orElse(initialCost);
+        double range = maxCost - minCost;
+        
+        if (range == 0) range = 1; // Evitar división por cero
+        
+        for (int i = 0; i < costHistory.size(); i += step) {
+            double cost = costHistory.get(i);
+            int barLength = (int) ((cost - minCost) / range * 40);
+            
+            StringBuilder bar = new StringBuilder("   ");
+            for (int j = 0; j < barLength; j++) {
+                bar.append("█");
+            }
+            
+            System.out.println(String.format("%4d: %s %.2f", i, bar.toString(), cost));
+        }
+        
+        System.out.println("   " + "-".repeat(60));
+        System.out.println("   Min: " + String.format("%.2f", minCost) + " | Max: " + String.format("%.2f", maxCost));
+    }
+    
+    /**
+     * Imprimir reporte detallado por orden (LOGGING COMPLETO)
+     */
+    private void printDetailedOrderReport(TabuSolution solution) {
+        System.out.println("\n" + "=".repeat(80));
+        System.out.println("=== DETAILED ORDER AND ROUTE REPORT ===");
+        System.out.println("=".repeat(80));
+        
+        List<Order> allOrders = solution.getAllOrders();
+        
+        for (Order order : allOrders) {
+            List<PlannerShipment> orderShipments = solution.getShipmentsForOrder(order);
+            int assignedQty = orderShipments.stream().mapToInt(PlannerShipment::getQuantity).sum();
+            boolean isComplete = assignedQty >= order.getTotalQuantity();
+            
+            // Icono de estado de la orden
+            String orderStatusIcon = "";
+            if (isComplete) {
+                boolean allOnTime = orderShipments.stream().allMatch(PlannerShipment::meetsDeadline);
+                orderStatusIcon = allOnTime ? "✅" : "⚠️";
+            } else if (assignedQty > 0) {
+                orderStatusIcon = "⚠️";
+            }
+            
+            System.out.println(String.format("\n%s ORDER #%d", orderStatusIcon, order.getId()));
+            System.out.println(String.format("   Origin: %s → Destination: %s",
+                order.getOrigin().getCode(), order.getDestination().getCode()));
+            System.out.println(String.format("   Total quantity: %d products", order.getTotalQuantity()));
+            System.out.println(String.format("   Max delivery time: %d hours (%s)",
+                order.getMaxDeliveryHours(),
+                order.isInterContinental() ? "intercontinental" : "same continent"));
+            System.out.println(String.format("   Order time: %s", order.getOrderTime()));
+            
+            if (orderShipments.isEmpty()) {
+                System.out.println("   NO SHIPMENTS ASSIGNED");
                 continue;
             }
-
-            // Try one-stop flights
-            System.out.println("Looking for connecting flights for shipment " + s.getId() + 
-                             " (" + s.getOrigin().getCode() + " -> " + s.getDestination().getCode() + 
-                             ") quantity: " + s.getQuantity());
-            LocalDateTime orderTime = s.getParentOrder().getOrderTime();
-            long maxHours = s.isInterContinental() ? 72 : 48;
-            boolean foundRoute = false;
-
-            for (Flight firstLeg : availableFlights) {
-                if (!firstLeg.getOrigin().equals(s.getOrigin())) continue;
-
-                List<Flight> secondLegCandidates = availableFlights.stream()
-                    .filter(f -> f.getOrigin().equals(firstLeg.getDestination()) &&
-                               f.getDestination().equals(s.getDestination()) &&
-                               ChronoUnit.HOURS.between(firstLeg.getArrivalTime(), f.getDepartureTime()) >= 1 && // Min 1 hour connection
-                               ChronoUnit.HOURS.between(orderTime, f.getArrivalTime().plusHours(2)) <= maxHours) // Within time limit
-                    .toList();
-
-                for (Flight secondLeg : secondLegCandidates) {
-                    // Verify total load
-                    int firstLegLoad = currentLoads.getOrDefault(firstLeg, 0) + s.getQuantity();
-                    int secondLegLoad = currentLoads.getOrDefault(secondLeg, 0) + s.getQuantity();
-
-                    if (firstLegLoad <= firstLeg.getCapacity() && secondLegLoad <= secondLeg.getCapacity()) {
-                        PlannerRoute route = new PlannerRoute();
-                        route.getSegments().add(new PlannerSegment(firstLeg));
-                        route.getSegments().add(new PlannerSegment(secondLeg));
-                        sol.getRouteMap().put(s, route);
-                        currentLoads.merge(firstLeg, s.getQuantity(), Integer::sum);
-                        currentLoads.merge(secondLeg, s.getQuantity(), Integer::sum);
-                        foundRoute = true;
-                        System.out.println("Found connecting flights for shipment " + s.getId() +
-                                         " through " + firstLeg.getDestination().getCode());
-                        break;
-                    }
-                }
-                if (foundRoute) break;
-            }
             
-            if (!foundRoute) {
-                System.out.println("No feasible route found for shipment " + s.getId());
-            }
-        }
-        
-        int unassignedCount = (int) shipments.stream()
-            .filter(s -> !sol.getRouteMap().containsKey(s) || 
-                        sol.getRouteMap().get(s).getSegments().isEmpty())
-            .count();
-        System.out.println("\nInitial solution summary:");
-        System.out.println("Total shipments: " + shipments.size());
-        System.out.println("Assigned shipments: " + (shipments.size() - unassignedCount));
-        System.out.println("Unassigned shipments: " + unassignedCount);
-        
-        return sol;
-    }
-
-    private List<Shipment> partitionOrdersIntoShipments(List<Order> orders, List<Flight> flights) {
-        List<Shipment> shipments = new ArrayList<>();
-        int shipmentIdCounter = 100;
-
-        for (Order o : orders) {
-            int remainingQuantity = o.getTotalQuantity();
-
-            // Strategy: Try to fill direct flights first
-            List<Flight> directFlights = flights.stream()
-                .filter(f -> f.getOrigin().equals(o.getOrigin()) && f.getDestination().equals(o.getDestination()))
-                .sorted(Comparator.comparingInt(Flight::getCapacity).reversed()) // Use largest first
-                .collect(Collectors.toList());
-
-            for (Flight direct : directFlights) {
-                if (remainingQuantity > 0) {
-                    int quantityToShip = Math.min(remainingQuantity, direct.getCapacity());
-                    shipments.add(new Shipment(shipmentIdCounter++, o, quantityToShip, o.getOrigin(), o.getDestination()));
-                    remainingQuantity -= quantityToShip;
-                }
-            }
-
-            // If products still remain, partition for multi-stop routes
-            while (remainingQuantity > 0) {
-                int referenceCapacity = 200; // Bottleneck capacity
-                int quantityInThisShipment = Math.min(remainingQuantity, referenceCapacity);
-                shipments.add(new Shipment(shipmentIdCounter++, o, quantityInThisShipment, o.getOrigin(), o.getDestination()));
-                remainingQuantity -= quantityInThisShipment;
-            }
-        }
-        return shipments;
-    }
-    
-    private List<Solution> generateNeighborhood(Solution current, List<Flight> flights) {
-        List<Solution> neighbors = new ArrayList<>();
-        
-        // For each shipment
-        for (Map.Entry<Shipment, PlannerRoute> entry : current.getRouteMap().entrySet()) {
-            Shipment shipment = entry.getKey();
-            PlannerRoute currentRoute = entry.getValue();
+            System.out.println(String.format("   Assigned quantity: %d/%d %s %.1f%%",
+                assignedQty, order.getTotalQuantity(),
+                isComplete ? "✅" : (assignedQty > 0 ? "⚠️" : "❌"),
+                (double) assignedQty / order.getTotalQuantity() * 100));
+            System.out.println(String.format("   Number of shipments: %d", orderShipments.size()));
             
-            // Try direct routes first
-            List<Flight> directFlights = flights.stream()
-                .filter(f -> f.getOrigin().equals(shipment.getOrigin()) && 
-                            f.getDestination().equals(shipment.getDestination()) &&
-                            f.getCapacity() >= shipment.getQuantity())
-                .collect(Collectors.toList());
-
-            for (Flight direct : directFlights) {
-                PlannerRoute newRoute = new PlannerRoute();
-                newRoute.getSegments().add(new PlannerSegment(direct));
-                if (!newRoute.equals(currentRoute)) {
-                    Solution neighbor = new Solution(current);
-                    neighbor.getRouteMap().put(shipment, newRoute);
-                    neighbors.add(neighbor);
+            // Detalles de cada shipment
+            int shipmentNum = 1;
+            for (PlannerShipment shipment : orderShipments) {
+                String shipmentIcon = shipment.meetsDeadline() ? "✅" : "⚠️";
+                System.out.println(String.format("\n   %s Shipment #%d (ID: %d):", shipmentIcon, shipmentNum++, shipment.getId()));
+                System.out.println(String.format("      Quantity: %d products (%.1f%% of order)",
+                    shipment.getQuantity(),
+                    (double) shipment.getQuantity() / order.getTotalQuantity() * 100));
+                System.out.println(String.format("      Route type: %s (%d stops)",
+                    shipment.isDirect() ? "DIRECT" : "WITH CONNECTIONS",
+                    shipment.getNumberOfStops()));
+                System.out.println(String.format("      Route: %s", shipment.getRouteDescription()));
+                
+                if (!shipment.isDirect()) {
+                    System.out.println(String.format("      Stopovers: %s",
+                        String.join(", ", shipment.getStopoverAirports())));
                 }
-            }
-
-            // Try 1-stop routes
-            for (Flight f1 : flights) {
-                if (f1.getOrigin().equals(shipment.getOrigin()) && f1.getCapacity() >= shipment.getQuantity()) {
-                    for (Flight f2 : flights) {
-                        if (f2.getOrigin().equals(f1.getDestination()) && 
-                            f2.getDestination().equals(shipment.getDestination()) && 
-                            f2.getCapacity() >= shipment.getQuantity() && 
-                            f1.getArrivalTime().isBefore(f2.getDepartureTime())) {
-                                PlannerRoute newRoute = new PlannerRoute();
-                                newRoute.getSegments().add(new PlannerSegment(f1));
-                                newRoute.getSegments().add(new PlannerSegment(f2));
-                                if (!newRoute.equals(currentRoute)) {
-                                    Solution neighbor = new Solution(current);
-                                    neighbor.getRouteMap().put(shipment, newRoute);
-                                    neighbors.add(neighbor);
-                                }
-                        }
-                    }
-                }
-            }
-
-            // Add empty route as last resort
-            PlannerRoute emptyRoute = new PlannerRoute();
-            if (!emptyRoute.equals(currentRoute)) {
-                Solution neighbor = new Solution(current);
-                neighbor.getRouteMap().put(shipment, emptyRoute);
-                neighbors.add(neighbor);
+                
+                System.out.println(String.format("      Flights: %s", shipment.getDetailedRouteDescription()));
+                System.out.println(String.format("      Departure: %s", shipment.getInitialDepartureTime()));
+                System.out.println(String.format("      Arrival: %s", shipment.getFinalArrivalTime()));
+                System.out.println(String.format("      Travel time: %d hours", shipment.getTotalTravelHours()));
+                System.out.println(String.format("      Delivery time: %d hours (max: %d) %s",
+                    shipment.getDeliveryTimeHours(),
+                    order.getMaxDeliveryHours(),
+                    shipment.meetsDeadline() ? "✅ ON TIME" : "LATE"));
+                System.out.println(String.format("      Valid sequence: %s",
+                    shipment.isValidSequence() ? "✅ YES" : "NO"));
             }
         }
         
-        return neighbors;
-    }
-    
-    private TabuMove deduceMove(Solution base, Solution neighbor) {
-        if (base == null || neighbor == null) return null;
-        
-        // Find the shipment and route that changed
-        for (Map.Entry<Shipment, PlannerRoute> entry : neighbor.getRouteMap().entrySet()) {
-            Shipment shipment = entry.getKey();
-            PlannerRoute newRoute = entry.getValue();
-            PlannerRoute oldRoute = base.getRouteMap().get(shipment);
-            
-            if (!Objects.equals(newRoute, oldRoute)) {
-                return new TabuMove(shipment, oldRoute, newRoute);
-            }
-        }
-        
-        return null;
-    }
-    
-    private Solution diversify(Solution bestSolution, List<Shipment> shipments, List<Flight> flights) { 
-        return generateInitialSolution(shipments, flights); 
-    }
-
-    private static class TabuMove {
-        private final Shipment shipment;
-        private final PlannerRoute fromRoute;
-        private final PlannerRoute toRoute;
-        
-        public TabuMove(Shipment s, PlannerRoute from, PlannerRoute to) {
-            this.shipment = s;
-            this.fromRoute = from;
-            this.toRoute = to;
-        }
-        
-        @Override 
-        public boolean equals(Object o) { 
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            TabuMove other = (TabuMove) o;
-            return Objects.equals(shipment, other.shipment) &&
-                   Objects.equals(fromRoute, other.fromRoute) &&
-                   Objects.equals(toRoute, other.toRoute);
-        }
-        
-        @Override 
-        public int hashCode() { 
-            return Objects.hash(shipment, fromRoute, toRoute);
-        }
+        System.out.println("\n" + "=".repeat(80));
     }
 }

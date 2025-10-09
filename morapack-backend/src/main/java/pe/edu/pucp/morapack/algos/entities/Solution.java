@@ -1,30 +1,50 @@
 package pe.edu.pucp.morapack.algos.entities;
 
-import java.util.HashMap;
-import java.util.Map;
+import pe.edu.pucp.morapack.model.Order;
+import java.util.*;
+import java.util.stream.Collectors;
 
-import pe.edu.pucp.morapack.model.Shipment;
-
+/**
+ * Clase base que representa una solución al problema de planificación de rutas.
+ * Contiene la información básica de rutas y órdenes.
+ */
 public class Solution {
-    private Map<Shipment, PlannerRoute> routeMap;
-    
+    protected List<Order> completedOrders;
+    protected List<Order> allOrders;
+
     public Solution() {
-        this.routeMap = new HashMap<>();
+        this.completedOrders = new ArrayList<>();
+        this.allOrders = new ArrayList<>();
     }
-    
+
     public Solution(Solution other) {
-        this.routeMap = new HashMap<>();
-        other.routeMap.forEach((shipment, route) -> 
-            this.routeMap.put(shipment, new PlannerRoute(route)));
+        this.completedOrders = new ArrayList<>(other.completedOrders);
+        this.allOrders = new ArrayList<>(other.allOrders);
     }
-    
-    public Solution(PlannerRoute route) {
-        this.routeMap = new HashMap<>();
-        // This constructor is used for temporary validation solutions
-        // No need to map to a specific shipment as it's just for validation
+
+    public Solution(List<Order> orders) {
+        this();
+        this.allOrders = new ArrayList<>(orders);
     }
-    
-    public Map<Shipment, PlannerRoute> getRouteMap() {
-        return routeMap;
+
+    public List<Order> getCompletedOrders() {
+        return completedOrders;
+    }
+
+    public void setCompletedOrders(List<Order> completedOrders) {
+        this.completedOrders = completedOrders;
+    }
+
+    public List<Order> getAllOrders() {
+        return allOrders;
+    }
+
+    public void setAllOrders(List<Order> allOrders) {
+        this.allOrders = allOrders;
+    }
+
+    @Override
+    public String toString() {
+        return "Solution{orders=" + allOrders.size() + "}";
     }
 }
