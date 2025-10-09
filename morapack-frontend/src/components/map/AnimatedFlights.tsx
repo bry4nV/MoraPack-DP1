@@ -16,10 +16,11 @@ function bearingDegrees(
   const toDeg = (r: number) => (r * 180) / Math.PI;
   const φ1 = toRad(lat1), φ2 = toRad(lat2);
   const λ1 = toRad(lon1), λ2 = toRad(lon2);
-  const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+  const y = Math.sin(λ2 - λ1) * cos(φ2);
   const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
   return (toDeg(Math.atan2(y, x)) + 360) % 360; // 0..360 (0 = norte)
 }
+const cos = Math.cos;
 
 type Props = {
   itinerarios: Itinerario[];
@@ -28,6 +29,8 @@ type Props = {
   center?: [number, number];
   zoom?: number;
   className?: string;
+  /** Si true, los vuelos hacen loop infinito (modo "Colapso"); si false, se detienen en destino (modo "Semanal"). */
+  loop?: boolean;
 };
 
 export default function AnimatedFlights({
@@ -37,6 +40,7 @@ export default function AnimatedFlights({
   center = [-60, -15],
   zoom = 2.8,
   className = "",
+  loop = false, // ← por defecto SIN loop (mantiene comportamiento actual)
 }: Props) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
@@ -51,7 +55,7 @@ export default function AnimatedFlights({
   const elapsedSecRef = useRef(0);
   const lastTsRef = useRef<number | null>(null);
 
-  // 👇 nuevo: estado de “vuelo terminado” por itinerario
+  // estado de “vuelo terminado” por itinerario (sólo usado cuando loop=false)
   const finishedRef = useRef<boolean[]>([]);
 
   const segLengths = useMemo(
@@ -114,7 +118,7 @@ export default function AnimatedFlights({
       planeRefs.current = [];
       planeIconEls.current = [];
       airportRefs.current = [];
-      finishedRef.current = new Array(itinerarios.length).fill(false); // 👈 inicializamos finalizados
+      finishedRef.current = new Array(itinerarios.length).fill(false); // reinicio flags
 
       const style = map.getStyle?.();
       const layerIds = style?.layers?.map((l) => l.id) ?? [];
@@ -122,7 +126,7 @@ export default function AnimatedFlights({
       const sourceIds = Object.keys(style?.sources ?? {});
       sourceIds.filter((sid) => sid.startsWith("line-it-")).forEach((sid) => map.getSource(sid) && map.removeSource(sid));
 
-      // líneas punteadas
+      // líneas punteadas (gris)
       itinerarios.forEach((it, i) => {
         it.segmentos.forEach((seg, s) => {
           const o = seg.vuelo.origen, d = seg.vuelo.destino;
@@ -170,7 +174,7 @@ export default function AnimatedFlights({
         airportRefs.current.push(mk);
       });
 
-      // aviones (contenedor + hijo)
+      // aviones (contenedor + hijo rotado)
       itinerarios.forEach((it) => {
         const firstSeg = it.segmentos[0];
         const A = firstSeg.vuelo.origen;
@@ -215,7 +219,7 @@ export default function AnimatedFlights({
       );
       if (!b.isEmpty()) map.fitBounds(b, { padding: 40, maxZoom: 5.5 });
 
-      // animación (sin loop; se queda en destino)
+      // animación
       elapsedSecRef.current = 0;
       lastTsRef.current = null;
 
@@ -228,11 +232,13 @@ export default function AnimatedFlights({
 
         if (playing) elapsedSecRef.current += dt;
 
-        const speedMps = (speedKmh * 1000000) / 3600; // ✅ velocidad correcta
+        const speedMps = (speedKmh * 1000000) / 3600;
 
         itinerarios.forEach((it, idx) => {
-          // si ya terminó, mantenerlo en destino final
-          if (finishedRef.current[idx]) {
+          const total = totalLengths[idx] || 1;
+
+          // Si ya terminó y NO es loop, mantenerlo en destino final
+          if (!loop && finishedRef.current[idx]) {
             const lastSeg = it.segmentos[it.segmentos.length - 1];
             const dest = lastSeg.vuelo.destino;
             const finalBearing = bearingDegrees(
@@ -245,8 +251,9 @@ export default function AnimatedFlights({
             return;
           }
 
-          const total = totalLengths[idx] || 1;
-          const dist = Math.min(elapsedSecRef.current * speedMps, total); // 👈 sin módulo
+          // Diferencia clave entre semanal vs colapso
+          const traveled = elapsedSecRef.current * speedMps;
+          const dist = loop ? (traveled % total) : Math.min(traveled, total);
 
           let rem = dist;
           let pos: [number, number] = [
@@ -269,8 +276,8 @@ export default function AnimatedFlights({
             rem -= L;
           }
 
-          if (dist >= total) {
-            // llegó al final: fijar y marcar como terminado
+          // Si no hay loop y ya llegó al final, fijar y marcar como terminado
+          if (!loop && dist >= total) {
             finishedRef.current[idx] = true;
             const lastSeg = it.segmentos[it.segmentos.length - 1];
             const dest = lastSeg.vuelo.destino;
@@ -290,11 +297,10 @@ export default function AnimatedFlights({
           planeRefs.current[idx].setLngLat(pos);
         });
 
-        // si todos terminaron, detener animación
-        const allDone = finishedRef.current.length > 0 && finishedRef.current.every(Boolean);
-        if (allDone) {
-          reqRef.current = null;
-          return;
+        // Si es semanal y todos terminaron, paramos el loop para ahorrar CPU
+        if (!loop) {
+          const allDone = finishedRef.current.length > 0 && finishedRef.current.every(Boolean);
+          if (allDone) { reqRef.current = null; return; }
         }
 
         reqRef.current = requestAnimationFrame(step);
@@ -305,7 +311,7 @@ export default function AnimatedFlights({
     });
 
     return () => { if (reqRef.current) cancelAnimationFrame(reqRef.current); };
-  }, [JSON.stringify(itinerarios), JSON.stringify(aeropuertos), segLengths, totalLengths, playing, speedKmh]);
+  }, [JSON.stringify(itinerarios), JSON.stringify(aeropuertos), segLengths, totalLengths, playing, speedKmh, loop]);
 
   return (
     <div className={`w-full h-full relative ${className}`}>
