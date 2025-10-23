@@ -1,7 +1,5 @@
 package pe.edu.pucp.morapack.algos.entities;
 
-import pe.edu.pucp.morapack.model.Order;
-import pe.edu.pucp.morapack.model.Flight;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -22,11 +20,11 @@ import java.util.stream.Collectors;
  */
 public class PlannerShipment {
     private int id;
-    private Order order;
-    private List<Flight> flightSequence;  // Secuencia de vuelos (ruta completa)
+    private PlannerOrder order;
+    private List<PlannerFlight> flightSequence;  // Secuencia de vuelos (ruta completa)
     private int quantity;                  // Cantidad de productos en ESTE envío
     
-    public PlannerShipment(int id, Order order, List<Flight> flights, int quantity) {
+    public PlannerShipment(int id, PlannerOrder order, List<PlannerFlight> flights, int quantity) {
         this.id = id;
         this.order = order;
         this.flightSequence = new ArrayList<>(flights);
@@ -47,11 +45,11 @@ public class PlannerShipment {
         return id; 
     }
     
-    public Order getOrder() { 
+    public PlannerOrder getOrder() { 
         return order; 
     }
     
-    public List<Flight> getFlights() { 
+    public List<PlannerFlight> getFlights() { 
         return new ArrayList<>(flightSequence); 
     }
     
@@ -63,7 +61,7 @@ public class PlannerShipment {
         this.quantity = quantity; 
     }
     
-    public void setFlights(List<Flight> flights) { 
+    public void setFlights(List<PlannerFlight> flights) { 
         this.flightSequence = new ArrayList<>(flights); 
     }
     
@@ -135,8 +133,8 @@ public class PlannerShipment {
         if (flightSequence.size() == 1) return true;  // Directo siempre es válido
         
         for (int i = 0; i < flightSequence.size() - 1; i++) {
-            Flight current = flightSequence.get(i);
-            Flight next = flightSequence.get(i + 1);
+            PlannerFlight current = flightSequence.get(i);
+            PlannerFlight next = flightSequence.get(i + 1);
             
             // Validación 1: Conectividad geográfica
             if (!current.getDestination().equals(next.getOrigin())) {
@@ -183,7 +181,7 @@ public class PlannerShipment {
         
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < flightSequence.size(); i++) {
-            Flight f = flightSequence.get(i);
+            PlannerFlight f = flightSequence.get(i);
             if (i > 0) sb.append(" → ");
             sb.append(f.getOrigin().getCode());
         }

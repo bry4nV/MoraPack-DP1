@@ -5,28 +5,34 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class SimulationService {
 
-    private final SimpMessagingTemplate messagingTemplate;
+    private final SimpMessageSendingOperations messagingTemplate;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private Future<?> task;
 
-    private final pe.edu.pucp.morapack.planner.WeeklyPlanner weeklyPlanner;
+    private final pe.edu.pucp.morapack.algos.planner.WeeklyPlanner weeklyPlanner;
 
     @Autowired
-    public SimulationService(SimpMessagingTemplate messagingTemplate) {
+    public SimulationService(@Autowired(required = false) SimpMessageSendingOperations messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
-    // use stub by default; the stub will emit demo updates to the WebSocket topic
-    this.weeklyPlanner = new pe.edu.pucp.morapack.planner.WeeklyPlannerStub(messagingTemplate);
+        // If messaging is available, use the stub that emits updates; otherwise use a no-op planner
+        if (this.messagingTemplate != null) {
+            this.weeklyPlanner = new pe.edu.pucp.morapack.algos.planner.WeeklyPlannerStub(this.messagingTemplate);
+        } else {
+            this.weeklyPlanner = new pe.edu.pucp.morapack.algos.planner.NoOpWeeklyPlanner();
+        }
     }
 
     public void startSimulation(String payload) {
-        messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_LOADING","data","Starting planner (stub)"));
+        if (messagingTemplate != null) {
+            messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_LOADING","data","Starting planner (stub)"));
+        }
 
         // Prevent concurrent starts
         if (task != null && !task.isDone()) {
@@ -38,16 +44,22 @@ public class SimulationService {
         task = scheduler.submit(() -> {
             try {
                 weeklyPlanner.start(payload);
-                messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_STARTED","data","Planner started (stub)"));
+                if (messagingTemplate != null) {
+                    messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_STARTED","data","Planner started (stub)"));
+                }
 
                 // Wait while planner reports it's running. Stub sets running=true but does not emit updates.
                 while (weeklyPlanner.isRunning()) {
                     try { Thread.sleep(500); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
                 }
 
-                messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_STOPPED","data","Planner finished (stub)"));
+                if (messagingTemplate != null) {
+                    messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_STOPPED","data","Planner finished (stub)"));
+                }
             } catch (Exception e) {
-                messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_ERROR","data",e.getMessage()));
+                if (messagingTemplate != null) {
+                    messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_ERROR","data",e.getMessage()));
+                }
             }
         });
     }
@@ -56,18 +68,26 @@ public class SimulationService {
         try {
             weeklyPlanner.stop();
             if (task != null) task.cancel(true);
-            messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_STOPPED","data","Planner stopped (stub)"));
+            if (messagingTemplate != null) {
+                messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_STOPPED","data","Planner stopped (stub)"));
+            }
         } catch (Exception e) {
-            messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_ERROR","data",e.getMessage()));
+            if (messagingTemplate != null) {
+                messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_ERROR","data",e.getMessage()));
+            }
         }
     }
 
     public void updateFailures(String payload) {
         try {
             weeklyPlanner.updateFailures(payload);
-            messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","STATE_UPDATED","data","Failure applied to planner (stub)"));
+            if (messagingTemplate != null) {
+                messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","STATE_UPDATED","data","Failure applied to planner (stub)"));
+            }
         } catch (Exception e) {
-            messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_ERROR","data",e.getMessage()));
+            if (messagingTemplate != null) {
+                messagingTemplate.convertAndSend("/topic/simulation", Map.of("type","SIMULATION_ERROR","data",e.getMessage()));
+            }
         }
     }
 }

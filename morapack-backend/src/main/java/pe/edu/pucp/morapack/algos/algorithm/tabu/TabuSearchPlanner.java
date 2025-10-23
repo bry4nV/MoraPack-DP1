@@ -5,9 +5,9 @@ import org.springframework.stereotype.Service;
 import java.time.temporal.ChronoUnit;
 import pe.edu.pucp.morapack.algos.algorithm.IOptimizer;
 import pe.edu.pucp.morapack.algos.entities.Solution;
-import pe.edu.pucp.morapack.model.Order;
-import pe.edu.pucp.morapack.model.Flight;
-import pe.edu.pucp.morapack.model.Airport;
+import pe.edu.pucp.morapack.algos.entities.PlannerAirport;
+import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
+import pe.edu.pucp.morapack.algos.entities.PlannerOrder;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
 import pe.edu.pucp.morapack.algos.utils.RouteOption;
 import pe.edu.pucp.morapack.algos.algorithm.tabu.moves.*;
@@ -87,7 +87,7 @@ public class TabuSearchPlanner implements IOptimizer {
     }
 
     @Override  
-    public Solution optimize(List<Order> orders, List<Flight> flights, List<Airport> airports) {
+    public Solution optimize(List<PlannerOrder> orders, List<PlannerFlight> flights, List<PlannerAirport> airports) {
         if (orders == null || orders.isEmpty()) return new TabuSolution();
         
         long startTime = System.currentTimeMillis();
@@ -355,21 +355,21 @@ public class TabuSearchPlanner implements IOptimizer {
     /**
      * Genera solución inicial distribuyendo productos dinámicamente entre rutas disponibles
      */
-    private TabuSolution generateInitialSolutionDynamic(List<Order> orders, List<Flight> flights, List<Airport> airports) {
+    private TabuSolution generateInitialSolutionDynamic(List<PlannerOrder> orders, List<PlannerFlight> flights, List<PlannerAirport> airports) {
         System.out.println("\n" + "-".repeat(80));
         System.out.println("FASE 1: GREEDY DYNAMIC ALLOCATION");
         System.out.println("-".repeat(80));
 
         TabuSolution solution = new TabuSolution();
-        Map<Flight, Integer> flightCapacityRemaining = new HashMap<>();
+        Map<PlannerFlight, Integer> flightCapacityRemaining = new HashMap<>();
 
         // Inicializar capacidades disponibles
-        for (Flight flight : flights) {
+        for (PlannerFlight flight : flights) {
             flightCapacityRemaining.put(flight, flight.getCapacity());
         }
         
         // Ordenar pedidos por prioridad (urgencia) con algo de aleatoriedad
-        List<Order> prioritizedOrders = new ArrayList<>(orders);
+        List<PlannerOrder> prioritizedOrders = new ArrayList<>(orders);
         prioritizedOrders.sort((a, b) -> {
             int timeCompare = a.getOrderTime().compareTo(b.getOrderTime());
             if (timeCompare != 0) return timeCompare;
@@ -384,7 +384,7 @@ public class TabuSearchPlanner implements IOptimizer {
         int ordersProcessed = 0;
         int totalProductsAssigned = 0;
         
-        for (Order order : prioritizedOrders) {
+        for (PlannerOrder order : prioritizedOrders) {
             System.out.println(String.format("\nProcessing Order #%d: %d products, %s → %s, deadline: %d hours",
                 order.getId(), order.getTotalQuantity(), 
                 order.getOrigin().getCode(), order.getDestination().getCode(),
@@ -477,11 +477,11 @@ public class TabuSearchPlanner implements IOptimizer {
     /**
      * Buscar rutas directas disponibles
      */
-    private List<RouteOption> findDirectRoutes(Order order, List<Flight> flights, 
-                                                Map<Flight, Integer> capacityRemaining) {
+    private List<RouteOption> findDirectRoutes(PlannerOrder order, List<PlannerFlight> flights, 
+                                                Map<PlannerFlight, Integer> capacityRemaining) {
         List<RouteOption> routes = new ArrayList<>();
         
-        for (Flight flight : flights) {
+        for (PlannerFlight flight : flights) {
             if (flight.getOrigin().equals(order.getOrigin()) && 
                 flight.getDestination().equals(order.getDestination()) &&
                 isValidDepartureTime(order, flight)) {
@@ -504,30 +504,30 @@ public class TabuSearchPlanner implements IOptimizer {
     /**
      * Buscar rutas con conexiones disponibles
      */
-    private List<RouteOption> findConnectionRoutes(Order order, List<Flight> flights, 
-                                                    List<Airport> airports,
-                                                    Map<Flight, Integer> capacityRemaining) {
+    private List<RouteOption> findConnectionRoutes(PlannerOrder order, List<PlannerFlight> flights, 
+                                                    List<PlannerAirport> airports,
+                                                    Map<PlannerFlight, Integer> capacityRemaining) {
         List<RouteOption> routes = new ArrayList<>();
         String[] hubCodes = {LIMA_CODE, BRUSSELS_CODE, BAKU_CODE};
         
         for (String hubCode : hubCodes) {
             // Buscar vuelo: origen → hub
-            List<Flight> firstLegs = flights.stream()
+            List<PlannerFlight> firstLegs = flights.stream()
                 .filter(f -> f.getOrigin().equals(order.getOrigin()) &&
                              f.getDestination().getCode().equals(hubCode) &&
                              isValidDepartureTime(order, f))
                 .collect(Collectors.toList());
             
-            for (Flight firstLeg : firstLegs) {
+            for (PlannerFlight firstLeg : firstLegs) {
                 // Buscar vuelo: hub → destino
-                List<Flight> secondLegs = flights.stream()
+                List<PlannerFlight> secondLegs = flights.stream()
                     .filter(f -> f.getOrigin().getCode().equals(hubCode) &&
                                  f.getDestination().equals(order.getDestination()) &&
                                  isValidConnection(firstLeg, f))
                     .collect(Collectors.toList());
                 
-                for (Flight secondLeg : secondLegs) {
-                    List<Flight> routeFlights = List.of(firstLeg, secondLeg);
+                for (PlannerFlight secondLeg : secondLegs) {
+                    List<PlannerFlight> routeFlights = List.of(firstLeg, secondLeg);
                     RouteOption route = new RouteOption(routeFlights);
                     
                     // Capacidad = mínimo de ambos vuelos (cuello de botella)
@@ -549,18 +549,18 @@ public class TabuSearchPlanner implements IOptimizer {
         return routes;
     }
     
-    private boolean isValidDepartureTime(Order order, Flight flight) {
+    private boolean isValidDepartureTime(PlannerOrder order, PlannerFlight flight) {
         long hoursUntilDeparture = ChronoUnit.HOURS.between(order.getOrderTime(), flight.getDepartureTime());
         return hoursUntilDeparture >= 0 && hoursUntilDeparture <= order.getMaxDeliveryHours();
     }
 
-    private boolean isValidConnection(Flight first, Flight second) {
+    private boolean isValidConnection(PlannerFlight first, PlannerFlight second) {
         long connectionHours = ChronoUnit.HOURS.between(first.getArrivalTime(), second.getDepartureTime());
         return connectionHours >= 1 && connectionHours <= 24;
     }
     
-    private void updateCapacities(List<Flight> route, int quantity, Map<Flight, Integer> remaining) {
-        for (Flight flight : route) {
+    private void updateCapacities(List<PlannerFlight> route, int quantity, Map<PlannerFlight, Integer> remaining) {
+        for (PlannerFlight flight : route) {
             int current = remaining.get(flight);
             remaining.put(flight, current - quantity);
         }
@@ -571,7 +571,7 @@ public class TabuSearchPlanner implements IOptimizer {
     /**
      * Generar movimientos candidatos
      */
-    private List<TabuMoveBase> generateCandidateMoves(TabuSolution solution, List<Flight> flights, List<Airport> airports) {
+    private List<TabuMoveBase> generateCandidateMoves(TabuSolution solution, List<PlannerFlight> flights, List<PlannerAirport> airports) {
         List<TabuMoveBase> moves = new ArrayList<>();
         List<PlannerShipment> shipments = solution.getPlannerShipments();
         
@@ -625,8 +625,8 @@ public class TabuSearchPlanner implements IOptimizer {
             }
             
             // 4. Reroute: Cambiar a ruta alternativa
-            List<List<Flight>> alternativeRoutes = findAlternativeRoutes(shipment, flights, airports);
-            for (List<Flight> newRoute : alternativeRoutes) {
+            List<List<PlannerFlight>> alternativeRoutes = findAlternativeRoutes(shipment, flights, airports);
+            for (List<PlannerFlight> newRoute : alternativeRoutes) {
                 if (!newRoute.equals(shipment.getFlights())) {
                     moves.add(new RerouteShipmentMove(shipment, newRoute));
                     if (moves.size() >= movesLimit) break;
@@ -640,12 +640,12 @@ public class TabuSearchPlanner implements IOptimizer {
     /**
      * Encontrar rutas alternativas para un shipment
      */
-    private List<List<Flight>> findAlternativeRoutes(PlannerShipment shipment, List<Flight> flights, List<Airport> airports) {
-        List<List<Flight>> alternatives = new ArrayList<>();
-        Order order = shipment.getOrder();
+    private List<List<PlannerFlight>> findAlternativeRoutes(PlannerShipment shipment, List<PlannerFlight> flights, List<PlannerAirport> airports) {
+        List<List<PlannerFlight>> alternatives = new ArrayList<>();
+        PlannerOrder order = shipment.getOrder();
         
         // Rutas directas
-        for (Flight flight : flights) {
+        for (PlannerFlight flight : flights) {
             if (flight.getOrigin().equals(order.getOrigin()) &&
                 flight.getDestination().equals(order.getDestination()) &&
                 isValidDepartureTime(order, flight)) {
@@ -656,12 +656,12 @@ public class TabuSearchPlanner implements IOptimizer {
         // Rutas con conexión (limitar a 2 para eficiencia)
         String[] hubCodes = {LIMA_CODE, BRUSSELS_CODE, BAKU_CODE};
         for (String hubCode : hubCodes) {
-            for (Flight firstLeg : flights) {
+            for (PlannerFlight firstLeg : flights) {
                 if (!firstLeg.getOrigin().equals(order.getOrigin())) continue;
                 if (!firstLeg.getDestination().getCode().equals(hubCode)) continue;
                 if (!isValidDepartureTime(order, firstLeg)) continue;
                 
-                for (Flight secondLeg : flights) {
+                for (PlannerFlight secondLeg : flights) {
                     if (!secondLeg.getOrigin().getCode().equals(hubCode)) continue;
                     if (!secondLeg.getDestination().equals(order.getDestination())) continue;
                     if (!isValidConnection(firstLeg, secondLeg)) continue;
@@ -710,7 +710,7 @@ public class TabuSearchPlanner implements IOptimizer {
         System.out.println("   Total products: " + stats.get("totalProducts"));
     }
     
-    private void printFinalResults(TabuSolution solution, List<Flight> flights, List<Airport> airports, 
+    private void printFinalResults(TabuSolution solution, List<PlannerFlight> flights, List<PlannerAirport> airports, 
                                     double executionTime, double initialCost, double finalCost, List<Double> costHistory) {
         System.out.println("\n" + "=".repeat(80));
         System.out.println("=== OPTIMIZATION COMPLETED ===");
@@ -771,14 +771,14 @@ public class TabuSearchPlanner implements IOptimizer {
         System.out.println("\nORDER COMPLETION ANALYSIS:");
         System.out.println("   " + "-".repeat(60));
         
-        List<Order> allOrders = solution.getAllOrders();
+        List<PlannerOrder> allOrders = solution.getAllOrders();
         int fullyCompleted = 0;
         int partiallyCompleted = 0;
         int notCompleted = 0;
         int onTime = 0;
         int late = 0;
         
-        for (Order order : allOrders) {
+        for (PlannerOrder order : allOrders) {
             List<PlannerShipment> orderShipments = solution.getShipmentsForOrder(order);
             int assignedQty = orderShipments.stream().mapToInt(PlannerShipment::getQuantity).sum();
             int requiredQty = order.getTotalQuantity();
@@ -821,7 +821,7 @@ public class TabuSearchPlanner implements IOptimizer {
             onTimeRate, getOnTimeRatingIcon(onTimeRate)));
         
         // Calcular productos
-        int totalProducts = allOrders.stream().mapToInt(Order::getTotalQuantity).sum();
+        int totalProducts = allOrders.stream().mapToInt(PlannerOrder::getTotalQuantity).sum();
         int assignedProducts = solution.getPlannerShipments().stream()
             .mapToInt(PlannerShipment::getQuantity).sum();
         double productCompletionRate = totalProducts > 0 ? (double) assignedProducts / totalProducts * 100 : 0;
@@ -893,9 +893,9 @@ public class TabuSearchPlanner implements IOptimizer {
         System.out.println("=== DETAILED ORDER AND ROUTE REPORT ===");
         System.out.println("=".repeat(80));
         
-        List<Order> allOrders = solution.getAllOrders();
+        List<PlannerOrder> allOrders = solution.getAllOrders();
         
-        for (Order order : allOrders) {
+        for (PlannerOrder order : allOrders) {
             List<PlannerShipment> orderShipments = solution.getShipmentsForOrder(order);
             int assignedQty = orderShipments.stream().mapToInt(PlannerShipment::getQuantity).sum();
             boolean isComplete = assignedQty >= order.getTotalQuantity();

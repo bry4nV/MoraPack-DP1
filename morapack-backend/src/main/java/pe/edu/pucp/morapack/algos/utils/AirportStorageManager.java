@@ -1,9 +1,10 @@
 package pe.edu.pucp.morapack.algos.utils;
 
-import pe.edu.pucp.morapack.model.Airport;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+
+import pe.edu.pucp.morapack.algos.entities.PlannerAirport;
 
 /**
  * Manages storage capacity reservations for airports
@@ -17,7 +18,7 @@ public class AirportStorageManager {
     /**
      * Check if airport has available capacity for the given quantity
      */
-    public boolean hasAvailableCapacity(Airport airport, int quantity) {
+    public boolean hasAvailableCapacity(PlannerAirport airport, int quantity) {
         int current = currentOccupancy.getOrDefault(airport.getCode(), 0);
         int reserved = reservedCapacity.getOrDefault(airport.getCode(), 0);
         int totalUsed = current + reserved;
@@ -28,7 +29,7 @@ public class AirportStorageManager {
     /**
      * Reserve capacity at an airport
      */
-    public boolean reserveCapacity(Airport airport, int quantity) {
+    public boolean reserveCapacity(PlannerAirport airport, int quantity) {
         if (!hasAvailableCapacity(airport, quantity)) {
             return false;
         }
@@ -42,7 +43,7 @@ public class AirportStorageManager {
     /**
      * Release reserved capacity (when products are actually placed or removed)
      */
-    public void releaseReservedCapacity(Airport airport, int quantity) {
+    public void releaseReservedCapacity(PlannerAirport airport, int quantity) {
         String code = airport.getCode();
         int current = reservedCapacity.getOrDefault(code, 0);
         reservedCapacity.put(code, Math.max(0, current - quantity));
@@ -51,7 +52,7 @@ public class AirportStorageManager {
     /**
      * Move products from reserved to current occupancy
      */
-    public void confirmOccupancy(Airport airport, int quantity) {
+    public void confirmOccupancy(PlannerAirport airport, int quantity) {
         String code = airport.getCode();
         
         // Release from reserved
@@ -65,7 +66,7 @@ public class AirportStorageManager {
     /**
      * Remove products from current occupancy (when they are shipped out)
      */
-    public void removeFromOccupancy(Airport airport, int quantity) {
+    public void removeFromOccupancy(PlannerAirport airport, int quantity) {
         String code = airport.getCode();
         int current = currentOccupancy.getOrDefault(code, 0);
         currentOccupancy.put(code, Math.max(0, current - quantity));
@@ -74,7 +75,7 @@ public class AirportStorageManager {
     /**
      * Get current utilization percentage of an airport
      */
-    public double getUtilizationPercentage(Airport airport) {
+    public double getUtilizationPercentage(PlannerAirport airport) {
         String code = airport.getCode();
         int current = currentOccupancy.getOrDefault(code, 0);
         int reserved = reservedCapacity.getOrDefault(code, 0);
@@ -87,7 +88,7 @@ public class AirportStorageManager {
     /**
      * Get available capacity at an airport
      */
-    public int getAvailableCapacity(Airport airport) {
+    public int getAvailableCapacity(PlannerAirport airport) {
         String code = airport.getCode();
         int current = currentOccupancy.getOrDefault(code, 0);
         int reserved = reservedCapacity.getOrDefault(code, 0);
@@ -107,7 +108,7 @@ public class AirportStorageManager {
     /**
      * Get storage info for debugging
      */
-    public String getStorageInfo(Airport airport) {
+    public String getStorageInfo(PlannerAirport airport) {
         return String.format("Airport %s: Capacity=%d, Current=%d, Reserved=%d, Available=%d, Utilization=%.1f%%",
                 airport.getCode(),
                 airport.getStorageCapacity(),

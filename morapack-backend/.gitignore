@@ -33,3 +33,6 @@ build/
 .vscode/
 #Statistics
 statistics*
+
+# Local Spring Boot properties (may contain credentials) - do NOT commit
+src/main/resources/application-local.properties

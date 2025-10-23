@@ -1,8 +1,9 @@
 package pe.edu.pucp.morapack.algos.algorithm.tabu.moves;
 
 import pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution;
+import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
-import pe.edu.pucp.morapack.model.Flight;
+
 import java.util.List;
 
 /**
@@ -11,9 +12,9 @@ import java.util.List;
  */
 public class RerouteShipmentMove extends TabuMoveBase {
     private PlannerShipment shipment;
-    private List<Flight> newRoute;
+    private List<PlannerFlight> newRoute;
     
-    public RerouteShipmentMove(PlannerShipment shipment, List<Flight> newRoute) {
+    public RerouteShipmentMove(PlannerShipment shipment, List<PlannerFlight> newRoute) {
         super("REROUTE");
         this.shipment = shipment;
         this.newRoute = newRoute;
@@ -22,7 +23,7 @@ public class RerouteShipmentMove extends TabuMoveBase {
     @Override
     public void apply(TabuSolution solution) {
         // Validar que la nueva ruta tiene capacidad
-        for (Flight flight : newRoute) {
+        for (PlannerFlight flight : newRoute) {
             int currentLoad = solution.getFlightLoad(flight);
             // Restar la carga actual del shipment si ya está en ese vuelo
             if (shipment.getFlights().contains(flight)) {
@@ -41,7 +42,7 @@ public class RerouteShipmentMove extends TabuMoveBase {
     @Override
     public String getMoveKey() {
         String routeKey = newRoute.stream()
-            .map(Flight::getCode)
+            .map(PlannerFlight::getCode)
             .reduce((a, b) -> a + "_" + b)
             .orElse("EMPTY");
         return String.format("REROUTE_%d_%s", shipment.getId(), routeKey);
