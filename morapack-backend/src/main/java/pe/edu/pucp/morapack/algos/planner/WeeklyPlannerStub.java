@@ -1,10 +1,10 @@
-package pe.edu.pucp.morapack.planner;
+package pe.edu.pucp.morapack.algos.planner;
 
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.SimpMessageSendingOperations;
 
 /**
  * WeeklyPlannerStub that emits periodic demo updates over WebSocket by using
@@ -14,10 +14,10 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 public class WeeklyPlannerStub implements WeeklyPlanner {
     private static final Logger logger = LoggerFactory.getLogger(WeeklyPlannerStub.class);
     private volatile boolean running = false;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final SimpMessageSendingOperations messagingTemplate;
     private Thread workerThread;
 
-    public WeeklyPlannerStub(SimpMessagingTemplate messagingTemplate) {
+    public WeeklyPlannerStub(SimpMessageSendingOperations messagingTemplate) {
         this.messagingTemplate = messagingTemplate;
     }
 

@@ -1,21 +1,64 @@
 package pe.edu.pucp.morapack.model;
-import pe.edu.pucp.morapack.sim.PendingOrder;   
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+@Entity
+// Map to a safe table name (avoid SQL reserved word `order`)
+@Table(name = "order")
 public class Order {
-    private int id;
-    private int totalQuantity;
-    private Airport origin;
-    private Airport destination;
-    private long maxDeliveryHours;
-    private LocalDateTime orderTime;
-    private List<Shipment> shipments = new ArrayList<>();
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "idPedido")
+    private Long id;
 
+    @Column(name = "cantPaquetes")
+    private Integer packageCount;
+
+    @Column(name = "idAeropuertoDestino")
+    // DB column is VARCHAR(4) (airport code) according to provided DDL
+    private String airportDestinationId;
+
+    @Column(name = "prioridad")
+    private Integer priority;
+
+    @Column(name = "idCliente")
+    // DB column is VARCHAR(10) according to provided DDL
+    private String clientId;
+
+    @Column(name = "estado")
+    private String status;
+
+    @Column(name = "diaPedido")
+    private Integer day;
+
+    @Column(name = "horaPedido")
+    private Integer hour;
+
+    @Column(name = "minutoPedido")
+    private Integer minute;
+
+    // domain fields kept for compatibility with algos domain; not persisted here
+    private transient int totalQuantity;
+    private transient Airport origin;
+    private transient Airport destination;
+    private transient long maxDeliveryHours;
+    private transient LocalDateTime orderTime;
+    private transient List<Shipment> shipments = new ArrayList<>();
+
+    public Order() {}
+
+    // convenience constructor for domain usage
     public Order(int id, int quantity, Airport origin, Airport destination) {
-        this.id = id;
+        this.id = (long) id;
         this.totalQuantity = quantity;
         this.origin = origin;
         this.destination = destination;
@@ -23,7 +66,35 @@ public class Order {
         this.orderTime = LocalDateTime.now();
     }
 
-    public int getId() { return id; }
+    // JPA-friendly getters/setters for persisted columns
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public Integer getPackageCount() { return packageCount; }
+    public void setPackageCount(Integer packageCount) { this.packageCount = packageCount; }
+
+    public String getAirportDestinationId() { return airportDestinationId; }
+    public void setAirportDestinationId(String airportDestinationId) { this.airportDestinationId = airportDestinationId; }
+
+    public Integer getPriority() { return priority; }
+    public void setPriority(Integer priority) { this.priority = priority; }
+
+    public String getClientId() { return clientId; }
+    public void setClientId(String clientId) { this.clientId = clientId; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+
+    public Integer getDay() { return day; }
+    public void setDay(Integer day) { this.day = day; }
+
+    public Integer getHour() { return hour; }
+    public void setHour(Integer hour) { this.hour = hour; }
+
+    public Integer getMinute() { return minute; }
+    public void setMinute(Integer minute) { this.minute = minute; }
+
+    // Domain accessors (transient)
     public int getTotalQuantity() { return totalQuantity; }
     public Airport getOrigin() { return origin; }
     public Airport getDestination() { return destination; }
@@ -73,20 +144,4 @@ public class Order {
         
         return !originContinent.equals(destContinent);
     }
-
-    private static List<Order> buildDailyOrdersFromPending(List<PendingOrder> backlog) {
-    List<Order> daily = new ArrayList<>();
-    for (PendingOrder p : backlog) {
-        if (p.getRemainingQuantity() <= 0) continue;
-        // Crea una Order efímera con la cantidad pendiente.
-        Order o = new Order(p.getId(), p.getRemainingQuantity(), p.getOrigin(), p.getDestination());
-        // Respetar el orderTime original para que el deadline se calcule correctamente.
-        o.setOrderTime(p.getOrderTime());
-        // maxDeliveryHours se calcula en el constructor según continentes (no hay setter).
-        daily.add(o);
-    }
-    return daily;
-}
-
-
 }

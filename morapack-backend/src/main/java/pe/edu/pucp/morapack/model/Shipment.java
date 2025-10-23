@@ -4,54 +4,45 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 public class Shipment {
-    private int id;
-    private Order parentOrder;
-    private int quantity;
-    private Airport origin;
-    private Airport destination;
-    private LocalDateTime estimatedArrival;
+	private int id;
+	private Order parentOrder;
+	private int quantity;
+	private Airport origin;
+	private Airport destination;
+	private LocalDateTime estimatedArrival;
 
-    public Shipment(int id, Order order, int quantity, Airport origin, Airport destination) {
-        this.id = id;
-        this.parentOrder = order;
-        this.quantity = quantity;
-        this.origin = origin;
-        this.destination = destination;
-    }
+	public Shipment() {}
 
-    public int getId() { return id; }
-    
-    public Order getOrder() { return parentOrder; }
-    
-    public LocalDateTime getEstimatedArrival() { return estimatedArrival; }
-    
-    public void setEstimatedArrival(LocalDateTime arrival) { this.estimatedArrival = arrival; }
-    public Order getParentOrder() { return parentOrder; }
-    public int getQuantity() { return quantity; }
-    public Airport getOrigin() { return origin; }
-    public Airport getDestination() { return destination; }
-    
-    public boolean isInterContinental() {
-        return origin.getCountry().getContinent() != destination.getCountry().getContinent();
-    }
+	public Shipment(int id, Order order, int quantity, Airport origin, Airport destination) {
+		this.id = id;
+		this.parentOrder = order;
+		this.quantity = quantity;
+		this.origin = origin;
+		this.destination = destination;
+	}
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        return id == ((Shipment) o).id;
-    }
+	public int getId() { return id; }
+	public Order getOrder() { return parentOrder; }
+	public LocalDateTime getEstimatedArrival() { return estimatedArrival; }
+	public void setEstimatedArrival(LocalDateTime arrival) { this.estimatedArrival = arrival; }
+	public Order getParentOrder() { return parentOrder; }
+	public int getQuantity() { return quantity; }
+	public Airport getOrigin() { return origin; }
+	public Airport getDestination() { return destination; }
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(id);
-    }
+	public boolean isInterContinental() {
+		return origin.getCountry().getContinent() != destination.getCountry().getContinent();
+	}
 
-    public boolean meetsDeadline() {
-    if (parentOrder == null || estimatedArrival == null) return false;
-    var ddl = parentOrder.getOrderTime().plusHours(parentOrder.getMaxDeliveryHours());
-    return !estimatedArrival.isAfter(ddl);
-    }
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		return id == ((Shipment) o).id;
+	}
 
-
+	@Override
+	public int hashCode() {
+		return Objects.hash(id);
+	}
 }

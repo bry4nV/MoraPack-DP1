@@ -1,7 +1,7 @@
 package pe.edu.pucp.morapack.algos.algorithm.tabu;
 
+import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
-import pe.edu.pucp.morapack.model.Flight;
 
 import java.util.*;
 
@@ -44,14 +44,14 @@ public class TabuSearchConstraints {
         }
         
         // 2. Verificar capacidades de vuelos
-        Map<Flight, Integer> flightLoads = new HashMap<>();
+        Map<PlannerFlight, Integer> flightLoads = new HashMap<>();
         for (PlannerShipment shipment : shipments) {
-            for (Flight flight : shipment.getFlights()) {
+            for (PlannerFlight flight : shipment.getFlights()) {
                 flightLoads.merge(flight, shipment.getQuantity(), Integer::sum);
             }
         }
         
-        for (Map.Entry<Flight, Integer> entry : flightLoads.entrySet()) {
+        for (Map.Entry<PlannerFlight, Integer> entry : flightLoads.entrySet()) {
             if (entry.getValue() > entry.getKey().getCapacity()) {
                 return false;  // Excede capacidad
             }

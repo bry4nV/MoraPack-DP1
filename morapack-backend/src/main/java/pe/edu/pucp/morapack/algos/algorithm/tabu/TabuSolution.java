@@ -1,9 +1,10 @@
 package pe.edu.pucp.morapack.algos.algorithm.tabu;
 
 import pe.edu.pucp.morapack.algos.entities.Solution;
+import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
+import pe.edu.pucp.morapack.algos.entities.PlannerOrder;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
-import pe.edu.pucp.morapack.model.Order;
-import pe.edu.pucp.morapack.model.Flight;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -71,7 +72,7 @@ public class TabuSolution extends Solution {
     /**
      * Obtener todos los shipments de un Order específico
      */
-    public List<PlannerShipment> getShipmentsForOrder(Order order) {
+    public List<PlannerShipment> getShipmentsForOrder(PlannerOrder order) {
         return plannerShipments.stream()
             .filter(ps -> ps.getOrder().equals(order))
             .collect(Collectors.toList());
@@ -80,7 +81,7 @@ public class TabuSolution extends Solution {
     /**
      * Calcular cuántos productos de un Order están asignados
      */
-    public int getAssignedQuantityForOrder(Order order) {
+    public int getAssignedQuantityForOrder(PlannerOrder order) {
         return plannerShipments.stream()
             .filter(ps -> ps.getOrder().equals(order))
             .mapToInt(PlannerShipment::getQuantity)
@@ -90,7 +91,7 @@ public class TabuSolution extends Solution {
     /**
      * Verificar si un Order está completamente asignado
      */
-    public boolean isOrderFullyAssigned(Order order) {
+    public boolean isOrderFullyAssigned(PlannerOrder order) {
         int assigned = getAssignedQuantityForOrder(order);
         return assigned >= order.getTotalQuantity();
     }
@@ -98,7 +99,7 @@ public class TabuSolution extends Solution {
     /**
      * Calcular carga de un vuelo específico
      */
-    public int getFlightLoad(Flight flight) {
+    public int getFlightLoad(PlannerFlight flight) {
         return plannerShipments.stream()
             .filter(ps -> ps.getFlights().contains(flight))
             .mapToInt(PlannerShipment::getQuantity)

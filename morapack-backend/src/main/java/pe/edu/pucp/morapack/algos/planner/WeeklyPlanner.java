@@ -1,4 +1,4 @@
-package pe.edu.pucp.morapack.planner;
+package pe.edu.pucp.morapack.algos.planner;
 
 /**
  * Minimal interface for a weekly planner / simulation runner.

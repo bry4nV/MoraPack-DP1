@@ -1,5 +1,8 @@
 package pe.edu.pucp.morapack.algos.data;
 
+import pe.edu.pucp.morapack.algos.entities.PlannerAirport;
+import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
+import pe.edu.pucp.morapack.algos.entities.PlannerOrder;
 import pe.edu.pucp.morapack.model.*;
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -19,8 +22,8 @@ public class DataLoader {
     );
     private static final DateTimeFormatter CSV_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd,HH,mm");
 
-    public static List<Airport> loadAirports(String filePath) throws IOException {
-        List<Airport> airports = new ArrayList<>();
+    public static List<PlannerAirport> loadAirports(String filePath) throws IOException {
+        List<PlannerAirport> airports = new ArrayList<>();
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
             String line;
             int idCounter = 1;
@@ -67,14 +70,14 @@ public class DataLoader {
                 Country country = countryCache.computeIfAbsent(countryName, k -> 
                     new Country(countryCache.size() + 1, k, continentMap.get(continentHolder[0])));
                 
-                airports.add(new Airport(idCounter++, code, city, city, country, capacity, gmt, latitude, longitude));
+                airports.add(new PlannerAirport(idCounter++, code, city, city, country, capacity, gmt, latitude, longitude));
             }
         }
         return airports;
     }
 
-    public static List<Flight> loadFlights(String filePath, Map<String, Airport> airportMap) throws IOException {
-        List<Flight> flights = new ArrayList<>();
+    public static List<PlannerFlight> loadFlights(String filePath, Map<String, PlannerAirport> airportMap) throws IOException {
+        List<PlannerFlight> flights = new ArrayList<>();
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
         int idCounter = 1;
         
@@ -93,8 +96,8 @@ public class DataLoader {
                 String arrivalTime = parts[3];
                 int capacity = Integer.parseInt(parts[4]);
                 
-                Airport origin = airportMap.get(originCode);
-                Airport destination = airportMap.get(destCode);
+                PlannerAirport origin = airportMap.get(originCode);
+                PlannerAirport destination = airportMap.get(destCode);
                 
                 if (origin == null || destination == null) {
                     System.out.println("Warning: Could not find airport for flight: " + originCode + " -> " + destCode);
@@ -118,7 +121,7 @@ public class DataLoader {
                 for (int dayOffset = 0; dayOffset < 31; dayOffset++) {
                     LocalDateTime flightDepDateTime = depDateTime.plusDays(dayOffset);
                     LocalDateTime flightArrDateTime = arrDateTime.plusDays(dayOffset);
-                    flights.add(new Flight(idCounter++, origin, destination, flightDepDateTime, flightArrDateTime, capacity, 1000.0));
+                    flights.add(new PlannerFlight(idCounter++, origin, destination, flightDepDateTime, flightArrDateTime, capacity, 1000.0));
                 }
             }
         }
@@ -156,8 +159,8 @@ public class DataLoader {
         }
     }
 
-    public static List<Order> loadOrders(String filePath, Map<String, Airport> airportMap) throws IOException {
-        List<Order> orders = new ArrayList<>();
+    public static List<PlannerOrder> loadOrders(String filePath, Map<String, PlannerAirport> airportMap) throws IOException {
+        List<PlannerOrder> orders = new ArrayList<>();
         int orderId = 1;
         
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
@@ -177,14 +180,14 @@ public class DataLoader {
                 String clientId = parts[5].trim();
                 
                 // Get destination airport
-                Airport destination = airportMap.get(destCode);
+                PlannerAirport destination = airportMap.get(destCode);
                 if (destination == null) {
                     System.out.println("Warning: Could not find airport for code: " + destCode);
                     continue;
                 }
                 
                 // Determine origin based on destination continent and proximity
-                Airport origin = determineOptimalOrigin(destination, airportMap);
+                PlannerAirport origin = determineOptimalOrigin(destination, airportMap);
                 if (origin == null) {
                     System.out.println("Error: Could not determine origin for destination: " + destCode);
                     continue;
@@ -193,7 +196,7 @@ public class DataLoader {
                 // Create order time based on day, hour, minute
                 LocalDateTime orderTime = LocalDateTime.of(2025, 10, day, hour, minute);
                 
-                Order order = new Order(orderId++, quantity, origin, destination);
+                PlannerOrder order = new PlannerOrder(orderId++, quantity, origin, destination);
                 // Set the order time explicitly
                 order.setOrderTime(orderTime);
                 orders.add(order);
@@ -212,7 +215,7 @@ public class DataLoader {
      * - Brussels, Belgium (EBCI)  
      * - Baku, Azerbaijan (UBBB)
      */
-    private static Airport determineOptimalOrigin(Airport destination, Map<String, Airport> airportMap) {
+    private static PlannerAirport determineOptimalOrigin(PlannerAirport destination, Map<String, PlannerAirport> airportMap) {
         String destCode = destination.getCode();
         
         // Calculate dynamic scores for each distribution center
