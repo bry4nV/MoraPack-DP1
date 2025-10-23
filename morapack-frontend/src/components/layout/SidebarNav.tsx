@@ -17,7 +17,7 @@ const NAV = [
   { href: "/", label: "Inicio", icon: Home },
   { href: "/mapa", label: "Mapa", icon: Map },
   { href: "/simulacion", label: "Simulación", icon: BadgePercent },
-  { href: "/mis-pedidos", label: "Mis pedidos", icon: PackageSearch },
+  { href: "/pedidos", label: "Mis pedidos", icon: PackageSearch },
   { href: "/aeropuertos", label: "Aeropuertos", icon: Building2 },
   { href: "/vuelos", label: "Vuelos", icon: Plane },
   { href: "/usuarios", label: "Usuarios", icon: Users },
