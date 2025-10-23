@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Tabu Simulation Demo</title>
+  <style>
+    body{font-family:Arial;margin:16px}
+    #log{white-space:pre-wrap;border:1px solid #ccc;padding:8px;height:420px;overflow:auto;background:#f9f9f9}
+    #status{padding:12px;margin-bottom:12px;border:2px solid #ddd;background:#fff;border-radius:4px}
+    .info{color:#0066cc;font-weight:bold}
+    .success{color:#00aa00;font-weight:bold}
+    .error{color:#cc0000;font-weight:bold}
+    button{margin-right:8px;padding:8px 12px;font-size:14px}
+  </style>
+</head>
+<body>
+  <h3>🚀 Tabu Simulation Demo - WebSocket Monitor</h3>
+  <p>Connect to <code>/ws</code> → Subscribe to <code>/topic/tabu-simulation</code> → Start simulation to see itinerarios!</p>
+
+  <div id="status">
+    <strong>Status:</strong> <span id="statusText">Not connected</span><br>
+    <strong>Itinerarios received:</strong> <span id="itinCount">0</span><br>
+    <strong>Last snapshot ID:</strong> <span id="snapshotId">-</span><br>
+    <strong>Running:</strong> <span id="running">-</span>
+  </div>
+
+  <button id="probe">🔍 Probe /ws/info</button>
+  <button id="connect">🔌 Connect</button>
+  <button id="start">▶️ Start Simulation</button>
+  <button id="stop">⏹️ Stop</button>
+  <button id="clear">🗑️ Clear Log</button>
+  
+  <h4>📋 Console Log:</h4>
+  <div id="log"></div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const statusText = document.getElementById('statusText');
+    const itinCount = document.getElementById('itinCount');
+    const snapshotId = document.getElementById('snapshotId');
+    const running = document.getElementById('running');
+    
+    const log = (s, className = '') => { 
+      const line = document.createElement('div');
+      line.className = className;
+      line.textContent = s;
+      logEl.appendChild(line);
+      logEl.scrollTop = 1e9; 
+    };
+    
+    let client = null;
+
+    document.getElementById('clear').onclick = () => { logEl.innerHTML = ''; };
+
+    document.getElementById('probe').onclick = async () => {
+      log('🔍 Probing /ws/info ...', 'info');
+      try {
+        const res = await fetch('/ws/info');
+        log('✅ Probe status: ' + res.status + ' ' + res.statusText, 'success');
+        try { const text = await res.text(); log('Body: ' + text); } catch(e) {}
+      } catch (e) {
+        log('❌ Probe failed: ' + e, 'error');
+      }
+    };
+
+    // Load SockJS and Stomp dynamically if not present
+    async function ensureLibs() {
+      if (typeof SockJS !== 'undefined' && typeof Stomp !== 'undefined') return;
+      const sockUrl = 'https://cdn.jsdelivr.net/npm/sockjs-client/dist/sockjs.min.js';
+      const stompUrl = 'https://cdn.jsdelivr.net/npm/stompjs/lib/stomp.min.js';
+      await Promise.all([loadScript(sockUrl), loadScript(stompUrl)]);
+      function loadScript(src){ return new Promise((res, rej) => {
+        const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s);
+      }); }
+    }
+
+    document.getElementById('connect').onclick = async () => {
+      log('🔌 Connecting using SockJS...', 'info');
+      try {
+        await ensureLibs();
+      } catch (e) {
+        log('❌ Failed to load SockJS/Stomp libs: ' + e, 'error');
+        return;
+      }
+
+      try {
+        const sock = new SockJS('/ws');
+        client = Stomp.over(sock);
+        client.debug = null;
+        client.connect({}, function() {
+          log('✅ STOMP (SockJS) connected!', 'success');
+          statusText.textContent = 'Connected ✅';
+          statusText.className = 'success';
+          
+          client.subscribe('/topic/tabu-simulation', function (m) { 
+            try {
+              const data = JSON.parse(m.body);
+              const meta = data.meta || {};
+              const aeropuertos = data.aeropuertos || [];
+              const itinerarios = data.itinerarios || [];
+              
+              itinCount.textContent = itinerarios.length;
+              snapshotId.textContent = meta.snapshotId || '?';
+              running.textContent = meta.running ? 'YES ⚙️' : 'NO ⏸️';
+              
+              log('─────────────────────────────────', 'info');
+              log('📦 Snapshot received:', 'success');
+              log('  • Iteration: ' + (meta.iteration || 0));
+              log('  • Best cost: ' + (meta.bestCost || 0).toFixed(2));
+              log('  • Running: ' + (meta.running ? 'YES' : 'NO'));
+              log('  • Airports: ' + aeropuertos.length);
+              log('  • Itinerarios: ' + itinerarios.length);
+              
+              if (itinerarios.length === 0) {
+                log('  ⚠️ WARNING: No itinerarios in this snapshot!', 'error');
+              } else {
+                log('  ✅ Itinerarios present:', 'success');
+                itinerarios.slice(0, 3).forEach((itin, i) => {
+                  const segCount = (itin.segmentos || []).length;
+                  log(`     ${i+1}. ID=${itin.id}, segments=${segCount}, pos=[${itin.positionLat.toFixed(2)}, ${itin.positionLon.toFixed(2)}]`);
+                });
+                if (itinerarios.length > 3) {
+                  log(`     ... and ${itinerarios.length - 3} more`);
+                }
+              }
+            } catch (e) {
+              log('❌ Error parsing snapshot: ' + e, 'error');
+              log('Raw: ' + m.body);
+            }
+          });
+        }, function(err){ 
+          log('❌ SockJS STOMP connect error: ' + err, 'error'); 
+          statusText.textContent = 'Connection failed ❌';
+          statusText.className = 'error';
+        });
+      } catch (e) {
+        log('❌ SockJS connection threw: ' + e, 'error');
+      }
+    };
+
+    document.getElementById('start').onclick = () => {
+      if (!client) return log('❌ Not connected. Click Connect first.', 'error');
+      client.send('/app/tabu/init', {}, JSON.stringify({ seed: Date.now(), snapshotMs: 500 }));
+      log('▶️ Start command sent (seed=' + Date.now() + ', snapshotMs=500)', 'success');
+    };
+
+    document.getElementById('stop').onclick = () => {
+      if (!client) return log('❌ Not connected.', 'error');
+      client.send('/app/tabu/stop', {}, {});
+      log('⏹️ Stop command sent', 'success');
+    };
+  </script>
+</body>
+</html>
