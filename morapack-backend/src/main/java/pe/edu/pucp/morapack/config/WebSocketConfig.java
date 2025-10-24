@@ -1,6 +1,5 @@
 package pe.edu.pucp.morapack.config;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
@@ -17,7 +16,9 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  */
 @Configuration
 @EnableWebSocketMessageBroker
-@ConditionalOnProperty(prefix = "morapack.websocket", name = "enabled", havingValue = "true", matchIfMissing = false)
+// NOTE: during development we enable the STOMP/SockJS endpoints by default so the demo page
+// can connect without requiring the morapack.websocket.enabled property. Remove this for
+// production or restore the ConditionalOnProperty if you want runtime toggle.
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override

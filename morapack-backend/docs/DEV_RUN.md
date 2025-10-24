@@ -182,10 +182,128 @@ Checklist sugerido para PR:
 
 ---
 
-## 10) Troubleshooting rápido
+## 10) WebSocket y Simulación Tabu Search en Tiempo Real
 
+### 10.1) Configuración WebSocket
+
+El backend ahora incluye soporte para WebSocket/STOMP para transmitir resultados del algoritmo Tabu Search en tiempo real.
+
+**Configuración:** `pe.edu.pucp.morapack.config.WebSocketConfig`
+- Endpoint: `/ws` (SockJS)
+- Broker: `/topic`
+- Destination prefix: `/app`
+
+### 10.2) Endpoints de Simulación
+
+**Iniciar simulación:**
+```
+STOMP SEND → /app/tabu/init
+Body: {"seed": 1234567890, "snapshotMs": 500}
+```
+
+**Detener simulación:**
+```
+STOMP SEND → /app/tabu/stop
+Body: {}
+```
+
+**Recibir actualizaciones:**
+```
+STOMP SUBSCRIBE → /topic/tabu-simulation
+Recibe: {
+  "meta": {"iteration": 42, "bestCost": 324260.00, "running": true, "snapshotId": 5},
+  "aeropuertos": [...],
+  "itinerarios": [...]
+}
+```
+
+### 10.3) Probar WebSocket con Demo HTML
+
+**Página de prueba incluida:** `http://localhost:8080/demo-tabu.html`
+
+Pasos:
+1. Iniciar el backend: `./mvnw spring-boot:run`
+2. Abrir navegador: `http://localhost:8080/demo-tabu.html`
+3. Click **"🔌 Connect"** → Debería mostrar "✅ STOMP (SockJS) connected!"
+4. Click **"▶️ Start Simulation"** → Verás snapshots en tiempo real con ~94 itinerarios
+5. Click **"⏹️ Stop"** para detener
+
+**Lo que muestra:**
+- Número de itinerarios generados
+- Iteración actual del algoritmo
+- Mejor costo encontrado
+- Estado de ejecución (running/stopped)
+- Detalles de cada itinerario (segmentos, posiciones, vuelos)
+
+### 10.4) Conectar Frontend React
+
+El frontend React (`morapack-frontend`) se conecta automáticamente al WebSocket.
+
+**Prerrequisitos:**
+- Node.js 18+ (recomendado: Node 20 LTS)
+- Backend corriendo en `http://localhost:8080`
+
+**Iniciar frontend:**
+```powershell
+cd morapack-frontend
+npm install  # Solo la primera vez
+npm run dev
+```
+
+**Acceder:** `http://localhost:3000/simulacion`
+
+**Funcionalidad:**
+- 🟢 Indicador de conexión WebSocket en tiempo real
+- ▶️ Botón "Iniciar Simulación" → Genera nueva solución con Tabu Search
+- ⏹️ Botón "Detener" → Para la simulación actual
+- 🗺️ Mapa interactivo mostrando ~94 aviones volando en tiempo real
+- 🎮 Controles de velocidad y pausa de animación
+
+### 10.5) Datos de Entrada
+
+**CSV requeridos** (en `morapack-backend/data/`):
+- `airports_real.txt` - Aeropuertos con coordenadas GPS
+- `flights.csv` - Vuelos disponibles (origen, destino, horarios, capacidad)
+- `pedidos.csv` - Pedidos a procesar (destino, cantidad, fecha)
+
+**Nota:** El sistema genera automáticamente vuelos para 2 días (hoy y mañana) para dar flexibilidad al algoritmo.
+
+### 10.6) Algoritmo Tabu Search
+
+**Implementación:** `pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSearchPlanner`
+
+**Características:**
+- Generación de solución inicial con greedy dinámico
+- Optimización mediante Tabu Search (movimientos: Split, Merge, Transfer, Reroute)
+- Snapshots periódicos enviados por WebSocket
+- Detección de mejoras y métricas en tiempo real
+- ~94 shipments típicamente generados para 250 pedidos
+
+**Resultados mostrados:**
+- Número de shipments (itinerarios)
+- Costo total de la solución
+- Rutas directas vs conexiones
+- Tiempo de entrega promedio
+- Productos asignados
+
+---
+
+## 11) Troubleshooting rápido
+
+**Backend:**
 - Puerto 8080 ocupado: cambiar `server.port` en application properties o matar proceso que usa el puerto.
 - Tipos Java/DB inconsistentes: si cambias `VARCHAR` a `Long` o viceversa, actualiza DTOs y entidades.
 - Asegúrate de ejecutar `./mvnw -DskipTests clean package` después de cambios en código y detener el proceso anterior antes de ejecutar el nuevo jar.
+
+**WebSocket:**
+- **"No itinerarios"**: Verifica que los archivos CSV (`flights.csv`, `pedidos.csv`, `airports_real.txt`) existen en `morapack-backend/data/`
+- **Pedidos en el pasado**: El sistema ajusta automáticamente fechas antiguas a hoy/mañana
+- **ERR_CONNECTION_REFUSED en frontend**: Backend no está corriendo en puerto 8080
+- **WebSocket desconectado**: Verifica CORS (permitido en `WebSocketConfig`) o firewall local
+
+**Frontend:**
+- **Node.js < 18**: Next.js 15 requiere Node 18+. Instala Node 20 LTS desde https://nodejs.org/
+- **Puerto 3000 ocupado**: Cambiar en `package.json` o matar proceso con `netstat -ano | findstr :3000`
+- **"Cannot find module"**: Ejecutar `npm install` en `morapack-frontend/`
 
 ---

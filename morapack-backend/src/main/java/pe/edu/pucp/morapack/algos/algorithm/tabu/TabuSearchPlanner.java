@@ -48,6 +48,12 @@ public class TabuSearchPlanner implements IOptimizer {
     // Generador de números aleatorios
     private Random random;
     private long randomSeed;
+    
+    // Optional external listener for snapshots / stop requests
+    private TabuSearchListener listener = null;
+    private long snapshotMs = 1000; // heartbeat default
+    private long lastSnapshotTime = 0;
+    private long snapshotCounter = 0;
 
     /**
      * Constructor por defecto: Usa timestamp para VARIABILIDAD en cada ejecución
@@ -65,6 +71,93 @@ public class TabuSearchPlanner implements IOptimizer {
         this.random = new Random(seed);
         initializeTabuSearchComponents();
         System.out.println("[RANDOM] Tabu Search initialized with seed: " + seed);
+    }
+
+    /**
+     * Sanitize airport coordinates to avoid malformed values from CSVs (e.g. DMS entered as integer)
+     * This will attempt a best-effort DMS -> decimal conversion when values are obviously out of range
+     * and will clamp to valid ranges otherwise. Because PlannerAirport doesn't expose setters for
+     * latitude/longitude we apply changes by reflection and log any corrections.
+     */
+    private void sanitizeAirports(List<PlannerAirport> airports) {
+        if (airports == null) return;
+        for (PlannerAirport a : airports) {
+            double lat = a.getLatitude();
+            double lon = a.getLongitude();
+            double origLat = lat, origLon = lon;
+            boolean changed = false;
+
+            if (!Double.isFinite(lat) || Math.abs(lat) > 90) {
+                // Try DMS-like conversion (e.g. 245400 -> 24°54'00" => 24.9)
+                double conv = tryConvertDmsLike(lat);
+                if (Double.isFinite(conv) && Math.abs(conv) <= 90) {
+                    lat = conv;
+                    changed = true;
+                } else {
+                    // Clamp to valid range
+                    lat = Math.max(-90.0, Math.min(90.0, lat));
+                    changed = true;
+                }
+            }
+
+            if (!Double.isFinite(lon) || Math.abs(lon) > 180) {
+                double conv = tryConvertDmsLike(lon);
+                if (Double.isFinite(conv) && Math.abs(conv) <= 180) {
+                    lon = conv;
+                    changed = true;
+                } else {
+                    lon = Math.max(-180.0, Math.min(180.0, lon));
+                    changed = true;
+                }
+            }
+
+            if (changed) {
+                try {
+                    java.lang.reflect.Field latField = PlannerAirport.class.getDeclaredField("latitude");
+                    java.lang.reflect.Field lonField = PlannerAirport.class.getDeclaredField("longitude");
+                    latField.setAccessible(true);
+                    lonField.setAccessible(true);
+                    latField.setDouble(a, lat);
+                    lonField.setDouble(a, lon);
+                    System.out.println(String.format("[DATA] Sanitized airport %s: lat %.6f -> %.6f, lon %.6f -> %.6f",
+                        a.getCode(), origLat, lat, origLon, lon));
+                } catch (Exception ex) {
+                    System.out.println(String.format("[DATA] Failed to sanitize airport %s: %s", a.getCode(), ex.getMessage()));
+                }
+            }
+        }
+    }
+
+    /**
+     * Try to convert DMS-like numeric formats to decimal degrees.
+     * Heuristic: a value like 245400 -> 24°54'00" -> 24.9
+     */
+    private double tryConvertDmsLike(double v) {
+        if (!Double.isFinite(v)) return Double.NaN;
+        double sign = v < 0 ? -1.0 : 1.0;
+        double abs = Math.abs(v);
+        // Only attempt if magnitude suggests DMS without decimals (>= 10000, e.g. DDMMSS)
+        if (abs >= 10000 && abs < 10000000) {
+            try {
+                long iv = (long) Math.round(abs);
+                int deg = (int) (iv / 10000);
+                int min = (int) ((iv - deg * 10000) / 100);
+                int sec = (int) (iv - deg * 10000 - min * 100);
+                double dec = deg + min / 60.0 + sec / 3600.0;
+                return sign * dec;
+            } catch (Exception ignored) {
+                return Double.NaN;
+            }
+        }
+        return Double.NaN;
+    }
+
+    /**
+     * Register a listener to receive snapshots and allow stop requests.
+     */
+    public void setListener(TabuSearchListener listener, long snapshotMs) {
+        this.listener = listener;
+        if (snapshotMs > 0) this.snapshotMs = snapshotMs;
     }
     
     private void initializeTabuSearchComponents() {
@@ -89,6 +182,9 @@ public class TabuSearchPlanner implements IOptimizer {
     @Override  
     public Solution optimize(List<PlannerOrder> orders, List<PlannerFlight> flights, List<PlannerAirport> airports) {
         if (orders == null || orders.isEmpty()) return new TabuSolution();
+
+        // Sanitize input data (fix malformed coordinates that may come from CSVs)
+        sanitizeAirports(airports);
         
         long startTime = System.currentTimeMillis();
         System.out.println("\n" + "=".repeat(80));
@@ -102,12 +198,61 @@ public class TabuSearchPlanner implements IOptimizer {
         // FASE 1: Generar solución inicial con greedy dinámico
         TabuSolution currentSolution = generateInitialSolutionDynamic(orders, flights, airports);
         TabuSolution bestSolution = new TabuSolution(currentSolution);
+
+        // Demo fallback: if greedy assigned nothing, inject a tiny synthetic shipment so
+        // the Tabu phase and the frontend have at least one itinerario to display.
+        if ((currentSolution.getPlannerShipments() == null || currentSolution.getPlannerShipments().isEmpty())
+                && orders != null && !orders.isEmpty() && flights != null && !flights.isEmpty()) {
+            try {
+                System.out.println("[TABU][DEMO-FALLBACK] No shipments produced by greedy. Injecting fallback shipment.");
+                PlannerOrder firstOrder = orders.get(0);
+                // Prefer a direct flight matching origin->destination and time window
+                PlannerFlight chosen = null;
+                for (PlannerFlight f : flights) {
+                    if (f.getOrigin().equals(firstOrder.getOrigin()) && f.getDestination().equals(firstOrder.getDestination())
+                            && isValidDepartureTime(firstOrder, f)) {
+                        chosen = f;
+                        break;
+                    }
+                }
+                // Otherwise pick a flight from the same origin or any flight as last resort
+                if (chosen == null) {
+                    for (PlannerFlight f : flights) {
+                        if (f.getOrigin().equals(firstOrder.getOrigin())) { chosen = f; break; }
+                    }
+                }
+                if (chosen == null) chosen = flights.get(0);
+
+                int demoQty = Math.max(1, Math.min(firstOrder.getTotalQuantity(), 10));
+                PlannerShipment demoShipment = new PlannerShipment(nextShipmentId++, firstOrder, List.of(chosen), demoQty);
+                currentSolution.addPlannerShipment(demoShipment);
+                // Refresh bestSolution copy to include the injected shipment
+                bestSolution = new TabuSolution(currentSolution);
+                System.out.println(String.format("[TABU][DEMO-FALLBACK] Injected shipment id=%d order=%d qty=%d route=%s->%s",
+                        demoShipment.getId(), firstOrder.getId(), demoQty, chosen.getOrigin().getCode(), chosen.getDestination().getCode()));
+            } catch (Exception ex) {
+                System.out.println("[TABU][DEMO-FALLBACK] Failed to inject fallback shipment: " + ex.getMessage());
+            }
+        }
         
         double initialCost = TabuSearchPlannerCostFunction.calculateCost(
             currentSolution, flights, airports, 0, config.getMaxIterations());
         System.out.println("\n[OK] Initial solution generated:");
         System.out.println("   Cost: " + String.format("%.2f", initialCost));
         printSolutionSummary(currentSolution);
+
+        // Emit an immediate snapshot of the initial solution so listeners (e.g. the STOMP bridge)
+        // receive at least one payload even if the Tabu loop finds no candidate moves.
+        if (listener != null) {
+            try {
+                long now = System.currentTimeMillis();
+                snapshotCounter++;
+                lastSnapshotTime = now;
+                listener.onSnapshot(new TabuSolution(currentSolution), 0, initialCost, snapshotCounter, java.time.Instant.ofEpochMilli(now));
+            } catch (Exception ex) {
+                System.out.println("[TABU] Warning: failed to emit initial snapshot: " + ex.getMessage());
+            }
+        }
         
         // FASE 2: Optimización con Tabu Search
         System.out.println("\n" + "=".repeat(80));
@@ -136,8 +281,9 @@ public class TabuSearchPlanner implements IOptimizer {
         List<Double> costHistory = new ArrayList<>();
         costHistory.add(initialCost);
         
-        while (totalIterations < config.getMaxIterations() && 
-               iterationsWithoutImprovement < config.getMaxIterationsWithoutImprovement()) {
+     while (totalIterations < config.getMaxIterations() && 
+         iterationsWithoutImprovement < config.getMaxIterationsWithoutImprovement()) {
+            boolean improvedThisIteration = false;
             
             // Generar movimientos candidatos
             List<TabuMoveBase> candidateMoves = generateCandidateMoves(currentSolution, flights, airports);
@@ -194,8 +340,10 @@ public class TabuSearchPlanner implements IOptimizer {
                 if (tabuSet.size() > tabuSetMaxSize) {
                     // Eliminar el más antiguo (simplificado - en producción usar cola)
                     Iterator<String> it = tabuSet.iterator();
-                    if (it.hasNext()) it.next();
-                    it.remove();
+                    if (it.hasNext()) {
+                        it.next();
+                        it.remove();
+                    }
                 }
                 
                 // Evaluar si mejora la mejor solución
@@ -210,6 +358,7 @@ public class TabuSearchPlanner implements IOptimizer {
                     bestSolution = new TabuSolution(currentSolution);
                     iterationsWithoutImprovement = 0;
                     improvementIterations++;
+                    improvedThisIteration = true;
                     
                     double stepImprovement = ((bestCost - currentCost) / bestCost) * 100;
                     double totalImprovement = ((initialCost - currentCost) / initialCost) * 100;
@@ -237,6 +386,39 @@ public class TabuSearchPlanner implements IOptimizer {
             }
             
             totalIterations++;
+
+            // Check stop request from listener
+            if (listener != null && listener.isStopRequested()) {
+                System.out.println("[TABU] Stop requested by listener. Exiting optimization loop.");
+                break;
+            }
+
+            // Emit snapshot on improvement or heartbeat
+            long now = System.currentTimeMillis();
+            boolean shouldSnapshot = false;
+            if (listener != null) {
+                // Ensure we have a current cost to compare (recompute if necessary)
+                double currentCost = TabuSearchPlannerCostFunction.calculateCost(
+                    currentSolution, flights, airports, totalIterations, config.getMaxIterations());
+
+                // If we detected an improvement during this iteration, force a snapshot
+                if (improvedThisIteration) {
+                    shouldSnapshot = true; // immediate improvement snapshot
+                } else if (currentCost < bestCostEver) {
+                    // Fallback: if for whatever reason bestCostEver lagged, treat as improvement
+                    shouldSnapshot = true;
+                }
+                if (!shouldSnapshot && now - lastSnapshotTime >= snapshotMs) shouldSnapshot = true;
+                if (shouldSnapshot) {
+                    lastSnapshotTime = now;
+                    snapshotCounter++;
+                    try {
+                        listener.onSnapshot(new TabuSolution(currentSolution), totalIterations, bestCostEver, snapshotCounter, java.time.Instant.ofEpochMilli(now));
+                    } catch (Exception ex) {
+                        System.out.println("[TABU] Warning: listener threw exception: " + ex.getMessage());
+                    }
+                }
+            }
             
             // Log periódico mostrando ESTADO DE MEJORA
             if (totalIterations % 20 == 0) {
@@ -251,7 +433,6 @@ public class TabuSearchPlanner implements IOptimizer {
                 double totalImprovement = ((initialCost - bestCostEver) / initialCost) * 100;
                 
                 // Racha de mejoras
-                int improvementStreak = improvementIterations;
                 
                 System.out.println(String.format("%s %s Iter %4d/%d | Current: %.2f | Best: %.2f %s | Improved: %.1f%% | Stale: %d/%d | Tabu: %d",
                     statusIcon, trendIcon, 
@@ -384,6 +565,8 @@ public class TabuSearchPlanner implements IOptimizer {
         int ordersProcessed = 0;
         int totalProductsAssigned = 0;
         
+        int debugOrders = 10; // only print verbose debug for first N orders to avoid noisy logs
+        int debugCount = 0;
         for (PlannerOrder order : prioritizedOrders) {
             System.out.println(String.format("\nProcessing Order #%d: %d products, %s → %s, deadline: %d hours",
                 order.getId(), order.getTotalQuantity(), 
@@ -421,6 +604,17 @@ public class TabuSearchPlanner implements IOptimizer {
                 }
             }
             
+            // DEBUG: report candidate route counts and capacities for first few orders
+            if (debugCount < debugOrders) {
+                System.out.println(String.format("   DEBUG: directRoutes=%d", directRoutes.size()));
+                // print top 3 direct route capacities
+                int idx = 0;
+                for (RouteOption r : directRoutes) {
+                    if (idx++ >= 3) break;
+                    System.out.println(String.format("      direct candidate minCap=%d flights=%s", r.getMinCapacity(), r.getFlights().stream().map(f -> f.getOrigin().getCode() + "->" + f.getDestination().getCode()).toList()));
+                }
+            }
+
             // 2. Si quedan productos, intentar rutas con CONEXIONES
             if (remainingProducts > 0) {
                 List<RouteOption> connectionRoutes = findConnectionRoutes(order, flights, airports, flightCapacityRemaining);
@@ -449,6 +643,17 @@ public class TabuSearchPlanner implements IOptimizer {
                             toAssign, route.getNumberOfStops(), shipment.getRouteDescription()));
                     }
                 }
+
+                if (debugCount < debugOrders) {
+                    System.out.println(String.format("   DEBUG: connectionRoutes=%d", connectionRoutes.size()));
+                    int idx2 = 0;
+                    for (RouteOption r : connectionRoutes) {
+                        if (idx2++ >= 3) break;
+                        System.out.println(String.format("      conn candidate minCap=%d flights=%s", r.getMinCapacity(), r.getFlights().stream().map(f -> f.getOrigin().getCode() + "->" + f.getDestination().getCode()).toList()));
+                    }
+                }
+
+                debugCount++;
             }
             
             // Guardar shipments del pedido

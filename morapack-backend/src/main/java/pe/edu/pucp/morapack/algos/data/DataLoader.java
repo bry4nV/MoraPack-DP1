@@ -8,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.time.LocalTime;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -194,7 +195,14 @@ public class DataLoader {
                 }
                 
                 // Create order time based on day, hour, minute
-                LocalDateTime orderTime = LocalDateTime.of(2025, 10, day, hour, minute);
+                // Use current month/year so orders aren't in the past
+                LocalDate today = LocalDate.now();
+                LocalDateTime orderTime = LocalDateTime.of(today.getYear(), today.getMonthValue(), 
+                    Math.min(day, today.lengthOfMonth()), hour, minute);
+                // If order would be in the past, move it to tomorrow
+                if (orderTime.isBefore(LocalDateTime.now())) {
+                    orderTime = orderTime.plusDays(1);
+                }
                 
                 PlannerOrder order = new PlannerOrder(orderId++, quantity, origin, destination);
                 // Set the order time explicitly
