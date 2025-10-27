@@ -1,6 +1,9 @@
 package pe.edu.pucp.morapack.algos.main;
 
 import pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSearchPlanner;
+import pe.edu.pucp.morapack.algos.entities.PlannerAirport;
+import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
+import pe.edu.pucp.morapack.algos.entities.PlannerOrder;
 import pe.edu.pucp.morapack.algos.entities.Solution;
 import pe.edu.pucp.morapack.algos.data.DataLoader;
 import pe.edu.pucp.morapack.model.*;
@@ -29,19 +32,19 @@ public class MorapackPlanner {
 
         try {
             // Load airports
-            List<Airport> airports = DataLoader.loadAirports(airportsFile);
+            List<PlannerAirport> airports = DataLoader.loadAirports(airportsFile);
             System.out.println("Loaded " + airports.size() + " airports");
 
             // Create map for quick airport lookup
-            Map<String, Airport> airportMap = airports.stream()
-                    .collect(Collectors.toMap(Airport::getCode, a -> a));
+            Map<String, PlannerAirport> airportMap = airports.stream()
+                    .collect(Collectors.toMap(PlannerAirport::getCode, a -> a));
 
             // Load flights
-            List<Flight> availableFlights = DataLoader.loadFlights(flightsFile, airportMap);
+            List<PlannerFlight> availableFlights = DataLoader.loadFlights(flightsFile, airportMap);
             System.out.println("Loaded " + availableFlights.size() + " flights");
 
             // Load orders
-            List<Order> pendingOrders = DataLoader.loadOrders(ordersFile, airportMap);
+            List<PlannerOrder> pendingOrders = DataLoader.loadOrders(ordersFile, airportMap);
             System.out.println("Loaded " + pendingOrders.size() + " orders");
 
             System.out.println("\n[INITIAL INPUT DATA]");
@@ -86,7 +89,7 @@ public class MorapackPlanner {
         System.out.println("\n--- Test Finished ---");
     }
 
-    private static void printDetailedStatistics(Solution solution, List<Order> originalOrders) {
+    private static void printDetailedStatistics(Solution solution, List<PlannerOrder> originalOrders) {
         if (solution == null) {
             System.out.println("No solution to analyze.");
             return;
@@ -106,13 +109,13 @@ public class MorapackPlanner {
                 .sum();
 
         int totalProducts = originalOrders.stream()
-                .mapToInt(Order::getTotalQuantity)
+                .mapToInt(PlannerOrder::getTotalQuantity)
                 .sum();
 
         int completedOrders = 0;
         int totalOrders = originalOrders.size();
 
-        for (Order order : originalOrders) {
+        for (PlannerOrder order : originalOrders) {
             List<pe.edu.pucp.morapack.algos.entities.PlannerShipment> orderShipments =
                     tabuSolution.getPlannerShipments().stream()
                             .filter(s -> s.getOrder().getId() == order.getId())
@@ -196,13 +199,13 @@ public class MorapackPlanner {
  
     private static class PendingOrder {
         private final int id;
-        private final Airport origin;
-        private final Airport destination;
+        private final PlannerAirport origin;
+        private final PlannerAirport destination;
         private final long maxDeliveryHours;
         private final LocalDateTime orderTime;
         private int remainingQuantity;
 
-        PendingOrder(Order o) {
+        PendingOrder(PlannerOrder o) {
             this.id = o.getId();
             this.origin = o.getOrigin();
             this.destination = o.getDestination();
@@ -212,8 +215,8 @@ public class MorapackPlanner {
         }
 
         int getId() { return id; }
-        Airport getOrigin() { return origin; }
-        Airport getDestination() { return destination; }
+        PlannerAirport getOrigin() { return origin; }
+        PlannerAirport getDestination() { return destination; }
         long getMaxDeliveryHours() { return maxDeliveryHours; }
         LocalDateTime getOrderTime() { return orderTime; }
         int getRemainingQuantity() { return remainingQuantity; }
@@ -226,9 +229,9 @@ public class MorapackPlanner {
      * crea órdenes efímeras con cantidad pendiente, ejecuta Tabu y descuenta lo entregado.
      */
     public static void simulateWeek(
-            List<Airport> airports,
-            List<Flight> allFlights,
-            List<Order> allOrders,
+            List<PlannerAirport> airports,
+            List<PlannerFlight> allFlights,
+            List<PlannerOrder> allOrders,
             double dailyCancelProb,
             LocalDate startDate,
             long seed) {
@@ -247,14 +250,14 @@ public class MorapackPlanner {
             LocalDate day = startDate.plusDays(d);
             System.out.println("\n--- DÍA " + (d + 1) + " (" + day + ") ---");
 
-            List<Flight> todaysFlights = flightsForDay(allFlights, day);
+            List<PlannerFlight> todaysFlights = flightsForDay(allFlights, day);
             if (todaysFlights.isEmpty()) {
                 System.out.println("No hay vuelos hoy. Se mantiene backlog.");
                 continue;
             }
             cancelSomeFlights(todaysFlights, dailyCancelProb, rnd);
 
-            List<Order> dailyOrders = buildDailyOrdersFromPending(backlog);
+            List<PlannerOrder> dailyOrders = buildDailyOrdersFromPending(backlog);
             if (dailyOrders.isEmpty()) {
                 System.out.println("No hay pedidos pendientes. Día sin optimización.");
                 continue;
@@ -297,25 +300,25 @@ public class MorapackPlanner {
         return dt != null && dt.toLocalDate().isEqual(date);
     }
 
-    private static List<Flight> flightsForDay(List<Flight> all, LocalDate day) {
+    private static List<PlannerFlight> flightsForDay(List<PlannerFlight> all, LocalDate day) {
         return all.stream()
                 .filter(f -> isSameDay(f.getDepartureTime(), day))
                 .collect(Collectors.toList());
     }
 
-    private static void cancelSomeFlights(List<Flight> flights, double pCancel, Random rnd) {
-        for (Flight f : flights) {
-            if (rnd.nextDouble() < pCancel) f.setStatus(Flight.Status.CANCELLED);
-            else if (f.getStatus() == Flight.Status.CANCELLED) f.setStatus(Flight.Status.SCHEDULED);
+    private static void cancelSomeFlights(List<PlannerFlight> flights, double pCancel, Random rnd) {
+        for (PlannerFlight f : flights) {
+            if (rnd.nextDouble() < pCancel) f.setStatus(PlannerFlight.Status.CANCELLED);
+            else if (f.getStatus() == PlannerFlight.Status.CANCELLED) f.setStatus(PlannerFlight.Status.SCHEDULED);
         }
     }
 
     /** Construye órdenes efímeras del día (solo la cantidad pendiente). */
-    private static List<Order> buildDailyOrdersFromPending(List<PendingOrder> backlog) {
-        List<Order> daily = new ArrayList<>();
+    private static List<PlannerOrder> buildDailyOrdersFromPending(List<PendingOrder> backlog) {
+        List<PlannerOrder> daily = new ArrayList<>();
         for (PendingOrder p : backlog) {
             if (p.getRemainingQuantity() <= 0) continue;
-            Order o = new Order(p.getId(), p.getRemainingQuantity(), p.getOrigin(), p.getDestination());
+            PlannerOrder o = new PlannerOrder(p.getId(), p.getRemainingQuantity(), p.getOrigin(), p.getDestination());
             o.setOrderTime(p.getOrderTime());
             daily.add(o);
         }

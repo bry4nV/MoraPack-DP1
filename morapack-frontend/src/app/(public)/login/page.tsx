@@ -18,13 +18,14 @@ export default function LoginPage() {
       redirect("/login?error=missing");
     }
 
-    // ¡Sin await! y antes del redirect
-    cookies().set({
+    // ✅ CORRECCIÓN: Agregar await
+    const cookieStore = await cookies();
+    cookieStore.set({
       name: "auth",
       value: "1",
       httpOnly: true,
       path: "/",
-      sameSite: "lax",   // recomendable
+      sameSite: "lax",
       // secure: true     // solo en prod con HTTPS
     });
 

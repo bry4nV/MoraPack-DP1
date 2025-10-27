@@ -1,9 +1,9 @@
 package pe.edu.pucp.morapack.algos.algorithm.tabu;
 
-import pe.edu.pucp.morapack.model.Airport;
-import pe.edu.pucp.morapack.model.Flight;
+import pe.edu.pucp.morapack.algos.entities.PlannerAirport;
+import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
+import pe.edu.pucp.morapack.algos.entities.PlannerOrder;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
-import pe.edu.pucp.morapack.model.Order;
 
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -28,8 +28,8 @@ public class TabuSearchPlannerCostFunction {
     /**
      * Calcular costo total de una solución
      */
-    public static double calculateCost(TabuSolution solution, List<Flight> flights, 
-                                       List<Airport> airports, int currentIteration, int maxIterations) {
+    public static double calculateCost(TabuSolution solution, List<PlannerFlight> flights, 
+                                       List<PlannerAirport> airports, int currentIteration, int maxIterations) {
         double totalCost = 0.0;
         List<PlannerShipment> shipments = solution.getPlannerShipments();
 
@@ -60,18 +60,18 @@ public class TabuSearchPlannerCostFunction {
     private static double calculateFlightCapacityPenalty(List<PlannerShipment> shipments, 
                                                           TabuSolution solution) {
         double penalty = 0.0;
-        Map<Flight, Integer> flightLoads = new HashMap<>();
+        Map<PlannerFlight, Integer> flightLoads = new HashMap<>();
 
         // Calcular carga de cada vuelo
         for (PlannerShipment shipment : shipments) {
-            for (Flight flight : shipment.getFlights()) {
+            for (PlannerFlight flight : shipment.getFlights()) {
                 flightLoads.merge(flight, shipment.getQuantity(), Integer::sum);
             }
         }
 
         // Penalizar excesos de capacidad
-        for (Map.Entry<Flight, Integer> entry : flightLoads.entrySet()) {
-            Flight flight = entry.getKey();
+        for (Map.Entry<PlannerFlight, Integer> entry : flightLoads.entrySet()) {
+            PlannerFlight flight = entry.getKey();
             int load = entry.getValue();
             if (load > flight.getCapacity()) {
                 int excess = load - flight.getCapacity();
@@ -89,14 +89,14 @@ public class TabuSearchPlannerCostFunction {
         double penalty = 0.0;
         
         // Agrupar shipments por Order
-        Map<Order, List<PlannerShipment>> byOrder = new HashMap<>();
+        Map<PlannerOrder, List<PlannerShipment>> byOrder = new HashMap<>();
         for (PlannerShipment shipment : shipments) {
             byOrder.computeIfAbsent(shipment.getOrder(), k -> new ArrayList<>()).add(shipment);
         }
 
         // Evaluar cada Order
-        for (Map.Entry<Order, List<PlannerShipment>> entry : byOrder.entrySet()) {
-            Order order = entry.getKey();
+        for (Map.Entry<PlannerOrder, List<PlannerShipment>> entry : byOrder.entrySet()) {
+            PlannerOrder order = entry.getKey();
             List<PlannerShipment> orderShipments = entry.getValue();
 
             // El plazo se cumple cuando el ÚLTIMO shipment llega
@@ -143,10 +143,10 @@ public class TabuSearchPlannerCostFunction {
 
             // Validar tiempos de conexión
             if (stops > 0) {
-                List<Flight> flights = shipment.getFlights();
+                List<PlannerFlight> flights = shipment.getFlights();
                 for (int i = 0; i < flights.size() - 1; i++) {
-                    Flight current = flights.get(i);
-                    Flight next = flights.get(i + 1);
+                    PlannerFlight current = flights.get(i);
+                    PlannerFlight next = flights.get(i + 1);
 
                     long connectionHours = ChronoUnit.HOURS.between(
                         current.getArrivalTime(),
@@ -183,24 +183,24 @@ public class TabuSearchPlannerCostFunction {
      * 5. Penalización por capacidad de almacenes en aeropuertos
      */
     private static double calculateAirportCapacityPenalty(List<PlannerShipment> shipments, 
-                                                           List<Airport> airports) {
+                                                           List<PlannerAirport> airports) {
         double penalty = 0.0;
-        Map<Airport, Integer> airportLoads = new HashMap<>();
+        Map<PlannerAirport, Integer> airportLoads = new HashMap<>();
 
         // Calcular productos en tránsito por aeropuerto (escalas)
         for (PlannerShipment shipment : shipments) {
-            List<Flight> flights = shipment.getFlights();
+            List<PlannerFlight> flights = shipment.getFlights();
             
             // Solo contar aeropuertos intermedios (escalas)
             for (int i = 0; i < flights.size() - 1; i++) {
-                Airport stopover = flights.get(i).getDestination();
+                PlannerAirport stopover = flights.get(i).getDestination();
                 airportLoads.merge(stopover, shipment.getQuantity(), Integer::sum);
             }
         }
 
         // Penalizar excesos de capacidad
-        for (Map.Entry<Airport, Integer> entry : airportLoads.entrySet()) {
-            Airport airport = entry.getKey();
+        for (Map.Entry<PlannerAirport, Integer> entry : airportLoads.entrySet()) {
+            PlannerAirport airport = entry.getKey();
             int load = entry.getValue();
             int capacity = airport.getStorageCapacity();
 
@@ -222,13 +222,13 @@ public class TabuSearchPlannerCostFunction {
         double penalty = 0.0;
         
         // Obtener todas las órdenes únicas
-        Set<Order> allOrders = new HashSet<>();
+        Set<PlannerOrder> allOrders = new HashSet<>();
         for (PlannerShipment shipment : shipments) {
             allOrders.add(shipment.getOrder());
         }
 
         // Verificar si cada orden está completamente asignada
-        for (Order order : allOrders) {
+        for (PlannerOrder order : allOrders) {
             int assigned = solution.getAssignedQuantityForOrder(order);
             int required = order.getTotalQuantity();
 

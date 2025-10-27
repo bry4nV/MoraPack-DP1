@@ -1,0 +1,29 @@
+// API Configuration
+export const API_CONFIG = {
+  BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080',
+  TIMEOUT: 30000, // 30 seconds
+  RETRY_ATTEMPTS: 3,
+} as const;
+
+// API Endpoints
+export const API_ENDPOINTS = {
+  // Order endpoints
+  ORDERS: {
+    BASE: '/api/orders',  // ✅ Cambiado de '/orders/' a '/api/orders'
+    BY_ID: (id: string) => `/api/orders/${id}`,  // ✅ Sin barra al final
+    BULK_CREATE: '/api/orders/bulk-create',  // ✅ Sin barra al final
+    BULK_DELETE: '/api/orders/bulk-delete',  // ✅ Sin barra al final
+  },
+} as const;
+
+// HTTP Status Codes
+export const HTTP_STATUS = {
+  OK: 200,
+  CREATED: 201,
+  NO_CONTENT: 204,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  INTERNAL_SERVER_ERROR: 500,
+} as const;

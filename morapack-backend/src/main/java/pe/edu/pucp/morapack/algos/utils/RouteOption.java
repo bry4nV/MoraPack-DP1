@@ -1,8 +1,10 @@
 package pe.edu.pucp.morapack.algos.utils;
 
-import pe.edu.pucp.morapack.model.Flight;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+
+import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
+
 import java.util.ArrayList;
 
 /**
@@ -10,19 +12,19 @@ import java.util.ArrayList;
  * Usado para comparar y ordenar rutas durante la generación de solución inicial.
  */
 public class RouteOption {
-    private List<Flight> flights;
+    private List<PlannerFlight> flights;
     private double cost;
     private long totalTravelMinutes;
     private int minCapacity;  // Cuello de botella
     
-    public RouteOption(List<Flight> flights) {
+    public RouteOption(List<PlannerFlight> flights) {
         this.flights = new ArrayList<>(flights);
         this.cost = calculateRouteCost();
         this.totalTravelMinutes = calculateTravelTime();
         this.minCapacity = Integer.MAX_VALUE;  // Se actualizará externamente
     }
     
-    public List<Flight> getFlights() {
+    public List<PlannerFlight> getFlights() {
         return new ArrayList<>(flights);
     }
     
@@ -61,7 +63,7 @@ public class RouteOption {
      */
     private double calculateRouteCost() {
         double totalCost = flights.stream()
-            .mapToDouble(Flight::getCost)
+            .mapToDouble(PlannerFlight::getCost)
             .sum();
         
         // Penalizar escalas (preferir rutas directas)

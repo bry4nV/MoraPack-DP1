@@ -1,8 +1,8 @@
 package pe.edu.pucp.morapack.algos.algorithm.tabu.moves;
 
 import pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution;
+import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
-import pe.edu.pucp.morapack.model.Flight;
 
 /**
  * Movimiento: Transferir N productos de un shipment a otro.
@@ -33,7 +33,7 @@ public class TransferQuantityMove extends TabuMoveBase {
         }
         
         // Validar que 'to' tiene capacidad en todos sus vuelos
-        for (Flight flight : toShipment.getFlights()) {
+        for (PlannerFlight flight : toShipment.getFlights()) {
             int currentLoad = solution.getFlightLoad(flight);
             if (currentLoad + quantity > flight.getCapacity()) {
                 return;  // No hay capacidad

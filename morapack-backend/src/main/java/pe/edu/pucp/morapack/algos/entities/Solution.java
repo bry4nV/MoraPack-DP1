@@ -1,6 +1,5 @@
 package pe.edu.pucp.morapack.algos.entities;
 
-import pe.edu.pucp.morapack.model.Order;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -9,8 +8,8 @@ import java.util.stream.Collectors;
  * Contiene la información básica de rutas y órdenes.
  */
 public class Solution {
-    protected List<Order> completedOrders;
-    protected List<Order> allOrders;
+    protected List<PlannerOrder> completedOrders;
+    protected List<PlannerOrder> allOrders;
 
     public Solution() {
         this.completedOrders = new ArrayList<>();
@@ -22,24 +21,24 @@ public class Solution {
         this.allOrders = new ArrayList<>(other.allOrders);
     }
 
-    public Solution(List<Order> orders) {
+    public Solution(List<PlannerOrder> orders) {
         this();
         this.allOrders = new ArrayList<>(orders);
     }
 
-    public List<Order> getCompletedOrders() {
+    public List<PlannerOrder> getCompletedOrders() {
         return completedOrders;
     }
 
-    public void setCompletedOrders(List<Order> completedOrders) {
+    public void setCompletedOrders(List<PlannerOrder> completedOrders) {
         this.completedOrders = completedOrders;
     }
 
-    public List<Order> getAllOrders() {
+    public List<PlannerOrder> getAllOrders() {
         return allOrders;
     }
 
-    public void setAllOrders(List<Order> allOrders) {
+    public void setAllOrders(List<PlannerOrder> allOrders) {
         this.allOrders = allOrders;
     }
 
