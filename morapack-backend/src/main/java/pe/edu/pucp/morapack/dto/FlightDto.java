@@ -4,12 +4,12 @@ import pe.edu.pucp.morapack.model.FlightStatus;
 
 public class FlightDto {
     private Long id;
-    private String idAeropuertoOrigen;
-    private String idAeropuertoDestino;
-    private String horaSalida;
-    private String horaLlegada;
-    private Integer capacidad;
-    private FlightStatus estado;
+    private String originAirportId; // ← CAMBIO
+    private String destinationAirportId; // ← CAMBIO
+    private String departureTime; // ← CAMBIO
+    private String arrivalTime; // ← CAMBIO
+    private Integer capacity; // ← CAMBIO
+    private FlightStatus status; // ← CAMBIO
 
     public FlightDto() {}
 
@@ -17,21 +17,21 @@ public class FlightDto {
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
-    public String getIdAeropuertoOrigen() { return idAeropuertoOrigen; }
-    public void setIdAeropuertoOrigen(String idAeropuertoOrigen) { this.idAeropuertoOrigen = idAeropuertoOrigen; }
+    public String getOriginAirportId() { return originAirportId; }
+    public void setOriginAirportId(String originAirportId) { this.originAirportId = originAirportId; }
 
-    public String getIdAeropuertoDestino() { return idAeropuertoDestino; }
-    public void setIdAeropuertoDestino(String idAeropuertoDestino) { this.idAeropuertoDestino = idAeropuertoDestino; }
+    public String getDestinationAirportId() { return destinationAirportId; }
+    public void setDestinationAirportId(String destinationAirportId) { this.destinationAirportId = destinationAirportId; }
 
-    public String getHoraSalida() { return horaSalida; }
-    public void setHoraSalida(String horaSalida) { this.horaSalida = horaSalida; }
+    public String getDepartureTime() { return departureTime; }
+    public void setDepartureTime(String departureTime) { this.departureTime = departureTime; }
 
-    public String getHoraLlegada() { return horaLlegada; }
-    public void setHoraLlegada(String horaLlegada) { this.horaLlegada = horaLlegada; }
+    public String getArrivalTime() { return arrivalTime; }
+    public void setArrivalTime(String arrivalTime) { this.arrivalTime = arrivalTime; }
 
-    public Integer getCapacidad() { return capacidad; }
-    public void setCapacidad(Integer capacidad) { this.capacidad = capacidad; }
+    public Integer getCapacity() { return capacity; }
+    public void setCapacity(Integer capacity) { this.capacity = capacity; }
 
-    public FlightStatus getEstado() { return estado; }
-    public void setEstado(FlightStatus estado) { this.estado = estado; }
+    public FlightStatus getStatus() { return status; }
+    public void setStatus(FlightStatus status) { this.status = status; }
 }

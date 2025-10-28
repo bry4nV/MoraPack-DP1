@@ -82,8 +82,8 @@ public class Shipment {
             return false;
         }
         
-        String originContinent = origin.getContinente();
-        String destContinent = destination.getContinente();
+        String originContinent = origin.getContinent(); // ← CORREGIR: getContinente() → getContinent()
+        String destContinent = destination.getContinent(); // ← CORREGIR: getContinente() → getContinent()
         
         return originContinent != null 
             && destContinent != null 

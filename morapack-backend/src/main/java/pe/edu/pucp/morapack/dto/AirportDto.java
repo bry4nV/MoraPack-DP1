@@ -2,13 +2,13 @@ package pe.edu.pucp.morapack.dto;
 
 public class AirportDto {
     private String id;
-    private String nombre;
-    private String pais;
-    private String ciudad;
-    private String gmt; // ← CAMBIO: de Integer a String
-    private Integer capacidad;
-    private String continente;
-    private Boolean esSede;
+    private String name; // ← CAMBIO
+    private String country; // ← CAMBIO
+    private String city; // ← CAMBIO
+    private String gmt;
+    private Integer capacity; // ← CAMBIO
+    private String continent; // ← CAMBIO
+    private Boolean isHub; // ← CAMBIO
 
     public AirportDto() {}
 
@@ -16,24 +16,24 @@ public class AirportDto {
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
 
-    public String getNombre() { return nombre; }
-    public void setNombre(String nombre) { this.nombre = nombre; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-    public String getPais() { return pais; }
-    public void setPais(String pais) { this.pais = pais; }
+    public String getCountry() { return country; }
+    public void setCountry(String country) { this.country = country; }
 
-    public String getCiudad() { return ciudad; }
-    public void setCiudad(String ciudad) { this.ciudad = ciudad; }
+    public String getCity() { return city; }
+    public void setCity(String city) { this.city = city; }
 
-    public String getGmt() { return gmt; } // ← CAMBIO: de Integer a String
-    public void setGmt(String gmt) { this.gmt = gmt; } // ← CAMBIO: de Integer a String
+    public String getGmt() { return gmt; }
+    public void setGmt(String gmt) { this.gmt = gmt; }
 
-    public Integer getCapacidad() { return capacidad; }
-    public void setCapacidad(Integer capacidad) { this.capacidad = capacidad; }
+    public Integer getCapacity() { return capacity; }
+    public void setCapacity(Integer capacity) { this.capacity = capacity; }
 
-    public String getContinente() { return continente; }
-    public void setContinente(String continente) { this.continente = continente; }
+    public String getContinent() { return continent; }
+    public void setContinent(String continent) { this.continent = continent; }
 
-    public Boolean getEsSede() { return esSede; }
-    public void setEsSede(Boolean esSede) { this.esSede = esSede; }
+    public Boolean getIsHub() { return isHub; }
+    public void setIsHub(Boolean isHub) { this.isHub = isHub; }
 }

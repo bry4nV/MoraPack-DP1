@@ -25,13 +25,13 @@ public class AirportService {
     private AirportDto toDto(Airport e) {
         AirportDto d = new AirportDto();
         d.setId(e.getId());
-        d.setNombre(e.getNombre());
-        d.setPais(e.getPais());
-        d.setCiudad(e.getCiudad());
+        d.setName(e.getName()); // ← CAMBIO
+        d.setCountry(e.getCountry()); // ← CAMBIO
+        d.setCity(e.getCity()); // ← CAMBIO
         d.setGmt(e.getGmt());
-        d.setCapacidad(e.getCapacidad());
-        d.setContinente(e.getContinente());
-        d.setEsSede(e.isHub());
+        d.setCapacity(e.getCapacity()); // ← CAMBIO
+        d.setContinent(e.getContinent()); // ← CAMBIO
+        d.setIsHub(e.isMainHub()); // ← CAMBIO
         return d;
     }
 }

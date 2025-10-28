@@ -14,6 +14,12 @@ export const API_ENDPOINTS = {
     BULK_CREATE: '/api/orders/bulk-create',  // ✅ Sin barra al final
     BULK_DELETE: '/api/orders/bulk-delete',  // ✅ Sin barra al final
   },
+  AIRPORTS: {
+    BASE: '/api/airports',
+    BY_ID: (id: string) => `/api/airports/${id}`,
+    BULK_CREATE: '/api/airports/bulk-create',
+    BULK_DELETE: '/api/airports/bulk-delete',
+  },
 } as const;
 
 // HTTP Status Codes

@@ -62,7 +62,7 @@ public class Order {
         this.totalQuantity = quantity;
         this.origin = origin;
         this.destination = destination;
-        this.maxDeliveryHours = origin.getCountry().getContinent() == destination.getCountry().getContinent() ? 48 : 72;
+        this.maxDeliveryHours = origin.getContinent().equals(destination.getContinent()) ? 48 : 72;
         this.orderTime = LocalDateTime.now();
     }
 
@@ -134,10 +134,9 @@ public class Order {
      */
     public boolean isInterContinental() {
         if (origin == null || destination == null) return false;
-        if (origin.getCountry() == null || destination.getCountry() == null) return false;
         
-        Continent originContinent = origin.getCountry().getContinent();
-        Continent destContinent = destination.getCountry().getContinent();
+        String originContinent = origin.getContinent();
+        String destContinent = destination.getContinent();
         
         // Si alguno de los continentes es null, asumimos que NO es intercontinental
         if (originContinent == null || destContinent == null) return false;

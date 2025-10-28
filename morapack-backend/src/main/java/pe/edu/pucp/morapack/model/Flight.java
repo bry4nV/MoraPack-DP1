@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import java.time.LocalTime;
 
 @Entity
-@Table(name = "flight") // ← CAMBIO: de "vuelo" a "flight"
+@Table(name = "flight")
 public class Flight {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -12,53 +12,53 @@ public class Flight {
     private Long id;
 
     @Column(name = "idAeropuertoOrigen")
-    private String idAeropuertoOrigen;
+    private String originAirportId; // ← CAMBIO: de idAeropuertoOrigen a originAirportId
 
     @Column(name = "idAeropuertoDestino")
-    private String idAeropuertoDestino;
+    private String destinationAirportId; // ← CAMBIO: de idAeropuertoDestino a destinationAirportId
 
     @Column(name = "horaSalida")
-    private LocalTime horaSalida;
+    private LocalTime departureTime; // ← CAMBIO: de horaSalida a departureTime
 
     @Column(name = "horaLlegada")
-    private LocalTime horaLlegada;
+    private LocalTime arrivalTime; // ← CAMBIO: de horaLlegada a arrivalTime
 
     @Column(name = "capacidad")
-    private Integer capacidad;
+    private Integer capacity; // ← CAMBIO: de capacidad a capacity
 
     @Enumerated(EnumType.STRING)
     @Column(name = "estado", columnDefinition = "ENUM('SCHEDULED','DELAYED','CANCELLED','COMPLETED')")
-    private FlightStatus estado;
+    private FlightStatus status; // ← CAMBIO: de estado a status
 
-    // Campos transient para algoritmos (no en BD)
+    // domain fields kept for compatibility with algos domain; not persisted here
     private transient Airport origin;
     private transient Airport destination;
 
     public Flight() {}
 
-    // Getters y Setters
+    // JPA-friendly getters/setters for persisted columns
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
-    public String getIdAeropuertoOrigen() { return idAeropuertoOrigen; }
-    public void setIdAeropuertoOrigen(String idAeropuertoOrigen) { this.idAeropuertoOrigen = idAeropuertoOrigen; }
+    public String getOriginAirportId() { return originAirportId; }
+    public void setOriginAirportId(String originAirportId) { this.originAirportId = originAirportId; }
 
-    public String getIdAeropuertoDestino() { return idAeropuertoDestino; }
-    public void setIdAeropuertoDestino(String idAeropuertoDestino) { this.idAeropuertoDestino = idAeropuertoDestino; }
+    public String getDestinationAirportId() { return destinationAirportId; }
+    public void setDestinationAirportId(String destinationAirportId) { this.destinationAirportId = destinationAirportId; }
 
-    public LocalTime getHoraSalida() { return horaSalida; }
-    public void setHoraSalida(LocalTime horaSalida) { this.horaSalida = horaSalida; }
+    public LocalTime getDepartureTime() { return departureTime; }
+    public void setDepartureTime(LocalTime departureTime) { this.departureTime = departureTime; }
 
-    public LocalTime getHoraLlegada() { return horaLlegada; }
-    public void setHoraLlegada(LocalTime horaLlegada) { this.horaLlegada = horaLlegada; }
+    public LocalTime getArrivalTime() { return arrivalTime; }
+    public void setArrivalTime(LocalTime arrivalTime) { this.arrivalTime = arrivalTime; }
 
-    public Integer getCapacidad() { return capacidad; }
-    public void setCapacidad(Integer capacidad) { this.capacidad = capacidad; }
+    public Integer getCapacity() { return capacity; }
+    public void setCapacity(Integer capacity) { this.capacity = capacity; }
 
-    public FlightStatus getEstado() { return estado; }
-    public void setEstado(FlightStatus estado) { this.estado = estado; }
+    public FlightStatus getStatus() { return status; }
+    public void setStatus(FlightStatus status) { this.status = status; }
 
-    // Transient getters/setters
+    // Domain accessors (transient)
     public Airport getOrigin() { return origin; }
     public void setOrigin(Airport origin) { this.origin = origin; }
 

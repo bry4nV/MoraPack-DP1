@@ -7,4 +7,5 @@ export * from './envio';
 export * from './itinerario';
 export * from './order';
 export * from './flight';
+export * from './airport';
 
