@@ -41,11 +41,11 @@ class TabuSearchIntegrationTest {
         // Verificar que los archivos existan
         File airportsFile = new File(DATA_DIR + "airports.txt");
         File flightsFile = new File(DATA_DIR + "flights.csv");
-        File ordersFile = new File(DATA_DIR + "pedidos_test.csv");
+        File ordersFile = new File(DATA_DIR + "pedidos_generados.csv");
         
         assertTrue(airportsFile.exists(), "airports.txt debe existir en " + DATA_DIR);
         assertTrue(flightsFile.exists(), "flights.csv debe existir en " + DATA_DIR);
-        assertTrue(ordersFile.exists(), "pedidos_test.csv debe existir en " + DATA_DIR);
+        assertTrue(ordersFile.exists(), "pedidos_generados.csv debe existir en " + DATA_DIR);
         
         System.out.println("✅ Archivos CSV encontrados");
         
@@ -58,14 +58,15 @@ class TabuSearchIntegrationTest {
         Map<String, PlannerAirport> airportMap = airports.stream()
             .collect(Collectors.toMap(PlannerAirport::getCode, a -> a));
         
-        // 2. Cargar vuelos
+        // 2. Cargar vuelos (generar para Diciembre 2025, 31 días)
         System.out.println("\n[2/3] Cargando vuelos...");
-        flights = DataLoader.loadFlights(flightsFile.getAbsolutePath(), airportMap);
+        flights = DataLoader.loadFlights(flightsFile.getAbsolutePath(), airportMap, 2025, 12, 31);
         System.out.println("   ✅ Vuelos cargados: " + flights.size());
         
-        // 3. Cargar pedidos
-        System.out.println("\n[3/3] Cargando pedidos...");
-        orders = DataLoader.loadOrders(ordersFile.getAbsolutePath(), airportMap);
+        // 3. Cargar pedidos (con fechas relativas dd-hh-mm)
+        System.out.println("\n[3/3] Cargando pedidos (formato: dd,hh,mm,dest,###,IdClien)...");
+        System.out.println("   📅 Simulando: Diciembre 2025");
+        orders = DataLoader.loadOrders(ordersFile.getAbsolutePath(), airportMap, 2025, 12);
         System.out.println("   ✅ Pedidos cargados: " + orders.size());
         
         System.out.println("\n" + "=".repeat(80));

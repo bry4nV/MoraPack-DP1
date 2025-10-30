@@ -1,4 +1,4 @@
-package pe.edu.pucp.morapack.web.dto.tabu;
+package pe.edu.pucp.morapack.dto.simulation;
 
 public class AeropuertoDTO {
     public int id;
@@ -10,3 +10,4 @@ public class AeropuertoDTO {
     public int gmt;
     public boolean esSede;
 }
+

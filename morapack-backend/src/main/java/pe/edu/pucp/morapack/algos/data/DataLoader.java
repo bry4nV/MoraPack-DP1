@@ -77,8 +77,15 @@ public class DataLoader {
         return airports;
     }
 
-    public static List<PlannerFlight> loadFlights(String filePath, Map<String, PlannerAirport> airportMap) throws IOException {
-        List<PlannerFlight> flights = new ArrayList<>();
+    /**
+     * Load flight templates from CSV (without specific dates, just times).
+     * Flight templates represent recurring flights that happen daily.
+     * 
+     * CSV format: Origen,Destino,HoraOrigen,HoraDestino,Capacidad
+     * Example: SKBO,SEQM,03:34,05:21,0300
+     */
+    public static List<pe.edu.pucp.morapack.algos.scheduler.FlightTemplate> loadFlightTemplates(String filePath, Map<String, PlannerAirport> airportMap) throws IOException {
+        List<pe.edu.pucp.morapack.algos.scheduler.FlightTemplate> templates = new ArrayList<>();
         DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
         int idCounter = 1;
         
@@ -91,42 +98,84 @@ public class DataLoader {
                 String[] parts = line.split(",");
                 if (parts.length < 5) continue;
                 
-                String originCode = parts[0];
-                String destCode = parts[1];
-                String departureTime = parts[2];
-                String arrivalTime = parts[3];
-                int capacity = Integer.parseInt(parts[4]);
+                String originCode = parts[0].trim();
+                String destCode = parts[1].trim();
+                String departureTime = parts[2].trim();
+                String arrivalTime = parts[3].trim();
+                int capacity = Integer.parseInt(parts[4].trim());
                 
                 PlannerAirport origin = airportMap.get(originCode);
                 PlannerAirport destination = airportMap.get(destCode);
                 
                 if (origin == null || destination == null) {
-                    System.out.println("Warning: Could not find airport for flight: " + originCode + " -> " + destCode);
+                    System.out.println("   ⚠️  Unknown airport in flight: " + originCode + " -> " + destCode);
                     continue;
                 }
                 
-                // Parse times
+                // Parse times (local times of each airport)
                 LocalTime depTime = LocalTime.parse(departureTime, timeFormatter);
                 LocalTime arrTime = LocalTime.parse(arrivalTime, timeFormatter);
                 
-                // Create flight using October 2025 dates to match orders
-                LocalDateTime depDateTime = LocalDateTime.of(2025, 10, 1, depTime.getHour(), depTime.getMinute());
-                LocalDateTime arrDateTime = LocalDateTime.of(2025, 10, 1, arrTime.getHour(), arrTime.getMinute());
+                // Create flight template
+                pe.edu.pucp.morapack.algos.scheduler.FlightTemplate template = 
+                    new pe.edu.pucp.morapack.algos.scheduler.FlightTemplate(
+                        idCounter++, origin, destination, depTime, arrTime, capacity, 1000.0
+                    );
                 
-                // If arrival is before departure, it means the flight arrives the next day
-                if (arrDateTime.isBefore(depDateTime)) {
-                    arrDateTime = arrDateTime.plusDays(1);
-                }
-                
-                // Create flights for multiple days (October 1-31, 2025)
-                for (int dayOffset = 0; dayOffset < 31; dayOffset++) {
-                    LocalDateTime flightDepDateTime = depDateTime.plusDays(dayOffset);
-                    LocalDateTime flightArrDateTime = arrDateTime.plusDays(dayOffset);
-                    flights.add(new PlannerFlight(idCounter++, origin, destination, flightDepDateTime, flightArrDateTime, capacity, 1000.0));
-                }
+                templates.add(template);
             }
         }
+        
+        System.out.println("   ✅ Loaded " + templates.size() + " flight templates");
+        return templates;
+    }
+    
+    /**
+     * Load flights for a specific time period using flight templates.
+     * Generates actual flights with specific dates from templates.
+     * 
+     * @param filePath Path to flights CSV
+     * @param airportMap Map of airport codes to PlannerAirport objects
+     * @param year Year to generate flights for
+     * @param month Month to generate flights for
+     * @param daysToGenerate Number of days to generate flights for
+     * @return List of PlannerFlight objects with specific dates
+     */
+    public static List<PlannerFlight> loadFlights(String filePath, Map<String, PlannerAirport> airportMap, int year, int month, int daysToGenerate) throws IOException {
+        System.out.println("   📋 Loading flights from: " + filePath);
+        System.out.println("   📅 Generating flights for: " + year + "-" + String.format("%02d", month) + " (" + daysToGenerate + " days)");
+        
+        // Load flight templates
+        List<pe.edu.pucp.morapack.algos.scheduler.FlightTemplate> templates = loadFlightTemplates(filePath, airportMap);
+        
+        // Use FlightExpander to generate actual flights
+        pe.edu.pucp.morapack.algos.scheduler.FlightExpander expander = 
+            new pe.edu.pucp.morapack.algos.scheduler.FlightExpander();
+        
+        List<PlannerFlight> flights = new ArrayList<>();
+        LocalDate startDate = LocalDate.of(year, month, 1);
+        
+        for (int day = 0; day < daysToGenerate; day++) {
+            LocalDate currentDate = startDate.plusDays(day);
+            
+            for (pe.edu.pucp.morapack.algos.scheduler.FlightTemplate template : templates) {
+                PlannerFlight flight = expander.expandForDate(template, currentDate);
+                flights.add(flight);
+            }
+        }
+        
+        System.out.println("   ✅ Generated " + flights.size() + " flights (" + templates.size() + " templates × " + daysToGenerate + " days)");
         return flights;
+    }
+    
+    /**
+     * Legacy method for backwards compatibility.
+     * Defaults to generating flights for October 2025 (31 days).
+     * @deprecated Use {@link #loadFlights(String, Map, int, int, int)} instead
+     */
+    @Deprecated
+    public static List<PlannerFlight> loadFlights(String filePath, Map<String, PlannerAirport> airportMap) throws IOException {
+        return loadFlights(filePath, airportMap, 2025, 10, 31);
     }
 
     // Helper method to parse day-hour-minute format from order files
@@ -160,57 +209,164 @@ public class DataLoader {
         }
     }
 
-    public static List<PlannerOrder> loadOrders(String filePath, Map<String, PlannerAirport> airportMap) throws IOException {
+    /**
+     * Load orders from CSV with relative dates (dd-hh-mm format).
+     * 
+     * CSV format: dd,hh,mm,dest,###,IdClien
+     * Example: 04,16,22,EDDI,344,6084676
+     * 
+     * @param filePath Path to orders CSV file
+     * @param airportMap Map of airport codes to PlannerAirport objects
+     * @param year Year for simulation (e.g., 2025)
+     * @param month Month for simulation (1-12)
+     * @return List of PlannerOrder objects
+     */
+    public static List<PlannerOrder> loadOrders(String filePath, Map<String, PlannerAirport> airportMap, int year, int month) throws IOException {
+        List<PlannerOrder> orders = new ArrayList<>();
+        int orderId = 1;
+        int skippedHubs = 0;
+        int skippedInvalid = 0;
+        
+        // Main hubs (production centers) - orders to these are local deliveries
+        Set<String> mainHubs = Set.of("SPIM", "EBCI", "UBBB");
+        
+        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+            // Skip header
+            String header = br.readLine();
+            System.out.println("   📋 Loading orders from: " + filePath);
+            System.out.println("   📅 Reference period: " + year + "-" + String.format("%02d", month));
+            
+            String line;
+            int lineNumber = 1;
+            while ((line = br.readLine()) != null) {
+                lineNumber++;
+                String[] parts = line.split(",");
+                if (parts.length < 6) {
+                    skippedInvalid++;
+                    continue;
+                }
+                
+                try {
+                    int day = Integer.parseInt(parts[0].trim());
+                    int hour = Integer.parseInt(parts[1].trim());
+                    int minute = Integer.parseInt(parts[2].trim());
+                    String destCode = parts[3].trim();
+                    int quantity = Integer.parseInt(parts[4].trim());
+                    String clientId = parts[5].trim();
+                    
+                    // ⬇️ FILTER: Exclude orders to main hubs (local delivery, no air transport needed)
+                    if (mainHubs.contains(destCode)) {
+                        skippedHubs++;
+                        continue;
+                    }
+                    
+                    // Get destination airport
+                    PlannerAirport destination = airportMap.get(destCode);
+                    if (destination == null) {
+                        System.out.println("   ⚠️  Line " + lineNumber + ": Unknown airport code: " + destCode);
+                        skippedInvalid++;
+                        continue;
+                    }
+                    
+                    // Determine origin based on destination continent and proximity
+                    PlannerAirport origin = determineOptimalOrigin(destination, airportMap);
+                    if (origin == null) {
+                        System.out.println("   ⚠️  Line " + lineNumber + ": Could not determine origin for: " + destCode);
+                        skippedInvalid++;
+                        continue;
+                    }
+                    
+                    // Convert relative date (dd-hh-mm) to absolute timestamp
+                    LocalDateTime orderTime = LocalDateTime.of(year, month, day, hour, minute);
+                    
+                    // Create order
+                    PlannerOrder order = new PlannerOrder(orderId++, quantity, origin, destination);
+                    order.setOrderTime(orderTime);
+                    order.setClientId(clientId);
+                    orders.add(order);
+                    
+                } catch (Exception e) {
+                    System.out.println("   ⚠️  Line " + lineNumber + " parsing error: " + e.getMessage());
+                    skippedInvalid++;
+                }
+            }
+        }
+        
+        System.out.println("   ✅ Successfully loaded " + orders.size() + " orders");
+        if (skippedHubs > 0) {
+            System.out.println("   ⏭️  Skipped " + skippedHubs + " orders to main hubs (local delivery)");
+        }
+        if (skippedInvalid > 0) {
+            System.out.println("   ⚠️  Skipped " + skippedInvalid + " invalid/malformed orders");
+        }
+        
+        return orders;
+    }
+    
+    /**
+     * Load orders from CSV with absolute timestamps (ISO 8601 format).
+     * 
+     * CSV format: timestamp,destination,quantity,clientId
+     * Example: 2025-12-04T16:22:00,EDDI,344,6084676
+     * 
+     * @param filePath Path to orders CSV file
+     * @param airportMap Map of airport codes to PlannerAirport objects
+     * @return List of PlannerOrder objects
+     */
+    public static List<PlannerOrder> loadOrdersWithAbsoluteDates(String filePath, Map<String, PlannerAirport> airportMap) throws IOException {
         List<PlannerOrder> orders = new ArrayList<>();
         int orderId = 1;
         
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
             // Skip header
-            br.readLine();
+            String header = br.readLine();
+            System.out.println("   📋 CSV Header: " + header);
             
             String line;
+            int lineNumber = 1;
             while ((line = br.readLine()) != null) {
+                lineNumber++;
                 String[] parts = line.split(",");
-                if (parts.length < 6) continue;
-                
-                int day = Integer.parseInt(parts[0].trim());
-                int hour = Integer.parseInt(parts[1].trim());
-                int minute = Integer.parseInt(parts[2].trim());
-                String destCode = parts[3].trim();
-                int quantity = Integer.parseInt(parts[4].trim());
-                String clientId = parts[5].trim();
-                
-                // Get destination airport
-                PlannerAirport destination = airportMap.get(destCode);
-                if (destination == null) {
-                    System.out.println("Warning: Could not find airport for code: " + destCode);
+                if (parts.length < 4) {
+                    System.out.println("   ⚠️  Line " + lineNumber + " skipped: insufficient columns");
                     continue;
                 }
                 
-                // Determine origin based on destination continent and proximity
-                PlannerAirport origin = determineOptimalOrigin(destination, airportMap);
-                if (origin == null) {
-                    System.out.println("Error: Could not determine origin for destination: " + destCode);
-                    continue;
+                try {
+                    // Parse absolute timestamp (ISO 8601)
+                    String timestampStr = parts[0].trim();
+                    LocalDateTime orderTime = LocalDateTime.parse(timestampStr);
+                    
+                    String destCode = parts[1].trim();
+                    int quantity = Integer.parseInt(parts[2].trim());
+                    String clientId = parts[3].trim();
+                    
+                    // Get destination airport
+                    PlannerAirport destination = airportMap.get(destCode);
+                    if (destination == null) {
+                        System.out.println("   ⚠️  Line " + lineNumber + ": Unknown airport code: " + destCode);
+                        continue;
+                    }
+                    
+                    // Determine origin based on destination continent and proximity
+                    PlannerAirport origin = determineOptimalOrigin(destination, airportMap);
+                    if (origin == null) {
+                        System.out.println("   ⚠️  Line " + lineNumber + ": Could not determine origin for: " + destCode);
+                        continue;
+                    }
+                    
+                    PlannerOrder order = new PlannerOrder(orderId++, quantity, origin, destination);
+                    order.setOrderTime(orderTime);
+                    order.setClientId(clientId);
+                    orders.add(order);
+                    
+                } catch (Exception e) {
+                    System.out.println("   ⚠️  Line " + lineNumber + " parsing error: " + e.getMessage());
                 }
-                
-                // Create order time based on day, hour, minute
-                // Use current month/year so orders aren't in the past
-                LocalDate today = LocalDate.now();
-                LocalDateTime orderTime = LocalDateTime.of(today.getYear(), today.getMonthValue(), 
-                    Math.min(day, today.lengthOfMonth()), hour, minute);
-                // If order would be in the past, move it to tomorrow
-                if (orderTime.isBefore(LocalDateTime.now())) {
-                    orderTime = orderTime.plusDays(1);
-                }
-                
-                PlannerOrder order = new PlannerOrder(orderId++, quantity, origin, destination);
-                // Set the order time explicitly
-                order.setOrderTime(orderTime);
-                orders.add(order);
             }
         }
         
+        System.out.println("   ✅ Successfully parsed " + orders.size() + " orders with absolute timestamps");
         return orders;
     }
     

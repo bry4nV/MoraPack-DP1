@@ -1,4 +1,4 @@
-package pe.edu.pucp.morapack.web.dto.tabu;
+package pe.edu.pucp.morapack.dto.simulation;
 
 public class TabuSearchMeta {
     public int iteration;
@@ -14,3 +14,4 @@ public class TabuSearchMeta {
         this.snapshotId = snapshotId;
     }
 }
+

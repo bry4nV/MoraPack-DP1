@@ -112,10 +112,8 @@ public class TabuSearchPlannerCostFunction {
                 latestArrival
             );
 
-            // Ajustar por zona horaria
-            int gmt = order.getDestination().getGmt();
-            deliveryHours += gmt;
-
+            // All timestamps are in UTC, no timezone conversion needed
+            
             // Obtener plazo máximo
             long maxHours = order.getMaxDeliveryHours();
 

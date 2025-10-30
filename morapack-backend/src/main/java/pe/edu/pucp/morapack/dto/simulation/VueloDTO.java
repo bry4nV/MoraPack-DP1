@@ -1,4 +1,4 @@
-package pe.edu.pucp.morapack.web.dto.tabu;
+package pe.edu.pucp.morapack.dto.simulation;
 
 public class VueloDTO {
     public String codigo;
@@ -10,3 +10,4 @@ public class VueloDTO {
     public boolean preplanificado;
     public String estado;
 }
+

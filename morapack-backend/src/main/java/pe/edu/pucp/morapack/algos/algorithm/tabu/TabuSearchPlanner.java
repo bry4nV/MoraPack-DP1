@@ -566,13 +566,8 @@ public class TabuSearchPlanner implements IOptimizer {
                 PlannerFlight flight = flights.get(i);
                 String airportCode = flight.getDestination().getCode();
                 
-                // Los hubs principales tienen stock ilimitado (no validar)
-                PlannerAirport airport = airportMap.get(airportCode);
-                if (airport != null && airport.isMainHub()) {
-                    continue;
-                }
-                
-                // Acumular carga en este aeropuerto
+                // Acumular carga en este aeropuerto (incluyendo hubs)
+                // NOTA: Hubs tienen producción ilimitada, pero capacidad física limitada
                 maxLoad.merge(airportCode, quantity, Integer::sum);
             }
         }
@@ -613,12 +608,8 @@ public class TabuSearchPlanner implements IOptimizer {
             PlannerFlight flight = flights.get(i);
             PlannerAirport destination = flight.getDestination();
             
-            // Los hubs principales tienen capacidad "ilimitada" (stock ilimitado según requisitos)
-            if (destination.isMainHub()) {
-                continue;
-            }
-            
-            // Verificar si el aeropuerto puede acomodar la cantidad
+            // Verificar si el aeropuerto puede acomodar la cantidad (incluyendo hubs)
+            // NOTA: Hubs tienen producción ilimitada, pero capacidad física limitada
             if (!airportManager.hasAvailableCapacity(destination, quantity)) {
                 return false;
             }
@@ -637,15 +628,15 @@ public class TabuSearchPlanner implements IOptimizer {
     private void updateAirportCapacities(RouteOption route, int quantity, AirportStorageManager airportManager) {
         List<PlannerFlight> flights = route.getFlights();
         
-        // Reservar capacidad en cada aeropuerto intermedio
+        // Reservar capacidad física en cada aeropuerto intermedio
+        // NOTA: Main hubs tienen PRODUCCIÓN ilimitada, pero CAPACIDAD FÍSICA limitada
+        // Todos los aeropuertos tienen límite de espacio de almacenamiento
         for (int i = 0; i < flights.size() - 1; i++) {
             PlannerFlight flight = flights.get(i);
             PlannerAirport destination = flight.getDestination();
             
-            // Los hubs principales no necesitan tracking (stock ilimitado)
-            if (!destination.isMainHub()) {
-                airportManager.reserveCapacity(destination, quantity);
-            }
+            // Validar capacidad física del aeropuerto (incluyendo hubs)
+            airportManager.reserveCapacity(destination, quantity);
         }
     }
     

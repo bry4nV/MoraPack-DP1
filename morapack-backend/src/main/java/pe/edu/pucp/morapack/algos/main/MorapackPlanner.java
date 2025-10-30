@@ -39,12 +39,12 @@ public class MorapackPlanner {
             Map<String, PlannerAirport> airportMap = airports.stream()
                     .collect(Collectors.toMap(PlannerAirport::getCode, a -> a));
 
-            // Load flights
-            List<PlannerFlight> availableFlights = DataLoader.loadFlights(flightsFile, airportMap);
+            // Load flights (generar para Diciembre 2025, 31 días)
+            List<PlannerFlight> availableFlights = DataLoader.loadFlights(flightsFile, airportMap, 2025, 12, 31);
             System.out.println("Loaded " + availableFlights.size() + " flights");
 
-            // Load orders
-            List<PlannerOrder> pendingOrders = DataLoader.loadOrders(ordersFile, airportMap);
+            // Load orders (usando Diciembre 2025 como referencia)
+            List<PlannerOrder> pendingOrders = DataLoader.loadOrders(ordersFile, airportMap, 2025, 12);
             System.out.println("Loaded " + pendingOrders.size() + " orders");
 
             System.out.println("\n[INITIAL INPUT DATA]");
