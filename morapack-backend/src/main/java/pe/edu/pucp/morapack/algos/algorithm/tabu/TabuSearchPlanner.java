@@ -10,6 +10,7 @@ import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
 import pe.edu.pucp.morapack.algos.entities.PlannerOrder;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
 import pe.edu.pucp.morapack.algos.utils.RouteOption;
+import pe.edu.pucp.morapack.algos.utils.AirportStorageManager;
 import pe.edu.pucp.morapack.algos.algorithm.tabu.moves.*;
 
 import java.util.*;
@@ -312,6 +313,11 @@ public class TabuSearchPlanner implements IOptimizer {
                 TabuSolution testSolution = new TabuSolution(currentSolution);
                 move.apply(testSolution);
                 
+                // ✅ VALIDAR: Verificar que la solución respeta capacidades de aeropuertos
+                if (!isValidSolution(testSolution, airports)) {
+                    continue;  // Skip este movimiento, viola capacidades
+                }
+                
                 // Calcular costo
                 double moveCost = TabuSearchPlannerCostFunction.calculateCost(
                     testSolution, flights, airports, totalIterations, config.getMaxIterations());
@@ -531,7 +537,117 @@ public class TabuSearchPlanner implements IOptimizer {
         }
     }
     
+    // ========== VALIDACIÓN DE CAPACIDADES ==========
+    
+    /**
+     * Verifica si una solución respeta las capacidades de aeropuertos.
+     * Calcula las cargas proyectadas en cada aeropuerto y verifica que no excedan capacidades.
+     * 
+     * @param solution Solución a validar
+     * @param airports Lista de aeropuertos
+     * @return true si la solución es válida (no excede capacidades)
+     */
+    private boolean isValidSolution(TabuSolution solution, List<PlannerAirport> airports) {
+        // Crear un mapa de aeropuertos por código para acceso rápido
+        Map<String, PlannerAirport> airportMap = new HashMap<>();
+        for (PlannerAirport airport : airports) {
+            airportMap.put(airport.getCode(), airport);
+        }
+        
+        // Calcular carga máxima proyectada en cada aeropuerto
+        Map<String, Integer> maxLoad = new HashMap<>();
+        
+        for (PlannerShipment shipment : solution.getPlannerShipments()) {
+            List<PlannerFlight> flights = shipment.getFlights();
+            int quantity = shipment.getQuantity();
+            
+            // Para cada aeropuerto intermedio (no el destino final)
+            for (int i = 0; i < flights.size() - 1; i++) {
+                PlannerFlight flight = flights.get(i);
+                String airportCode = flight.getDestination().getCode();
+                
+                // Los hubs principales tienen stock ilimitado (no validar)
+                PlannerAirport airport = airportMap.get(airportCode);
+                if (airport != null && airport.isMainHub()) {
+                    continue;
+                }
+                
+                // Acumular carga en este aeropuerto
+                maxLoad.merge(airportCode, quantity, Integer::sum);
+            }
+        }
+        
+        // Verificar que ningún aeropuerto exceda su capacidad
+        for (Map.Entry<String, Integer> entry : maxLoad.entrySet()) {
+            String code = entry.getKey();
+            int load = entry.getValue();
+            
+            PlannerAirport airport = airportMap.get(code);
+            if (airport != null) {
+                if (load > airport.getStorageCapacity()) {
+                    // Solución inválida: excede capacidad
+                    return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+    
     // ========== GREEDY DINÁMICO ==========
+    
+    /**
+     * Verifica si una ruta puede acomodar la cantidad de productos
+     * considerando las capacidades de los aeropuertos intermedios.
+     * 
+     * @param route La ruta a verificar
+     * @param quantity Cantidad de productos a transportar
+     * @param airportManager Gestor de capacidades de aeropuertos
+     * @return true si todos los aeropuertos de escala tienen capacidad
+     */
+    private boolean canRouteAccommodateAirportCapacity(RouteOption route, int quantity, AirportStorageManager airportManager) {
+        List<PlannerFlight> flights = route.getFlights();
+        
+        // Verificar cada aeropuerto intermedio (no el destino final)
+        for (int i = 0; i < flights.size() - 1; i++) {
+            PlannerFlight flight = flights.get(i);
+            PlannerAirport destination = flight.getDestination();
+            
+            // Los hubs principales tienen capacidad "ilimitada" (stock ilimitado según requisitos)
+            if (destination.isMainHub()) {
+                continue;
+            }
+            
+            // Verificar si el aeropuerto puede acomodar la cantidad
+            if (!airportManager.hasAvailableCapacity(destination, quantity)) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Actualiza las capacidades de los aeropuertos después de asignar productos a una ruta
+     * 
+     * @param route La ruta por la que se transportan productos
+     * @param quantity Cantidad de productos asignados
+     * @param airportManager Gestor de capacidades
+     */
+    private void updateAirportCapacities(RouteOption route, int quantity, AirportStorageManager airportManager) {
+        List<PlannerFlight> flights = route.getFlights();
+        
+        // Reservar capacidad en cada aeropuerto intermedio
+        for (int i = 0; i < flights.size() - 1; i++) {
+            PlannerFlight flight = flights.get(i);
+            PlannerAirport destination = flight.getDestination();
+            
+            // Los hubs principales no necesitan tracking (stock ilimitado)
+            if (!destination.isMainHub()) {
+                airportManager.reserveCapacity(destination, quantity);
+            }
+        }
+    }
     
     /**
      * Genera solución inicial distribuyendo productos dinámicamente entre rutas disponibles
@@ -543,11 +659,16 @@ public class TabuSearchPlanner implements IOptimizer {
 
         TabuSolution solution = new TabuSolution();
         Map<PlannerFlight, Integer> flightCapacityRemaining = new HashMap<>();
+        
+        // ✅ NUEVO: Inicializar gestor de capacidades de aeropuertos
+        AirportStorageManager airportManager = new AirportStorageManager(airports);
 
-        // Inicializar capacidades disponibles
+        // Inicializar capacidades disponibles de vuelos
         for (PlannerFlight flight : flights) {
             flightCapacityRemaining.put(flight, flight.getCapacity());
         }
+        
+        System.out.println(String.format("[CAPACITY] Initialized airport capacity tracking for %d airports", airports.size()));
         
         // Ordenar pedidos por prioridad (urgencia) con algo de aleatoriedad
         List<PlannerOrder> prioritizedOrders = new ArrayList<>(orders);
@@ -589,6 +710,11 @@ public class TabuSearchPlanner implements IOptimizer {
                 
                 int toAssign = Math.min(remainingProducts, route.getMinCapacity());
                 if (toAssign > 0) {
+                    // ✅ VERIFICAR capacidad de aeropuertos antes de asignar
+                    if (!canRouteAccommodateAirportCapacity(route, toAssign, airportManager)) {
+                        continue; // Skip esta ruta, no hay capacidad en aeropuertos
+                    }
+                    
                     PlannerShipment shipment = new PlannerShipment(
                         nextShipmentId++,
                         order,
@@ -597,6 +723,10 @@ public class TabuSearchPlanner implements IOptimizer {
                     );
                     orderShipments.add(shipment);
                     updateCapacities(route.getFlights(), toAssign, flightCapacityRemaining);
+                    
+                    // ✅ ACTUALIZAR capacidades de aeropuertos
+                    updateAirportCapacities(route, toAssign, airportManager);
+                    
                     remainingProducts -= toAssign;
                     
                     System.out.println(String.format("   Assigned %d products to DIRECT route: %s",
@@ -629,6 +759,11 @@ public class TabuSearchPlanner implements IOptimizer {
                     
                     int toAssign = Math.min(remainingProducts, route.getMinCapacity());
                     if (toAssign > 0) {
+                        // ✅ VERIFICAR capacidad de aeropuertos antes de asignar
+                        if (!canRouteAccommodateAirportCapacity(route, toAssign, airportManager)) {
+                            continue; // Skip esta ruta, no hay capacidad en aeropuertos
+                        }
+                        
                         PlannerShipment shipment = new PlannerShipment(
                             nextShipmentId++,
                             order,
@@ -637,6 +772,10 @@ public class TabuSearchPlanner implements IOptimizer {
                         );
                         orderShipments.add(shipment);
                         updateCapacities(route.getFlights(), toAssign, flightCapacityRemaining);
+                        
+                        // ✅ ACTUALIZAR capacidades de aeropuertos
+                        updateAirportCapacities(route, toAssign, airportManager);
+                        
                         remainingProducts -= toAssign;
                         
                         System.out.println(String.format("   Assigned %d products to CONNECTION route (%d stops): %s",

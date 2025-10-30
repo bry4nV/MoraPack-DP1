@@ -71,6 +71,14 @@ public class PlannerAirport {
     public Continent getContinent() {
         return country != null ? country.getContinent() : null;
     }
+    
+    /**
+     * Verifica si este aeropuerto es una sede principal (hub)
+     * Sedes principales: Lima (SPIM), Bruselas (EBCI), Baku (UBBB)
+     */
+    public boolean isMainHub() {
+        return "SPIM".equals(code) || "EBCI".equals(code) || "UBBB".equals(code);
+    }
 
     @Override
     public boolean equals(Object o) {
