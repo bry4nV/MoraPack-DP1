@@ -17,33 +17,33 @@ import java.util.List;
 public class Order {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "idPedido")
+    @Column(name = "ID_Pedido")
     private Long id;
 
-    @Column(name = "cantPaquetes")
+    @Column(name = "CantidadPedidos")
     private Integer packageCount;
 
-    @Column(name = "idAeropuertoDestino")
+    @Column(name = "dest")
     // DB column is VARCHAR(4) (airport code) according to provided DDL
     private String airportDestinationId;
 
     @Column(name = "prioridad")
     private Integer priority;
 
-    @Column(name = "idCliente")
+    @Column(name = "idClien")
     // DB column is VARCHAR(10) according to provided DDL
     private String clientId;
 
     @Column(name = "estado")
     private String status;
 
-    @Column(name = "diaPedido")
+    @Column(name = "dia")
     private Integer day;
 
-    @Column(name = "horaPedido")
+    @Column(name = "hora")
     private Integer hour;
 
-    @Column(name = "minutoPedido")
+    @Column(name = "minutos")
     private Integer minute;
 
     // domain fields kept for compatibility with algos domain; not persisted here
