@@ -12,7 +12,13 @@ public class PlannerAirport {
     private String city;
     private Country country;
     private int storageCapacity;
-    private int gmt; // timezone offset
+    
+    /**
+     * GMT offset for this airport (e.g., -5 for Lima, +1 for Amsterdam).
+     * NOTE: Currently unused. All timestamps in the system are in UTC.
+     * This field is kept for reference and potential future use.
+     */
+    private int gmt;
 
     private double latitude;
     private double longitude;
@@ -70,6 +76,14 @@ public class PlannerAirport {
      */
     public Continent getContinent() {
         return country != null ? country.getContinent() : null;
+    }
+    
+    /**
+     * Verifica si este aeropuerto es una sede principal (hub)
+     * Sedes principales: Lima (SPIM), Bruselas (EBCI), Baku (UBBB)
+     */
+    public boolean isMainHub() {
+        return "SPIM".equals(code) || "EBCI".equals(code) || "UBBB".equals(code);
     }
 
     @Override

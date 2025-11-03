@@ -1,8 +1,9 @@
-package pe.edu.pucp.morapack.web.tabsim;
+package pe.edu.pucp.morapack.controller;
 
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Controller;
+import pe.edu.pucp.morapack.service.TabuSimulationService;
 
 import java.util.Map;
 
@@ -28,3 +29,4 @@ public class TabuSimulationController {
         service.stopSimulation();
     }
 }
+

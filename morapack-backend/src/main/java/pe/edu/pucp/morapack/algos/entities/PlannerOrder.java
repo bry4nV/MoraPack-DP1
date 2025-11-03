@@ -14,6 +14,7 @@ public class PlannerOrder {
     private PlannerAirport destination;
     private long maxDeliveryHours;
     private LocalDateTime orderTime;
+    private String clientId;  // ID del cliente que realizó el pedido
     private List<Shipment> shipments = new ArrayList<>();
 
     public PlannerOrder(int id, int quantity, PlannerAirport origin, PlannerAirport destination) {
@@ -33,6 +34,9 @@ public class PlannerOrder {
 
     public LocalDateTime getOrderTime() { return orderTime; }
     public void setOrderTime(LocalDateTime orderTime) { this.orderTime = orderTime; }
+    
+    public String getClientId() { return clientId; }
+    public void setClientId(String clientId) { this.clientId = clientId; }
     
     public List<Shipment> getShipments() {
         return new ArrayList<>(shipments);

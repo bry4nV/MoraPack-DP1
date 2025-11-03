@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoraPack - Simulation Test</title>
+    
+    <!-- SockJS and STOMP.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 25px;
+        }
+        
+        .section {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+        }
+        
+        .section-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .config-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .config-item {
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        label {
+            display: block;
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        select, input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        .btn-start {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-pause {
+            background: #f59e0b;
+            color: white;
+        }
+        
+        .btn-resume {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .btn-stop {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-reset {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .speed-control {
+            margin-top: 15px;
+        }
+        
+        .speed-options {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .speed-btn {
+            flex: 1;
+            min-width: 60px;
+            padding: 8px 16px;
+            background: #e5e7eb;
+            color: #374151;
+        }
+        
+        .speed-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .status-display {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .status-idle {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        
+        .status-running {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-paused {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .status-completed {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .status-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .status-stopped {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
+        
+        .status-icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        
+        .status-text {
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .status-details {
+            font-size: 13px;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 24px;
+            background: #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-top: 10px;
+            position: relative;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .info-card {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .info-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+        
+        .info-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+        
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .connection-status.connected {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .connection-status.disconnected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .results-display {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .results-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .results-content {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #4b5563;
+            white-space: pre-wrap;
+        }
+        
+        .log-entry {
+            padding: 8px;
+            margin-bottom: 8px;
+            background: #f9fafb;
+            border-radius: 4px;
+            border-left: 3px solid #667eea;
+        }
+        
+        .log-time {
+            color: #6b7280;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 MoraPack Simulation</h1>
+        <p class="subtitle">Real-time WebSocket Testing Interface</p>
+        
+        <div id="connectionStatus" class="connection-status disconnected">
+            <span class="connection-dot"></span>
+            <span id="connectionText">Disconnected</span>
+        </div>
+        
+        <!-- Configuration Section -->
+        <div class="section">
+            <div class="section-title">⚙️ Configuration</div>
+            
+            <div class="config-row">
+                <div class="config-item">
+                    <label for="scenario">Scenario Type</label>
+                    <select id="scenario">
+                        <option value="WEEKLY">WEEKLY (K=14, 7 days)</option>
+                        <option value="COLLAPSE">COLLAPSE (K=75, until break)</option>
+                        <option value="DAILY">DAILY (K=1, real-time)</option>
+                    </select>
+                </div>
+                
+                <div class="config-item">
+                    <label for="customK">Custom K (optional)</label>
+                    <input type="number" id="customK" placeholder="14" min="1" max="100">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Controls Section -->
+        <div class="section">
+            <div class="section-title">🎮 Controls</div>
+            
+            <div class="controls">
+                <button id="btnStart" class="btn-start" onclick="startSimulation()">
+                    ▶️ Start
+                </button>
+                <button id="btnPause" class="btn-pause" onclick="pauseSimulation()" disabled>
+                    ⏸️ Pause
+                </button>
+                <button id="btnResume" class="btn-resume" onclick="resumeSimulation()" disabled>
+                    ▶️ Resume
+                </button>
+                <button id="btnStop" class="btn-stop" onclick="stopSimulation()" disabled>
+                    ⏹️ Stop
+                </button>
+                <button id="btnReset" class="btn-reset" onclick="resetSimulation()">
+                    ↺ Reset
+                </button>
+            </div>
+            
+            <div class="speed-control">
+                <label>⚡ Simulation Speed</label>
+                <div class="speed-options">
+                    <button class="speed-btn" onclick="setSpeed(0.5)">0.5x</button>
+                    <button class="speed-btn active" onclick="setSpeed(1.0)">1x</button>
+                    <button class="speed-btn" onclick="setSpeed(2.0)">2x</button>
+                    <button class="speed-btn" onclick="setSpeed(5.0)">5x</button>
+                    <button class="speed-btn" onclick="setSpeed(10.0)">10x</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Status Section -->
+        <div class="section">
+            <div class="section-title">📊 Status</div>
+            
+            <div id="statusDisplay" class="status-display status-idle">
+                <div class="status-text">
+                    <span class="status-icon">⚪</span>
+                    <span id="statusState">IDLE</span>
+                </div>
+                <div id="statusMessage" class="status-details">
+                    Ready to start simulation
+                </div>
+            </div>
+            
+            <div class="progress-bar">
+                <div id="progressBar" class="progress-fill" style="width: 0%">
+                    <span id="progressText">0%</span>
+                </div>
+            </div>
+            
+            <div class="info-grid">
+                <div class="info-card">
+                    <div class="info-label">Iteration</div>
+                    <div class="info-value" id="iterationValue">0 / 0</div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Speed</div>
+                    <div class="info-value" id="speedValue">1.0x</div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Simulated Time</div>
+                    <div class="info-value" id="timeValue">--:--</div>
+                </div>
+            </div>
+            
+            <div class="results-display">
+                <div class="results-title">📝 Latest Results</div>
+                <div id="resultsContent" class="results-content">
+                    No results yet. Start a simulation to see data.
+                </div>
+            </div>
+        </div>
+        
+        <!-- Log Section -->
+        <div class="section">
+            <div class="section-title">📋 Activity Log</div>
+            <div id="logContainer" style="max-height: 200px; overflow-y: auto;">
+                <div class="log-entry">
+                    <span class="log-time">[Ready]</span> Waiting for WebSocket connection...
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let stompClient = null;
+        let currentSpeed = 1.0;
+        let currentState = 'IDLE';
+        let simulationSubscription = null;
+        let currentSessionId = null;
+        
+        // Connect on page load
+        window.addEventListener('load', () => {
+            connect();
+        });
+        
+        // Connect to WebSocket
+        function connect() {
+            const socket = new SockJS('http://localhost:8080/ws');
+            stompClient = Stomp.over(socket);
+            
+            // Disable debug logging
+            stompClient.debug = null;
+            
+            stompClient.connect({}, function(frame) {
+                log('Connected to WebSocket', 'success');
+                updateConnectionStatus(true);
+                
+                // Subscribe to control topic to receive session ID
+                stompClient.subscribe('/topic/simulation-control', function(message) {
+                    const data = JSON.parse(message.body);
+                    console.log('Received control message:', data);
+                    
+                    if (data.type === 'SESSION_ID') {
+                        handleSessionId(data.sessionId, data.topic);
+                    } else if (data.state) {
+                        // Error message
+                        handleStatusUpdate(data);
+                    }
+                });
+                
+                log('Subscribed to control topic', 'info');
+                
+            }, function(error) {
+                log('Connection error: ' + error, 'error');
+                updateConnectionStatus(false);
+                
+                // Retry connection after 3 seconds
+                setTimeout(() => {
+                    log('Retrying connection...', 'info');
+                    connect();
+                }, 3000);
+            });
+        }
+        
+        // Handle session ID from server
+        function handleSessionId(sessionId, topic) {
+            console.log('Received session ID:', sessionId);
+            console.log('Will subscribe to:', topic);
+            
+            currentSessionId = sessionId;
+            log('Session ID received: ' + sessionId.substring(0, 8) + '...', 'success');
+            
+            // Unsubscribe from previous simulation if exists
+            if (simulationSubscription) {
+                simulationSubscription.unsubscribe();
+            }
+            
+            // Subscribe to simulation-specific topic
+            simulationSubscription = stompClient.subscribe(topic, function(message) {
+                const update = JSON.parse(message.body);
+                console.log('Received simulation update:', update);
+                handleStatusUpdate(update);
+            });
+            
+            log('Subscribed to simulation topic: ' + sessionId.substring(0, 8) + '...', 'success');
+        }
+        
+        // Send control message
+        function sendControl(action, extraData = {}) {
+            if (!stompClient || !stompClient.connected) {
+                log('Not connected to server!', 'error');
+                return;
+            }
+            
+            const message = {
+                action: action,
+                ...extraData
+            };
+            
+            stompClient.send('/app/simulation/control', {}, JSON.stringify(message));
+            log(`Sent: ${action}`, 'info');
+        }
+        
+        // Control functions
+        function startSimulation() {
+            const scenario = document.getElementById('scenario').value;
+            const customK = document.getElementById('customK').value;
+            
+            const message = {
+                scenarioType: scenario
+            };
+            
+            if (customK && customK.trim() !== '') {
+                message.customK = parseInt(customK);
+            }
+            
+            sendControl('START', message);
+            
+            // Update button states
+            document.getElementById('btnStart').disabled = true;
+            document.getElementById('btnPause').disabled = false;
+            document.getElementById('btnStop').disabled = false;
+        }
+        
+        function pauseSimulation() {
+            sendControl('PAUSE');
+            document.getElementById('btnPause').disabled = true;
+            document.getElementById('btnResume').disabled = false;
+        }
+        
+        function resumeSimulation() {
+            sendControl('RESUME');
+            document.getElementById('btnPause').disabled = false;
+            document.getElementById('btnResume').disabled = true;
+        }
+        
+        function stopSimulation() {
+            sendControl('STOP');
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnPause').disabled = true;
+            document.getElementById('btnResume').disabled = true;
+            document.getElementById('btnStop').disabled = true;
+        }
+        
+        function resetSimulation() {
+            sendControl('RESET');
+            
+            // Reset UI
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnPause').disabled = true;
+            document.getElementById('btnResume').disabled = true;
+            document.getElementById('btnStop').disabled = true;
+            
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressText').textContent = '0%';
+            document.getElementById('iterationValue').textContent = '0 / 0';
+            document.getElementById('timeValue').textContent = '--:--';
+        }
+        
+        function setSpeed(speed) {
+            currentSpeed = speed;
+            sendControl('SPEED', { speedMultiplier: speed });
+            
+            // Update UI
+            document.getElementById('speedValue').textContent = speed + 'x';
+            
+            // Update active button
+            document.querySelectorAll('.speed-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+        
+        // Handle status updates from server
+        function handleStatusUpdate(update) {
+            console.log('Status update:', update);
+            
+            currentState = update.state;
+            
+            // Update status display
+            updateStatusDisplay(update);
+            
+            // Update progress
+            if (update.progressPercentage !== null && update.progressPercentage !== undefined) {
+                const percent = Math.round(update.progressPercentage);
+                document.getElementById('progressBar').style.width = percent + '%';
+                document.getElementById('progressText').textContent = percent + '%';
+            }
+            
+            // Update iteration info
+            if (update.currentIteration !== null) {
+                document.getElementById('iterationValue').textContent = 
+                    `${update.currentIteration} / ${update.totalIterations || 0}`;
+            }
+            
+            // Update simulated time
+            if (update.simulatedTime) {
+                const time = new Date(update.simulatedTime);
+                document.getElementById('timeValue').textContent = 
+                    time.toLocaleString('es-PE', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    });
+            }
+            
+            // Update speed
+            if (update.currentSpeed) {
+                document.getElementById('speedValue').textContent = update.currentSpeed + 'x';
+            }
+            
+            // Display results if available
+            if (update.latestResult) {
+                displayResults(update.latestResult);
+            }
+            
+            // Log the update
+            log(`${update.state}: ${update.message}`, getLogType(update.state));
+        }
+        
+        function updateStatusDisplay(update) {
+            const display = document.getElementById('statusDisplay');
+            const stateText = document.getElementById('statusState');
+            const messageText = document.getElementById('statusMessage');
+            
+            // Remove all status classes
+            display.className = 'status-display';
+            
+            // Add appropriate class and icon
+            let icon = '⚪';
+            let className = 'status-idle';
+            
+            switch(update.state) {
+                case 'STARTING':
+                    icon = '🔄';
+                    className = 'status-running';
+                    break;
+                case 'RUNNING':
+                    icon = '🟢';
+                    className = 'status-running';
+                    break;
+                case 'PAUSED':
+                    icon = '⏸️';
+                    className = 'status-paused';
+                    break;
+                case 'STOPPED':
+                    icon = '⏹️';
+                    className = 'status-stopped';
+                    break;
+                case 'COMPLETED':
+                    icon = '✅';
+                    className = 'status-completed';
+                    break;
+                case 'ERROR':
+                    icon = '❌';
+                    className = 'status-error';
+                    break;
+                default:
+                    icon = '⚪';
+                    className = 'status-idle';
+            }
+            
+            display.className = 'status-display ' + className;
+            stateText.innerHTML = `<span class="status-icon">${icon}</span>${update.state}`;
+            messageText.textContent = update.message || 'No message';
+            
+            // Update button states based on state
+            updateButtonStates(update.state);
+        }
+        
+        function updateButtonStates(state) {
+            const btnStart = document.getElementById('btnStart');
+            const btnPause = document.getElementById('btnPause');
+            const btnResume = document.getElementById('btnResume');
+            const btnStop = document.getElementById('btnStop');
+            
+            switch(state) {
+                case 'IDLE':
+                    btnStart.disabled = false;
+                    btnPause.disabled = true;
+                    btnResume.disabled = true;
+                    btnStop.disabled = true;
+                    break;
+                case 'STARTING':
+                case 'RUNNING':
+                    btnStart.disabled = true;
+                    btnPause.disabled = false;
+                    btnResume.disabled = true;
+                    btnStop.disabled = false;
+                    break;
+                case 'PAUSED':
+                    btnStart.disabled = true;
+                    btnPause.disabled = true;
+                    btnResume.disabled = false;
+                    btnStop.disabled = false;
+                    break;
+                case 'STOPPED':
+                case 'COMPLETED':
+                case 'ERROR':
+                    btnStart.disabled = false;
+                    btnPause.disabled = true;
+                    btnResume.disabled = true;
+                    btnStop.disabled = true;
+                    break;
+            }
+        }
+        
+        function displayResults(result) {
+            const resultsContent = document.getElementById('resultsContent');
+            
+            let html = '';
+            
+            if (result.aeropuertos) {
+                html += `<strong>Airports:</strong> ${result.aeropuertos.length}<br>`;
+            }
+            
+            if (result.itinerarios) {
+                html += `<strong>Itineraries:</strong> ${result.itinerarios.length}<br>`;
+                
+                // Show first few itineraries
+                const maxShow = 3;
+                const itineraries = result.itinerarios.slice(0, maxShow);
+                
+                itineraries.forEach((itin, idx) => {
+                    html += `<br><strong>Itinerary ${idx + 1}:</strong><br>`;
+                    html += `- Segments: ${itin.segmentos ? itin.segmentos.length : 0}<br>`;
+                    
+                    if (itin.segmentos && itin.segmentos.length > 0) {
+                        const firstSeg = itin.segmentos[0];
+                        if (firstSeg.vuelo) {
+                            html += `- Route: ${firstSeg.vuelo.origen?.codigo || '?'} → ${firstSeg.vuelo.destino?.codigo || '?'}<br>`;
+                        }
+                    }
+                });
+                
+                if (result.itinerarios.length > maxShow) {
+                    html += `<br>... and ${result.itinerarios.length - maxShow} more`;
+                }
+            }
+            
+            if (!html) {
+                html = 'No detailed results available';
+            }
+            
+            resultsContent.innerHTML = html;
+        }
+        
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connectionStatus');
+            const text = document.getElementById('connectionText');
+            
+            if (connected) {
+                status.className = 'connection-status connected';
+                text.textContent = 'Connected';
+            } else {
+                status.className = 'connection-status disconnected';
+                text.textContent = 'Disconnected';
+            }
+        }
+        
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            
+            const now = new Date().toLocaleTimeString('es-PE');
+            entry.innerHTML = `<span class="log-time">[${now}]</span> ${message}`;
+            
+            logContainer.insertBefore(entry, logContainer.firstChild);
+            
+            // Keep only last 20 entries
+            while (logContainer.children.length > 20) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+        
+        function getLogType(state) {
+            switch(state) {
+                case 'ERROR': return 'error';
+                case 'COMPLETED': return 'success';
+                default: return 'info';
+            }
+        }
+    </script>
+</body>
+</html>
+

@@ -1,4 +1,4 @@
-package pe.edu.pucp.morapack.web.dto.tabu;
+package pe.edu.pucp.morapack.dto.simulation;
 
 public class ItinerarioDTO {
     public String id;
@@ -7,3 +7,6 @@ public class ItinerarioDTO {
     public double positionLon;
     public double positionLat;
 }
+
+
+

@@ -7,28 +7,48 @@ import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
 /**
- * WebSocket/STOMP configuration.
- *
- * NOTE: This configuration is conditional on the property
- * `morapack.websocket.enabled=true`. Set that property to true to enable
- * the STOMP endpoint; keep it false (default) to disable the connection while
- * preserving the code.
+ * WebSocket/STOMP configuration for real-time simulation updates.
+ * 
+ * TWO TYPES OF COMMUNICATION:
+ * 
+ * 1. SIMULATIONS (WEEKLY/COLLAPSE):
+ *    - Per-user sessions: /user/queue/simulation
+ *    - Each user controls their own simulation
+ *    - Controls: Start, Pause, Resume, Stop, Reset, Speed
+ *    - Data from CSV files
+ *    - Results NOT saved to database
+ * 
+ * 2. DAILY OPERATIONS (Live):
+ *    - Broadcast to all: /topic/daily-operations
+ *    - Single shared instance
+ *    - No user controls (automatic)
+ *    - Data from database
+ *    - Results saved to database
  */
 @Configuration
 @EnableWebSocketMessageBroker
-// NOTE: during development we enable the STOMP/SockJS endpoints by default so the demo page
-// can connect without requiring the morapack.websocket.enabled property. Remove this for
-// production or restore the ConditionalOnProperty if you want runtime toggle.
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
-    public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws").setAllowedOriginPatterns("*").withSockJS();
+    public void configureMessageBroker(MessageBrokerRegistry config) {
+        // Enable a simple in-memory message broker
+        // /topic for broadcast (DAILY operations - everyone sees the same)
+        // /user for individual messages (SIMULATIONS - per-user)
+        config.enableSimpleBroker("/topic", "/user");
+        
+        // Prefix for messages FROM client TO server
+        config.setApplicationDestinationPrefixes("/app");
+        
+        // Prefix for user-specific destinations
+        config.setUserDestinationPrefix("/user");
     }
 
     @Override
-    public void configureMessageBroker(MessageBrokerRegistry config) {
-        config.enableSimpleBroker("/topic");
-        config.setApplicationDestinationPrefixes("/app");
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        // Register "/ws" endpoint for WebSocket handshake
+        // Clients connect to: ws://localhost:8080/ws
+        registry.addEndpoint("/ws")
+                .setAllowedOriginPatterns("*")  // CORS - adjust for production
+                .withSockJS();  // Fallback to SockJS if WebSocket not available
     }
 }
