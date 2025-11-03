@@ -26,6 +26,8 @@ type Props = {
   itinerarios: Itinerario[];
   aeropuertos?: Aeropuerto[];
   speedKmh?: number;
+  /** ISO timestamp from backend - if provided, planes move based on simulated time instead of visual speed */
+  simulatedTime?: string;
   center?: [number, number];
   zoom?: number;
   className?: string;
@@ -37,6 +39,7 @@ export default function AnimatedFlights({
   itinerarios,
   aeropuertos = [],
   speedKmh: speedKmhProp = 200,
+  simulatedTime,
   center = [-60, -15],
   zoom = 2.8,
   className = "",
@@ -55,8 +58,18 @@ export default function AnimatedFlights({
   const elapsedSecRef = useRef(0);
   const lastTsRef = useRef<number | null>(null);
 
-  // estado de “vuelo terminado” por itinerario (sólo usado cuando loop=false)
+  // estado de "vuelo terminado" por itinerario (sólo usado cuando loop=false)
   const finishedRef = useRef<boolean[]>([]);
+
+  // ✅ Sync speedKmh when prop changes (from simulation Speed control)
+  useEffect(() => {
+    setSpeedKmh(speedKmhProp);
+  }, [speedKmhProp]);
+
+  // ✅ Reset finished state when itineraries change (new simulation)
+  useEffect(() => {
+    finishedRef.current = new Array(itinerarios.length).fill(false);
+  }, [itinerarios.length]);
 
   const segLengths = useMemo(
     () =>
@@ -160,6 +173,48 @@ export default function AnimatedFlights({
 
       // aeropuertos
       aeropuertos.forEach((a) => {
+        // ✅ Build capacity info section
+        const capacidadTotal = a.capacidadTotal ?? a.capacidadAlmacen ?? 1000;
+        const capacidadUsada = a.capacidadUsada ?? 0;
+        const porcentajeUso = a.porcentajeUso ?? 0;
+        
+        // Determine capacity bar color
+        const getCapacityColor = (percentage: number) => {
+          if (percentage >= 90) return '#ef4444'; // Red
+          if (percentage >= 70) return '#f59e0b'; // Orange
+          if (percentage >= 50) return '#eab308'; // Yellow
+          return '#10b981'; // Green
+        };
+        
+        const capacityHtml = `
+          <hr style="margin:6px 0; border:none; border-top:1px solid #ddd"/>
+          <div style="font-size:11px; color:#333; margin-bottom:4px">
+            <strong>📦 Capacidad:</strong> ${capacidadUsada}/${capacidadTotal} productos
+          </div>
+          <div style="width:100%; background:#e5e7eb; border-radius:4px; height:10px; overflow:hidden">
+            <div style="width:${Math.min(100, porcentajeUso)}%; background:${getCapacityColor(porcentajeUso)}; height:100%; transition:width 0.3s"></div>
+          </div>
+          <div style="font-size:10px; color:#666; margin-top:2px">
+            ${porcentajeUso.toFixed(1)}% usado${porcentajeUso >= 90 ? ' ⚠️ CASI LLENO' : ''}
+          </div>
+        `;
+        
+        // ✅ Build dynamic info section if available
+        const hasRuntimeInfo = (a.pedidosEnEspera ?? 0) > 0 || (a.pedidosDestino ?? 0) > 0 || 
+                               (a.vuelosActivosDesde ?? 0) > 0 || (a.vuelosActivosHacia ?? 0) > 0;
+        
+        const runtimeInfoHtml = hasRuntimeInfo ? `
+          <hr style="margin:6px 0; border:none; border-top:1px solid #ddd"/>
+          <div style="font-size:11px; color:#555">
+            ${(a.pedidosEnEspera ?? 0) > 0 ? `📦 Pedidos en espera: <strong>${a.pedidosEnEspera}</strong><br/>` : ''}
+            ${(a.productosEnEspera ?? 0) > 0 ? `📊 Productos en espera: <strong>${a.productosEnEspera}</strong><br/>` : ''}
+            ${(a.pedidosDestino ?? 0) > 0 ? `🎯 Pedidos destino: <strong>${a.pedidosDestino}</strong><br/>` : ''}
+            ${(a.vuelosActivosDesde ?? 0) > 0 ? `✈️ Vuelos saliendo: <strong>${a.vuelosActivosDesde}</strong><br/>` : ''}
+            ${(a.vuelosActivosHacia ?? 0) > 0 ? `🛬 Vuelos llegando: <strong>${a.vuelosActivosHacia}</strong><br/>` : ''}
+            ${(a.vuelosEnTierra && a.vuelosEnTierra.length > 0) ? `🛫 En tierra: <strong>${a.vuelosEnTierra.length}</strong>` : ''}
+          </div>
+        ` : '';
+        
         const mk = new maplibregl.Marker({ color: a.esSede ? "#10b981" : "#2563eb" })
           .setLngLat([a.longitud, a.latitud])
           .setPopup(
@@ -167,8 +222,9 @@ export default function AnimatedFlights({
               `<div style="font-weight:600">${a.nombre} (${a.codigo})</div>
                <div style="font-size:12px">${a.ciudad}, ${a.pais.nombre} — ${a.pais.continente}</div>
                <div style="font-size:12px">GMT: ${a.gmt}</div>
-               <div style="font-size:12px">Cap. almacén: ${a.capacidadAlmacen}</div>
-               ${a.esSede ? '<div style="font-size:12px;font-weight:600">SEDE / ORIGEN</div>' : ""}`
+               ${a.esSede ? '<div style="font-size:12px;font-weight:600">SEDE / ORIGEN</div>' : ""}
+               ${capacityHtml}
+               ${runtimeInfoHtml}`
             )
           ).addTo(map);
         airportRefs.current.push(mk);
@@ -251,9 +307,83 @@ export default function AnimatedFlights({
             return;
           }
 
-          // Diferencia clave entre semanal vs colapso
-          const traveled = elapsedSecRef.current * speedMps;
-          const dist = loop ? (traveled % total) : Math.min(traveled, total);
+          // ✅ SINCRONIZACIÓN POR VUELO (no por ruta completa)
+          let dist: number;
+          
+          // Calcular en qué segmento (vuelo) debería estar el avión según tiempo simulado
+          let targetDistByFlights: number | null = null;
+          let allFlightsCompleted = false;
+          
+          if (simulatedTime && it.segmentos.length > 0) {
+            const currentTime = new Date(simulatedTime).getTime();
+            let accumulatedDist = 0;
+            let foundCurrentFlight = false;
+            
+            for (let s = 0; s < it.segmentos.length; s++) {
+              const flight = it.segmentos[s].vuelo;
+              const depTime = new Date(flight.salidaProgramadaISO).getTime();
+              const arrTime = new Date(flight.llegadaProgramadaISO).getTime();
+              const flightDuration = arrTime - depTime;
+              const segmentLength = segLengths[idx][s];
+              
+              // Caso 1: Vuelo aún no ha despegado → avión debe estar en origen
+              if (currentTime < depTime) {
+                targetDistByFlights = accumulatedDist;
+                foundCurrentFlight = true;
+                break;
+              }
+              
+              // Caso 2: Vuelo en progreso → interpolar dentro de este segmento
+              if (currentTime >= depTime && currentTime < arrTime) {
+                const elapsed = currentTime - depTime;
+                const progress = flightDuration > 0 ? elapsed / flightDuration : 1;
+                targetDistByFlights = accumulatedDist + (progress * segmentLength);
+                foundCurrentFlight = true;
+                break;
+              }
+              
+              // Caso 3: Vuelo completado → acumular y continuar al siguiente
+              accumulatedDist += segmentLength;
+            }
+            
+            // Si todos los vuelos completaron → avión en destino final
+            if (!foundCurrentFlight) {
+              targetDistByFlights = total;
+              allFlightsCompleted = true;
+            }
+          }
+          
+          // Caso 1: Todos los vuelos completados → FORZAR a destino
+          if (allFlightsCompleted) {
+            dist = total;
+            if (!loop) {
+              finishedRef.current[idx] = true;
+            }
+          }
+          // Caso 2: Hay sincronización por vuelos → combinar con animación visual
+          else if (targetDistByFlights !== null) {
+            // Usar velocidad visual para movimiento suave
+            const traveled = elapsedSecRef.current * speedMps;
+            const visualDist = loop ? (traveled % total) : Math.min(traveled, total);
+            
+            // Aplicar corrección según desviación
+            const deviation = Math.abs(visualDist - targetDistByFlights);
+            if (deviation > total * 0.15) {
+              // Desviación grande: corrección agresiva
+              dist = visualDist * 0.5 + targetDistByFlights * 0.5;
+            } else if (deviation > total * 0.05) {
+              // Desviación media: corrección suave
+              dist = visualDist * 0.8 + targetDistByFlights * 0.2;
+            } else {
+              // Bien sincronizado: solo visual
+              dist = visualDist;
+            }
+          }
+          // Caso 3: Sin tiempo simulado → velocidad visual pura
+          else {
+            const traveled = elapsedSecRef.current * speedMps;
+            dist = loop ? (traveled % total) : Math.min(traveled, total);
+          }
 
           let rem = dist;
           let pos: [number, number] = [

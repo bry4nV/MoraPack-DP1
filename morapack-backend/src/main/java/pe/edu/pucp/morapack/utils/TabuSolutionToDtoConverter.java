@@ -27,6 +27,13 @@ public class TabuSolutionToDtoConverter {
             dto.longitud = a.getLongitude();
             dto.gmt = a.getGmt();
             dto.esSede = "SPIM".equals(a.getCode());
+            
+            // ✅ Add capacity information (will be enriched later with dynamic data)
+            dto.capacidadTotal = a.getStorageCapacity();
+            dto.capacidadUsada = 0;  // Will be calculated by enrichAirportData
+            dto.capacidadDisponible = a.getStorageCapacity();
+            dto.porcentajeUso = 0.0;
+            
             out.add(dto);
         }
         return out.toArray(new AeropuertoDTO[0]);
@@ -162,4 +169,6 @@ public class TabuSolutionToDtoConverter {
 
     private static double clamp(double v, double lo, double hi) { return Math.max(lo, Math.min(hi, v)); }
 }
+
+
 

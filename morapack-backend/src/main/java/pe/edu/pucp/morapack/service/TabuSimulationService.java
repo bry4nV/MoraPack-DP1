@@ -38,7 +38,7 @@ public class TabuSimulationService {
         
         // Load CSV data using DataLoader
         try {
-            var airports = DataLoader.loadAirports("data/airports.txt");
+            var airports = DataLoader.loadAirports("data/airports_real.txt");
             
             // Create airport map for lookups
             Map<String, PlannerAirport> airportMap = new HashMap<>();

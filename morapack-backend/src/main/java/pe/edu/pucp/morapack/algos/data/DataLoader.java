@@ -63,9 +63,32 @@ public class DataLoader {
                 int gmt = Integer.parseInt(gmtStr);
                 int capacity = Integer.parseInt(capacityStr);
                 
-                // Get latitude and longitude from the city code or generate random coordinates within continent boundaries
-                double latitude = generateLatitudeForContinent(continentHolder[0]);
-                double longitude = generateLongitudeForContinent(continentHolder[0]);
+                // Try to parse real coordinates from DMS format (if available)
+                double latitude, longitude;
+                
+                if (remainingParts.length >= 6 && remaining.contains("Latitude:")) {
+                    // Parse DMS coordinates from the line
+                    // Format: "... 410     Latitude: 00° 06' 48" N   Longitude:  78° 21' 31" W"
+                    String coordsPart = remaining.substring(remaining.indexOf("Latitude:"));
+                    String[] coords = coordsPart.split("Longitude:");
+                    
+                    if (coords.length == 2) {
+                        latitude = parseDMS(coords[0].trim());
+                        longitude = parseDMS("Longitude: " + coords[1].trim());
+                        System.out.println(String.format("✅ Parsed %s (%s): lat=%.4f, lon=%.4f", 
+                            code, city, latitude, longitude));
+                    } else {
+                        // Fallback to random generation
+                        latitude = generateLatitudeForContinent(continentHolder[0]);
+                        longitude = generateLongitudeForContinent(continentHolder[0]);
+                        System.out.println(String.format("⚠️  No coords for %s, using random: lat=%.4f, lon=%.4f", 
+                            code, latitude, longitude));
+                    }
+                } else {
+                    // Fallback to random generation
+                    latitude = generateLatitudeForContinent(continentHolder[0]);
+                    longitude = generateLongitudeForContinent(continentHolder[0]);
+                }
                 
                 // Create or get country
                 Country country = countryCache.computeIfAbsent(countryName, k -> 
@@ -205,7 +228,49 @@ public class DataLoader {
             case "Asia":
                 return 60.0 + random.nextDouble() * 100; // 60 to 160 degrees
             default:
-                return 0.0 + random.nextDouble() * 360;  // 0 to 360 degrees
+                return -180.0 + random.nextDouble() * 360;  // -180 to 180 degrees (valid range)
+        }
+    }
+    
+    /**
+     * Parse DMS (Degrees, Minutes, Seconds) format to decimal degrees.
+     * Format: "Latitude: 12° 01' 19" S" or "Longitude: 77° 06' 52" W"
+     * 
+     * @param dmsString String in DMS format
+     * @return Decimal degrees (negative for S/W, positive for N/E)
+     */
+    private static double parseDMS(String dmsString) {
+        try {
+            // Remove "Latitude:" or "Longitude:" prefix
+            String cleaned = dmsString.replaceAll("(Latitude|Longitude):\\s*", "").trim();
+            
+            // Extract degrees, minutes, seconds and direction
+            // Format: 12° 01' 19" S
+            String[] parts = cleaned.split("[°'\"\\s]+");
+            
+            if (parts.length < 4) {
+                System.err.println("⚠️  Invalid DMS format: " + dmsString);
+                return 0.0;
+            }
+            
+            double degrees = Double.parseDouble(parts[0]);
+            double minutes = Double.parseDouble(parts[1]);
+            double seconds = Double.parseDouble(parts[2]);
+            String direction = parts[3].toUpperCase();
+            
+            // Convert to decimal
+            double decimal = degrees + (minutes / 60.0) + (seconds / 3600.0);
+            
+            // Apply sign based on direction
+            if (direction.equals("S") || direction.equals("W")) {
+                decimal = -decimal;
+            }
+            
+            return decimal;
+            
+        } catch (Exception e) {
+            System.err.println("⚠️  Error parsing DMS '" + dmsString + "': " + e.getMessage());
+            return 0.0;
         }
     }
 

@@ -816,18 +816,44 @@ public class TabuSearchPlanner implements IOptimizer {
                                                 Map<PlannerFlight, Integer> capacityRemaining) {
         List<RouteOption> routes = new ArrayList<>();
         
+        // 🔍 DEBUG: Contar vuelos candidatos
+        int matchingOriginDest = 0;
+        int matchingButWrongTime = 0;
+        int matchingButNoCapacity = 0;
+        
         for (PlannerFlight flight : flights) {
-            if (flight.getOrigin().equals(order.getOrigin()) && 
-                flight.getDestination().equals(order.getDestination()) &&
-                isValidDepartureTime(order, flight)) {
-                
+            boolean originMatch = flight.getOrigin().equals(order.getOrigin());
+            boolean destMatch = flight.getDestination().equals(order.getDestination());
+            boolean timeValid = isValidDepartureTime(order, flight);
+            int capacity = capacityRemaining.getOrDefault(flight, 0);
+            
+            if (originMatch && destMatch) {
+                matchingOriginDest++;
+                if (!timeValid) {
+                    matchingButWrongTime++;
+                } else if (capacity == 0) {
+                    matchingButNoCapacity++;
+                }
+            }
+            
+            if (originMatch && destMatch && timeValid) {
                 RouteOption route = new RouteOption(List.of(flight));
-                route.setMinCapacity(capacityRemaining.getOrDefault(flight, 0));
+                route.setMinCapacity(capacity);
                 
                 if (route.getMinCapacity() > 0) {
                     routes.add(route);
                 }
             }
+        }
+        
+        // 🔍 DEBUG: Reportar hallazgos
+        if (matchingOriginDest > 0 && routes.isEmpty()) {
+            System.out.println(String.format("   🔍 DEBUG findDirectRoutes: Found %d flights %s→%s but NONE valid:", 
+                matchingOriginDest, order.getOrigin().getCode(), order.getDestination().getCode()));
+            System.out.println(String.format("      - Wrong time: %d flights", matchingButWrongTime));
+            System.out.println(String.format("      - No capacity: %d flights", matchingButNoCapacity));
+            System.out.println(String.format("      - Order time: %s, deadline: %d hours", 
+                order.getOrderTime(), order.getMaxDeliveryHours()));
         }
         
         // Ordenar por prioridad (tiempo, costo)

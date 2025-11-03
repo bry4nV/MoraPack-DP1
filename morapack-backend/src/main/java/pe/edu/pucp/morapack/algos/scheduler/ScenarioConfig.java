@@ -2,26 +2,38 @@ package pe.edu.pucp.morapack.algos.scheduler;
 
 /**
  * Configuration for different simulation scenarios.
+ * Based on planned programming scheduling as defined in course materials.
  * 
- * The key parameter is K (minutesToConsume), which determines
- * how much future data the planner processes in each iteration:
+ * KEY CONCEPTS:
+ * - Ta (Tiempo de Algoritmo) = 1 minute [FIXED]
+ *   Time the algorithm takes to execute
  * 
- * - DAILY (Real-time): K = 1 minute
- *   Process orders arriving in the next minute only
- *   Simulates actual day-to-day operations
+ * - Sa (Salto del Algoritmo) = 5 minutes [FIXED]
+ *   Interval between algorithm executions
+ *   Must be Sa > Ta to avoid execution overlap
  * 
- * - WEEKLY (Simulation): K = 60-120 minutes (1-2 hours)
- *   Process larger time chunks to simulate a week in 30-90 minutes
- *   Allows testing with more data without waiting days
+ * - K (Constante de Proporcionalidad) = Variable [ADJUSTABLE]
+ *   Proportionality constant that determines simulation speed
+ *   Higher K = Fewer iterations, faster simulation
+ *   Lower K = More iterations, more granular control
+ *   
+ *   SUGGESTED VALUES:
+ *   K = 1     → Day-to-day operations (real-time)
+ *   K = 10-30 → Weekly simulation (adjust for desired granularity)
+ *             K=14 → 144 iterations for 7 days (more granular)
+ *             K=24 → 84 iterations for 7 days (default, balanced)
+ *   K = 75    → Collapse simulation (until system breaks)
  * 
- * - COLLAPSE (Stress test): K = 1440 minutes (24 hours)
- *   Process entire days at once to quickly reach system limits
- *   Used to find breaking points and capacity issues
+ * - Sc (Salto de Consumo) = K × Sa [CALCULATED]
+ *   Amount of simulation time data consumed per iteration
+ *   Formula: Sc = K × Sa
+ *   Examples:
+ *     K=1,  Sa=5  → Sc=5 minutes
+ *     K=14, Sa=5  → Sc=70 minutes
+ *     K=75, Sa=5  → Sc=375 minutes (6.25 hours)
  * 
- * Example:
- *   If current simulation time is 2025-10-13 08:00:00
- *   And K = 60 minutes
- *   The planner will process orders from 08:00:00 to 09:00:00
+ * IMPORTANT: Sa must be "reasonably greater" than Ta to avoid solution collapse.
+ *            If Sa is too small (Sa < Ta), executions overlap causing instability.
  */
 public class ScenarioConfig {
     
@@ -30,22 +42,32 @@ public class ScenarioConfig {
      */
     public enum ScenarioType {
         DAILY,      // Real-time operations (K=1)
-        WEEKLY,     // Weekly simulation (K=60-120)
-        COLLAPSE    // Until collapse simulation (K=1440)
+        WEEKLY,     // Weekly simulation (K=14)
+        COLLAPSE    // Until collapse simulation (K=75)
     }
     
     private final ScenarioType type;
     
     /**
-     * K: Minutes of data to consume per iteration
+     * Ta: Algorithm execution time (FIXED at 1 minute)
+     */
+    private static final int TA_MINUTES = 1;
+    
+    /**
+     * Sa: Jump between algorithm executions (FIXED at 5 minutes)
+     */
+    private static final int SA_MINUTES = 5;
+    
+    /**
+     * K: Proportionality constant (varies by scenario)
      * This is the core parameter that changes simulation speed
      */
-    private final int minutesToConsume;
+    private final int K;
     
     /**
      * Total simulation duration (in minutes)
      * - DAILY: Infinite (runs continuously)
-     * - WEEKLY: 10,080 minutes (7 days)
+     * - WEEKLY: 10,080 minutes (7 days = 7 × 24 × 60)
      * - COLLAPSE: Depends on when system breaks
      */
     private final int totalDurationMinutes;
@@ -67,12 +89,12 @@ public class ScenarioConfig {
     
     // Private constructor - use factory methods below
     private ScenarioConfig(ScenarioType type, 
-                          int minutesToConsume,
+                          int K,
                           int totalDurationMinutes,
                           boolean persistToDatabase,
                           int updateIntervalMinutes) {
         this.type = type;
-        this.minutesToConsume = minutesToConsume;
+        this.K = K;
         this.totalDurationMinutes = totalDurationMinutes;
         this.persistToDatabase = persistToDatabase;
         this.updateIntervalMinutes = updateIntervalMinutes;
@@ -80,24 +102,51 @@ public class ScenarioConfig {
     
     /**
      * Factory method: Daily operations configuration
+     * K = 1 → Sc = 1 × 5 = 5 minutes of data per iteration
      */
     public static ScenarioConfig daily() {
         return new ScenarioConfig(
             ScenarioType.DAILY,
-            1,              // K = 1 minute (real-time)
+            1,                  // K = 1 (real-time proportionality)
             Integer.MAX_VALUE,  // Runs indefinitely
-            true,           // Persist to database
-            60              // Update every hour
+            true,               // Persist to database
+            60                  // Update every hour
         );
     }
     
     /**
      * Factory method: Weekly simulation configuration
+     * K = 24 → Sc = 24 × 5 = 120 minutes of data per iteration
+     * Simulates 7 days in 84 iterations
+     * 
+     * NOTE: K is adjustable. Use weekly(K) to customize.
      */
     public static ScenarioConfig weekly() {
+        return weekly(24); // Default K=24 (2 hour windows)
+    }
+    
+    /**
+     * Factory method: Weekly simulation with custom K
+     * 
+     * @param K Proportionality constant
+     *   K=10 → 201 iterations (more granular, slower)
+     *   K=14 → 144 iterations (balanced, default)
+     *   K=20 → 100 iterations (less granular, faster)
+     *   K=24 → 84 iterations (similar to PDDS-VRP)
+     *   K=30 → 67 iterations (rapid simulation)
+     * 
+     * @return ScenarioConfig for weekly simulation
+     */
+    public static ScenarioConfig weekly(int K) {
+        int scMinutes = K * SA_MINUTES;
+        int iterations = 10080 / scMinutes;
+        
+        System.out.println("   [ScenarioConfig] Creating WEEKLY with K=" + K + 
+                         " → Sc=" + scMinutes + " min → ~" + iterations + " iterations for 7 days");
+        
         return new ScenarioConfig(
             ScenarioType.WEEKLY,
-            60,             // K = 60 minutes (1 hour chunks)
+            K,              // Custom K value
             10080,          // 7 days = 7 * 24 * 60 = 10,080 minutes
             false,          // Don't persist (only visual)
             1440            // Update every day (1440 min)
@@ -106,11 +155,13 @@ public class ScenarioConfig {
     
     /**
      * Factory method: Collapse simulation configuration
+     * K = 75 → Sc = 75 × 5 = 375 minutes (6.25 hours) of data per iteration
+     * Runs until system reaches capacity limits
      */
     public static ScenarioConfig collapse() {
         return new ScenarioConfig(
             ScenarioType.COLLAPSE,
-            1440,           // K = 1440 minutes (entire days)
+            75,             // K = 75 (collapse proportionality)
             Integer.MAX_VALUE,  // Until system collapses
             false,          // Don't persist (only visual)
             1440            // Update every day
@@ -119,16 +170,19 @@ public class ScenarioConfig {
     
     /**
      * Custom configuration (for testing)
+     * @param K Proportionality constant
+     * @param totalDurationMinutes Total simulation duration
+     * @param persistToDatabase Whether to persist results
      */
-    public static ScenarioConfig custom(int minutesToConsume, 
+    public static ScenarioConfig custom(int K, 
                                        int totalDurationMinutes,
                                        boolean persistToDatabase) {
         return new ScenarioConfig(
             ScenarioType.WEEKLY, // Default to weekly
-            minutesToConsume,
+            K,
             totalDurationMinutes,
             persistToDatabase,
-            Math.max(60, minutesToConsume) // Update interval = K or 1 hour minimum
+            Math.max(60, K * SA_MINUTES) // Update interval = Sc or 1 hour minimum
         );
     }
     
@@ -139,10 +193,41 @@ public class ScenarioConfig {
     }
     
     /**
-     * Get K: How many minutes to consume per iteration
+     * Get Ta: Algorithm execution time (FIXED at 1 minute)
      */
+    public int getTaMinutes() {
+        return TA_MINUTES;
+    }
+    
+    /**
+     * Get Sa: Jump between algorithm executions (FIXED at 5 minutes)
+     */
+    public int getSaMinutes() {
+        return SA_MINUTES;
+    }
+    
+    /**
+     * Get K: Proportionality constant
+     */
+    public int getK() {
+        return K;
+    }
+    
+    /**
+     * Get Sc: Data consumption jump per iteration
+     * Calculated as: Sc = K × Sa
+     * This is the amount of simulation time processed per iteration
+     */
+    public int getScMinutes() {
+        return K * SA_MINUTES;
+    }
+    
+    /**
+     * @deprecated Use getScMinutes() instead. This method returns the same value.
+     */
+    @Deprecated
     public int getMinutesToConsume() {
-        return minutesToConsume;
+        return getScMinutes();
     }
     
     public int getTotalDurationMinutes() {
@@ -167,8 +252,8 @@ public class ScenarioConfig {
     
     @Override
     public String toString() {
-        return String.format("ScenarioConfig[type=%s, K=%d min, duration=%d min, persist=%s]",
-            type, minutesToConsume, totalDurationMinutes, persistToDatabase);
+        return String.format("ScenarioConfig[type=%s, K=%d, Sa=%d min, Sc=%d min, duration=%d min, persist=%s]",
+            type, K, SA_MINUTES, getScMinutes(), totalDurationMinutes, persistToDatabase);
     }
 }
 
