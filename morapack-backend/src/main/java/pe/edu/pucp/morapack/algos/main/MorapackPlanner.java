@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class MorapackPlanner {
-    private static final String DEFAULT_AIRPORTS_FILE = "data/airports.txt";
+    private static final String DEFAULT_AIRPORTS_FILE = "data/airports_real.txt";
     private static final String DEFAULT_FLIGHTS_FILE  = "data/flights.csv";
     private static final String DEFAULT_ORDERS_FILE   = "data/pedidos.csv";
 
@@ -39,12 +39,12 @@ public class MorapackPlanner {
             Map<String, PlannerAirport> airportMap = airports.stream()
                     .collect(Collectors.toMap(PlannerAirport::getCode, a -> a));
 
-            // Load flights
-            List<PlannerFlight> availableFlights = DataLoader.loadFlights(flightsFile, airportMap);
+            // Load flights (generar para Diciembre 2025, 31 días)
+            List<PlannerFlight> availableFlights = DataLoader.loadFlights(flightsFile, airportMap, 2025, 12, 31);
             System.out.println("Loaded " + availableFlights.size() + " flights");
 
-            // Load orders
-            List<PlannerOrder> pendingOrders = DataLoader.loadOrders(ordersFile, airportMap);
+            // Load orders (usando Diciembre 2025 como referencia)
+            List<PlannerOrder> pendingOrders = DataLoader.loadOrders(ordersFile, airportMap, 2025, 12);
             System.out.println("Loaded " + pendingOrders.size() + " orders");
 
             System.out.println("\n[INITIAL INPUT DATA]");

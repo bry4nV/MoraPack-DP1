@@ -5,13 +5,13 @@ public class Country {
     private String name;
     private Continent continent;
 
-    public Country(int id, String n, Continent c) {
+    public Country(int id, String name, Continent continent) {
         this.id = id;
-        this.name = n;
-        this.continent = c;
+        this.name = name;
+        this.continent = continent;
     }
 
-    public Continent getContinent() {
-        return continent;
-    }
+    public int getId() { return id; }
+    public String getName() { return name; }
+    public Continent getContinent() { return continent; }
 }

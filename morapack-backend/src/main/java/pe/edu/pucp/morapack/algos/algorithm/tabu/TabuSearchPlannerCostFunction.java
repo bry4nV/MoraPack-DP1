@@ -112,10 +112,8 @@ public class TabuSearchPlannerCostFunction {
                 latestArrival
             );
 
-            // Ajustar por zona horaria
-            int gmt = order.getDestination().getGmt();
-            deliveryHours += gmt;
-
+            // All timestamps are in UTC, no timezone conversion needed
+            
             // Obtener plazo máximo
             long maxHours = order.getMaxDeliveryHours();
 
@@ -199,6 +197,8 @@ public class TabuSearchPlannerCostFunction {
         }
 
         // Penalizar excesos de capacidad
+        // ⚠️ NOTA: Esto NO debería ocurrir nunca si los hard constraints funcionan correctamente.
+        // Si se detecta una violación aquí, es un BUG en isValidSolution() o en el greedy allocation.
         for (Map.Entry<PlannerAirport, Integer> entry : airportLoads.entrySet()) {
             PlannerAirport airport = entry.getKey();
             int load = entry.getValue();
@@ -206,8 +206,18 @@ public class TabuSearchPlannerCostFunction {
 
             if (load > capacity) {
                 int excess = load - capacity;
-                penalty += AIRPORT_CAPACITY_VIOLATION_PENALTY;
-                penalty += excess * AIRPORT_CAPACITY_UNIT_PENALTY;
+                
+                // ⚠️ LOGGING CRÍTICO: Esto indica un problema serio
+                System.err.println(String.format(
+                    "⚠️ CRITICAL: Airport %s OVERLOADED! Load=%d, Capacity=%d, Excess=%d",
+                    airport.getCode(), load, capacity, excess
+                ));
+                System.err.println("   This should NOT happen! Hard constraints should prevent this.");
+                
+                // Penalización EXTREMADAMENTE alta (x1000 del original)
+                // para asegurar que estas soluciones nunca sean aceptadas
+                penalty += AIRPORT_CAPACITY_VIOLATION_PENALTY * 1000;
+                penalty += excess * AIRPORT_CAPACITY_UNIT_PENALTY * 1000;
             }
         }
 

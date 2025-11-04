@@ -2,7 +2,7 @@
 
 import { Order, OrderState } from "@/types/order";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const statusColors: Record<OrderState, string> = {
@@ -89,13 +89,25 @@ export const orderColumns: Column<Order>[] = [
     id: "actions",
     header: "Acciones",
     cell: (row) => (
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => console.log("Ver detalles de orden:", row.id)}
-      >
-        <MoreHorizontal className="h-4 w-4" />
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => console.log("Ver detalles de orden:", row.id)}
+          title="Ver detalles"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => console.log("Eliminar orden:", row.id)}
+          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+          title="Eliminar orden"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
     ),
   },
 ];
