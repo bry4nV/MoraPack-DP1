@@ -19,19 +19,29 @@ public class AirportService {
 
     public List<AirportDto> listAll() {
         List<Airport> entities = airportRepository.findAll();
+        // Llama a toDto por cada entidad 'Airport' encontrada
         return entities.stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    private AirportDto toDto(Airport e) {
-        AirportDto d = new AirportDto();
+    // --- MÉTODO CORREGIDO ---
+    // Convierte la Entidad (de la BD) al DTO (lo que ve el frontend)
+    private AirportDto toDto(Airport e) { // 'e' es la entidad Airport
+        AirportDto d = new AirportDto(); // 'd' es el DTO
+        
+        // Mapea los campos uno por uno
         d.setId(e.getId());
-        d.setName(e.getName()); // ← CAMBIO
-        d.setCountry(e.getCountry()); // ← CAMBIO
-        d.setCity(e.getCity()); // ← CAMBIO
+        d.setContinent(e.getContinent());
+        d.setCode(e.getCode());
+        d.setCity(e.getCity());
+        d.setCountry(e.getCountry());
+        d.setCityAcronym(e.getCityAcronym());
         d.setGmt(e.getGmt());
-        d.setCapacity(e.getCapacity()); // ← CAMBIO
-        d.setContinent(e.getContinent()); // ← CAMBIO
-        d.setIsHub(e.isMainHub()); // ← CAMBIO
+        d.setCapacity(e.getCapacity());
+        d.setLatitude(e.getLatitude());
+        d.setLongitude(e.getLongitude());
+        d.setStatus(e.getStatus());
+        d.setHub(e.isHub()); // Usamos el getter e.isHub() que devuelve boolean
+
         return d;
     }
 }
