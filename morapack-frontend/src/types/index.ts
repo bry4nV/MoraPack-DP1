@@ -9,4 +9,5 @@ export * from './order';
 export * from './flight';
 export * from './airport';
 export * from './order-summary';
+export * from './dynamic-events';
 

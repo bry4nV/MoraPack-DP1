@@ -1,0 +1,41 @@
+# ═══════════════════════════════════════════════════════════════════════
+# ARCHIVO DE CANCELACIONES PROGRAMADAS
+# Simulación Semanal - Diciembre 2025
+# ═══════════════════════════════════════════════════════════════════════
+
+# Formato: DIA.HH:MM,ORIGEN,DESTINO,HORA_VUELO
+# 
+# DIA: 01-07 (día de la semana simulada, siendo 01 = primer día)
+# HH:MM: Hora en que se ejecuta la cancelación
+# ORIGEN: Código IATA del aeropuerto de origen
+# DESTINO: Código IATA del aeropuerto de destino
+# HORA_VUELO: Hora programada de salida del vuelo (HH:mm)
+#
+# Ejemplo:
+# 01.06:00,SPIM,SEQM,03:34
+# → Cancelar el día 1 a las 6:00 AM el vuelo SPIM→SEQM que sale a las 03:34
+
+# ═══════════════════════════════════════════════════════════════════════
+# CANCELACIONES DE PRUEBA
+# ═══════════════════════════════════════════════════════════════════════
+
+# Día 1 - Temprano en la mañana (dos cancelaciones)
+01.06:00,SPIM,SEQM,03:34
+01.12:30,SBGR,SCLS,08:15
+
+# Día 3 - Mediodía
+03.14:30,SEQM,SPIM,10:30
+
+# Día 5 - Mañana
+05.08:00,LTFM,EBCI,06:45
+
+# Día 7 - Tarde
+07.16:00,SCLS,SBGR,14:20
+
+# ═══════════════════════════════════════════════════════════════════════
+# NOTAS:
+# - Solo se pueden cancelar vuelos que estén EN TIERRA en el origen
+# - Vuelos EN AIRE no pueden ser cancelados
+# - La cancelación disparará automáticamente la replanificación de productos afectados
+# ═══════════════════════════════════════════════════════════════════════
+

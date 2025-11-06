@@ -28,6 +28,13 @@ public class SimulationManager {
     
     private final SimpMessagingTemplate messagingTemplate;
     
+    // 🆕 Dynamic event services (injected by Spring)
+    private final CancellationService cancellationService;
+    private final DynamicOrderService dynamicOrderService;
+    private final OrderInjectionService orderInjectionService;
+    private final ReplanificationService replanificationService;
+    private final FlightStatusTracker flightStatusTracker;
+    
     // Map of userId -> SimulationSession
     private final Map<String, SimulationSession> activeSessions = new ConcurrentHashMap<>();
     
@@ -49,9 +56,22 @@ public class SimulationManager {
     private final LocalDate FIRST_DATA_DATE = LocalDate.of(2025, 12, 1);
     private final LocalDate LAST_DATA_DATE = LocalDate.of(2025, 12, 31);
     
-    public SimulationManager(SimpMessagingTemplate messagingTemplate) {
+    public SimulationManager(
+            SimpMessagingTemplate messagingTemplate,
+            CancellationService cancellationService,
+            DynamicOrderService dynamicOrderService,
+            OrderInjectionService orderInjectionService,
+            ReplanificationService replanificationService,
+            FlightStatusTracker flightStatusTracker) {
+        
         this.messagingTemplate = messagingTemplate;
-        System.out.println("[SimulationManager] Initialized");
+        this.cancellationService = cancellationService;
+        this.dynamicOrderService = dynamicOrderService;
+        this.orderInjectionService = orderInjectionService;
+        this.replanificationService = replanificationService;
+        this.flightStatusTracker = flightStatusTracker;
+        
+        System.out.println("[SimulationManager] Initialized with dynamic events support");
     }
     
     /**
@@ -110,14 +130,19 @@ public class SimulationManager {
             LocalDateTime startTime = startDate.atStartOfDay();
             LocalDateTime endTime = startTime.plusDays(simulationDays);
             
-            // Create new session
+            // Create new session (with dynamic events support)
             SimulationSession session = new SimulationSession(
                 userId,
                 dataProvider,
                 scenario,
                 startTime,
                 endTime,
-                messagingTemplate
+                messagingTemplate,
+                cancellationService,
+                dynamicOrderService,
+                orderInjectionService,
+                replanificationService,
+                flightStatusTracker
             );
             
             // Store and start

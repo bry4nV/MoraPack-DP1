@@ -12,6 +12,9 @@ import pe.edu.pucp.morapack.algos.scheduler.ScenarioConfig;
 import pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse;
 import pe.edu.pucp.morapack.dto.websocket.SimulationState;
 import pe.edu.pucp.morapack.dto.websocket.SimulationStatusUpdate;
+import pe.edu.pucp.morapack.model.FlightCancellation;
+import pe.edu.pucp.morapack.model.ReplanificationTask;
+import pe.edu.pucp.morapack.model.DynamicOrder;
 import pe.edu.pucp.morapack.utils.TabuSolutionToDtoConverter;
 
 import java.time.LocalDateTime;
@@ -34,6 +37,13 @@ public class SimulationSession implements Runnable {
     private final LocalDateTime startTime;
     private final LocalDateTime endTime;
     private final SimpMessagingTemplate messagingTemplate;
+    
+    // 🆕 Dynamic event services
+    private final CancellationService cancellationService;
+    private final DynamicOrderService dynamicOrderService;
+    private final OrderInjectionService orderInjectionService;
+    private final ReplanificationService replanificationService;
+    private final FlightStatusTracker flightStatusTracker;
     
     // State management
     private final AtomicReference<SimulationState> state = new AtomicReference<>(SimulationState.IDLE);
@@ -60,13 +70,21 @@ public class SimulationSession implements Runnable {
     private final java.util.Map<Integer, PlannerOrder> allProcessedOrdersMap = new java.util.HashMap<>();
     private int totalShipmentsCreated = 0;
     
+    // 🆕 Tracking for replanification
+    private TabuSolution lastSolution = null;
+    
     public SimulationSession(
             String userId,
             DataProvider dataProvider,
             ScenarioConfig scenario,
             LocalDateTime startTime,
             LocalDateTime endTime,
-            SimpMessagingTemplate messagingTemplate) {
+            SimpMessagingTemplate messagingTemplate,
+            CancellationService cancellationService,
+            DynamicOrderService dynamicOrderService,
+            OrderInjectionService orderInjectionService,
+            ReplanificationService replanificationService,
+            FlightStatusTracker flightStatusTracker) {
         
         this.sessionId = UUID.randomUUID().toString();
         this.userId = userId;
@@ -78,6 +96,13 @@ public class SimulationSession implements Runnable {
         this.messagingTemplate = messagingTemplate;
         this.planner = new TabuSearchPlanner();
         
+        // 🆕 Assign dynamic services
+        this.cancellationService = cancellationService;
+        this.dynamicOrderService = dynamicOrderService;
+        this.orderInjectionService = orderInjectionService;
+        this.replanificationService = replanificationService;
+        this.flightStatusTracker = flightStatusTracker;
+        
         // Calculate expected iterations
         long totalMinutes = java.time.Duration.between(startTime, endTime).toMinutes();
         this.totalExpectedIterations = (int) Math.ceil((double) totalMinutes / scenario.getScMinutes());
@@ -85,6 +110,41 @@ public class SimulationSession implements Runnable {
         System.out.println("[SimulationSession] Created: " + sessionId + " for user: " + userId);
         System.out.println("   Scenario: " + scenario.getType() + " (K=" + scenario.getK() + ", Sc=" + scenario.getScMinutes() + ")");
         System.out.println("   Expected iterations: " + totalExpectedIterations);
+        
+        // 🆕 Load scheduled cancellations and dynamic orders
+        initializeDynamicEvents();
+    }
+    
+    /**
+     * Initialize dynamic events (cancellations and orders) from files.
+     */
+    private void initializeDynamicEvents() {
+        try {
+            // Load scheduled cancellations
+            String cancellationFile = "data/cancellations/cancellations_2025_12.txt";
+            int loadedCancellations = cancellationService.loadScheduledCancellations(
+                cancellationFile,
+                startTime.toLocalDate()
+            );
+            System.out.println("   📄 Loaded " + loadedCancellations + " scheduled cancellations");
+            
+            // Load scheduled dynamic orders
+            String ordersFile = "data/dynamic_orders/dynamic_orders_2025_12.txt";
+            int loadedOrders = dynamicOrderService.loadScheduledOrders(
+                ordersFile,
+                startTime.toLocalDate()
+            );
+            System.out.println("   📄 Loaded " + loadedOrders + " scheduled dynamic orders");
+            
+            // Configure airports in OrderInjectionService
+            List<PlannerAirport> airports = new ArrayList<>(dataProvider.getAirports());
+            orderInjectionService.setAirports(airports);
+            System.out.println("   📄 Configured " + airports.size() + " airports for order injection");
+            
+        } catch (Exception e) {
+            System.err.println("   ⚠️ Warning: Could not load dynamic events: " + e.getMessage());
+            System.err.println("   Continuing simulation without scheduled events...");
+        }
     }
     
     @Override
@@ -172,33 +232,79 @@ public class SimulationSession implements Runnable {
         System.out.println("\n[SimulationSession] " + sessionId + " - Iteration #" + iterationCount);
         System.out.println("   Window: " + windowStart + " → " + windowEnd);
         
+        // 🆕 STEP 1: Process cancellations at current time
+        List<FlightCancellation> newCancellations = cancellationService.processCancellationsAt(currentTime);
+        if (!newCancellations.isEmpty()) {
+            System.out.println("   🚫 " + newCancellations.size() + " flight(s) cancelled:");
+            for (FlightCancellation c : newCancellations) {
+                System.out.println("      • " + c.getFlightOrigin() + " → " + c.getFlightDestination() + 
+                                 " @ " + c.getScheduledDepartureTime());
+            }
+        }
+        
+        // 🆕 STEP 2: Process dynamic order injection
+        List<DynamicOrder> newDynamicOrders = dynamicOrderService.getOrdersToInjectAt(currentTime);
+        if (!newDynamicOrders.isEmpty()) {
+            System.out.println("   📦 " + newDynamicOrders.size() + " dynamic order(s) injected:");
+            for (DynamicOrder o : newDynamicOrders) {
+                System.out.println("      • " + o.getOrigin() + " → " + o.getDestination() + 
+                                 " (" + o.getQuantity() + " units)");
+            }
+        }
+        
+        // 🆕 STEP 3: Convert dynamic orders to PlannerOrders
+        List<PlannerOrder> injectedOrders = orderInjectionService.processOrderInjections(currentTime);
+        if (!injectedOrders.isEmpty()) {
+            System.out.println("   ✅ " + injectedOrders.size() + " order(s) converted to planner format");
+        }
+        
         // Get data for this window
         List<PlannerFlight> flights = dataProvider.getFlights(windowStart, windowEnd);
         List<PlannerOrder> newOrders = dataProvider.getOrders(windowStart, windowEnd);
         
-            // Add new orders to pending queue
-            pendingOrders.addAll(newOrders);
-            
-            // Track all orders for metrics
-            for (PlannerOrder order : newOrders) {
-                allProcessedOrdersMap.put(order.getId(), order);
-            }
-            
-            // Process ALL pending orders (not just new ones)
-            List<PlannerOrder> allOrders = new ArrayList<>(pendingOrders);
+        // 🆕 STEP 4: Filter out cancelled flights
+        List<PlannerFlight> activeFlights = filterActiveFlight(flights, newCancellations);
+        if (flights.size() != activeFlights.size()) {
+            System.out.println("   ⚠️ " + (flights.size() - activeFlights.size()) + 
+                             " cancelled flight(s) filtered out");
+        }
         
-        System.out.println("   Flights: " + flights.size() + ", Orders: " + allOrders.size() + 
-                         " (new: " + newOrders.size() + ", pending: " + (allOrders.size() - newOrders.size()) + ")");
+        // Add new orders to pending queue (including injected ones)
+        pendingOrders.addAll(newOrders);
+        pendingOrders.addAll(injectedOrders);
+        
+        // Track all orders for metrics
+        for (PlannerOrder order : newOrders) {
+            allProcessedOrdersMap.put(order.getId(), order);
+        }
+        for (PlannerOrder order : injectedOrders) {
+            allProcessedOrdersMap.put(order.getId(), order);
+        }
+        
+        // Process ALL pending orders (not just new ones)
+        List<PlannerOrder> allOrders = new ArrayList<>(pendingOrders);
+        
+        System.out.println("   Flights: " + activeFlights.size() + ", Orders: " + allOrders.size() + 
+                         " (new: " + newOrders.size() + ", injected: " + injectedOrders.size() + 
+                         ", pending: " + (allOrders.size() - newOrders.size() - injectedOrders.size()) + ")");
+        
+        // 🆕 STEP 5: Handle replanification if there are new cancellations
+        if (!newCancellations.isEmpty() && lastSolution != null) {
+            handleReplanification(newCancellations, allOrders, activeFlights);
+        }
         
         // Run Tabu Search
-        if (!allOrders.isEmpty() && !flights.isEmpty()) {
+        if (!allOrders.isEmpty() && !activeFlights.isEmpty()) {
             // Get airports from data provider
             List<PlannerAirport> airports = new ArrayList<>(dataProvider.getAirports());
             
-            Solution solution = planner.optimize(allOrders, flights, airports);
+            Solution solution = planner.optimize(allOrders, activeFlights, airports);
             
                 // Cast to TabuSolution and convert to DTO
                 if (solution instanceof TabuSolution tabuSolution) {
+                    // 🆕 Save solution for potential replanification
+                    lastSolution = tabuSolution;
+                    
                     // ✅ FIX: Actualizar solo los pedidos de esta iteración
                     // TabuSearch devuelve una solución para los pedidos pendientes actuales,
                     // no para todos los históricos, así que solo actualizamos esos.
@@ -246,6 +352,12 @@ public class SimulationSession implements Runnable {
                 // Add order tracking data
                 response.pedidos = buildOrderSummaries();
                 response.metricas = calculateOrderMetrics();
+                
+                // 🆕 Update flight status tracker
+                flightStatusTracker.updateFlightStatuses(
+                    java.util.Arrays.asList(response.itinerarios), 
+                    currentTime
+                );
                 
                 // NOTE: response.meta not populated (algorithm doesn't expose costs)
                 // All relevant metrics already included in pedidos/metricas
@@ -455,6 +567,93 @@ public class SimulationSession implements Runnable {
                 (dto.capacidadUsada * 100.0) / dto.capacidadTotal : 0.0;
         }
     }
+    
+    // ========== DYNAMIC EVENTS METHODS ==========
+    
+    /**
+     * Filter out cancelled flights from the available flights list.
+     * 
+     * @param flights All flights in the current window
+     * @param cancellations List of newly cancelled flights
+     * @return Filtered list of active (non-cancelled) flights
+     */
+    private List<PlannerFlight> filterActiveFlight(
+            List<PlannerFlight> flights, 
+            List<FlightCancellation> cancellations) {
+        
+        if (cancellations.isEmpty()) {
+            return flights;
+        }
+        
+        // Filter flights by checking if they are cancelled
+        return flights.stream()
+            .filter(flight -> {
+                // Check if this flight is cancelled
+                String origin = flight.getOrigin().getCode();
+                String destination = flight.getDestination().getCode();
+                String scheduledTime = flight.getDepartureTime().toString();
+                
+                return !cancellationService.isFlightCancelled(origin, destination, scheduledTime);
+            })
+            .collect(java.util.stream.Collectors.toList());
+    }
+    
+    /**
+     * Handle replanification when flights are cancelled.
+     * Triggers the ReplanificationService to reassign affected orders.
+     * 
+     * @param cancellations Newly cancelled flights
+     * @param allOrders All pending orders
+     * @param availableFlights All active (non-cancelled) flights
+     */
+    private void handleReplanification(
+            List<FlightCancellation> cancellations,
+            List<PlannerOrder> allOrders,
+            List<PlannerFlight> availableFlights) {
+        
+        System.out.println("   🔄 REPLANIFICATION triggered for " + cancellations.size() + " cancellation(s)");
+        
+        // Get airports
+        List<PlannerAirport> airports = new ArrayList<>(dataProvider.getAirports());
+        
+        // Trigger replanification for each cancellation
+        for (FlightCancellation cancellation : cancellations) {
+            try {
+                ReplanificationTask task = replanificationService.triggerReplanification(
+                    cancellation,
+                    lastSolution,
+                    allOrders,
+                    availableFlights,
+                    airports,
+                    currentTime
+                );
+                
+                if (task != null) {
+                    int affectedCount = task.getAffectedOrderIds() != null ? 
+                        task.getAffectedOrderIds().size() : 0;
+                    System.out.println("      ✅ Replanification task " + task.getId() + " - " + 
+                                     task.getStatus() + " (" + affectedCount + " affected orders)");
+                } else {
+                    System.out.println("      ⚠️ No replanification needed (no affected orders)");
+                }
+            } catch (Exception e) {
+                System.err.println("      ❌ Replanification failed: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+    
+    /**
+     * Get the current simulation time.
+     * Used by external services to synchronize with simulation progress.
+     * 
+     * @return Current simulation time
+     */
+    public LocalDateTime getCurrentSimulationTime() {
+        return currentTime;
+    }
+    
+    // ========== METRICS METHODS ==========
     
     /**
      * Print comprehensive final metrics at the end of the simulation.

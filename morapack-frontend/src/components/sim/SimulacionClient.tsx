@@ -12,9 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Itinerario } from "@/types/itinerario";
 import type { Aeropuerto, OrderSummary, OrderMetrics, SimulationPreview } from "@/types";
 import { Play, Pause, Square, RotateCcw, Plane, Calendar, Clock, Gauge, PackageCheck, TrendingUp } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 import { PedidosPanel } from "./PedidosPanel";
+import { EventosPanel } from "./EventosPanel";
+import { getCancellations, getDynamicOrders } from "@/lib/dynamic-events-api";
+import type { FlightCancellation, DynamicOrder } from "@/types/dynamic-events";
 
 type SimulationState = 'IDLE' | 'STARTING' | 'RUNNING' | 'PAUSED' | 'STOPPED' | 'COMPLETED' | 'ERROR';
 type ScenarioType = 'WEEKLY' | 'DAILY' | 'COLLAPSE';
@@ -56,6 +60,10 @@ export default function SimulacionClient() {
   const [previewData, setPreviewData] = useState<SimulationPreview | null>(null);
   const [pedidos, setPedidos] = useState<OrderSummary[]>([]);
   const [metricasPedidos, setMetricasPedidos] = useState<OrderMetrics | null>(null);
+  
+  // Dynamic events
+  const [cancellations, setCancellations] = useState<FlightCancellation[]>([]);
+  const [dynamicOrders, setDynamicOrders] = useState<DynamicOrder[]>([]);
 
   // Connect to WebSocket on mount
   useEffect(() => {
@@ -276,6 +284,26 @@ export default function SimulacionClient() {
 
     return () => clearInterval(intervalId);
   }, [interpolatedTime, simulatedTime]);
+
+  // Load dynamic events when connected
+  useEffect(() => {
+    if (connected) {
+      loadDynamicEvents();
+    }
+  }, [connected]);
+
+  const loadDynamicEvents = async () => {
+    try {
+      const [cancellationsData, ordersData] = await Promise.all([
+        getCancellations(),
+        getDynamicOrders(),
+      ]);
+      setCancellations(cancellationsData);
+      setDynamicOrders(ordersData);
+    } catch (error) {
+      console.error('Error loading dynamic events:', error);
+    }
+  };
 
   // Fetch preview data when date or scenario changes
   useEffect(() => {
@@ -610,7 +638,7 @@ export default function SimulacionClient() {
         </CardContent>
       </Card>
 
-      {/* Layout: Mapa + Panel de Pedidos */}
+      {/* Layout: Mapa + Panel de Pedidos/Eventos */}
       <div className="flex gap-4">
         {/* Mapa (principal) */}
         <div className="flex-1">
@@ -629,18 +657,41 @@ export default function SimulacionClient() {
           </Card>
         </div>
         
-        {/* Panel de pedidos (sidebar) */}
+        {/* Panel lateral con tabs (Pedidos + Eventos) */}
         <div className="w-96">
           <Card className="overflow-hidden h-[calc(100vh-14rem)]">
-            <PedidosPanel
-              pedidos={pedidos}
-              metricas={metricasPedidos}
-              mode={simulationState === 'IDLE' ? 'preview' : 'realtime'}
-              onSelectPedido={(id) => {
-                console.log("Selected pedido:", id);
-                // TODO: Resaltar ruta en el mapa
-              }}
-            />
+            <Tabs defaultValue="pedidos" className="h-full flex flex-col">
+              <TabsList className="grid grid-cols-2 m-3 mb-0">
+                <TabsTrigger value="pedidos" className="text-sm">
+                  Pedidos
+                </TabsTrigger>
+                <TabsTrigger value="eventos" className="text-sm">
+                  Eventos
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="pedidos" className="flex-1 m-0 overflow-hidden">
+                <PedidosPanel
+                  pedidos={pedidos}
+                  metricas={metricasPedidos}
+                  mode={simulationState === 'IDLE' ? 'preview' : 'realtime'}
+                  onSelectPedido={(id) => {
+                    console.log("Selected pedido:", id);
+                  }}
+                />
+              </TabsContent>
+
+              <TabsContent value="eventos" className="flex-1 m-0 overflow-hidden">
+                <EventosPanel
+                  aeropuertos={aeropuertos}
+                  cancellations={cancellations}
+                  dynamicOrders={dynamicOrders}
+                  onCancellationCreated={(c) => setCancellations([...cancellations, c])}
+                  onOrderCreated={(o) => setDynamicOrders([...dynamicOrders, o])}
+                  onRefresh={loadDynamicEvents}
+                />
+              </TabsContent>
+            </Tabs>
           </Card>
         </div>
       </div>

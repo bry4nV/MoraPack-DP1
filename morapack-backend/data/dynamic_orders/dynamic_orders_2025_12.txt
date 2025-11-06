@@ -1,0 +1,64 @@
+# ═══════════════════════════════════════════════════════════════════════
+# ARCHIVO DE PEDIDOS DINÁMICOS PROGRAMADOS
+# Simulación Semanal - Diciembre 2025
+# ═══════════════════════════════════════════════════════════════════════
+
+# Formato: DIA.HH:MM,ORIGEN,DESTINO,CANTIDAD,DEADLINE_HH
+# 
+# DIA: 01-07 (día de la semana simulada, siendo 01 = primer día)
+# HH:MM: Hora en que se inyecta el pedido
+# ORIGEN: Código IATA del aeropuerto de origen
+# DESTINO: Código IATA del aeropuerto de destino
+# CANTIDAD: Número de productos (mayor a 0)
+# DEADLINE_HH: Deadline en horas (48 o 72)
+#
+# Ejemplo:
+# 01.14:30,SPIM,EBCI,250,48
+# → Inyectar el día 1 a las 14:30 un pedido SPIM→EBCI de 250 unidades con 48h deadline
+
+# ═══════════════════════════════════════════════════════════════════════
+# PEDIDOS DINÁMICOS DE PRUEBA
+# ═══════════════════════════════════════════════════════════════════════
+
+# Día 1 - Pedidos urgentes (48h)
+01.14:30,SPIM,EBCI,250,48
+01.16:00,SBGR,LATI,180,72
+
+# Día 3 - Pedidos matutinos
+03.08:00,SEQM,LTFM,150,72
+03.20:30,SPIM,EBCI,320,48
+
+# Día 5 - Pedidos urgentes
+05.10:15,LTFM,SEQM,200,48
+05.16:45,SBGR,LATI,300,48
+
+# Día 7 - Pedido de cierre
+07.09:00,SCLS,SPIM,175,72
+
+# ═══════════════════════════════════════════════════════════════════════
+# RUTAS COMUNES PARA TESTING:
+# ═══════════════════════════════════════════════════════════════════════
+# América del Sur:
+#   SPIM (Lima) ↔ SEQM (Quito)
+#   SBGR (São Paulo) ↔ SCLS (Santiago)
+#   SKBO (Bogotá) ↔ SPIM (Lima)
+#
+# Europa:
+#   EBCI (Bruselas) ↔ LTFM (Estambul)
+#   LATI (Tirana) ↔ LTFM (Estambul)
+#   LKPR (Praga) ↔ EBCI (Bruselas)
+#
+# Intercontinental:
+#   SPIM → EBCI (Lima → Bruselas)
+#   LTFM → SEQM (Estambul → Quito)
+#   SBGR → LATI (São Paulo → Tirana)
+# ═══════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════
+# NOTAS:
+# - Los pedidos se inyectan en el momento especificado
+# - Se asignan automáticamente en la próxima iteración de Tabu Search
+# - El deadline se calcula desde el momento de inyección
+# - Validaciones: origen ≠ destino, cantidad > 0, deadline = 48 o 72
+# ═══════════════════════════════════════════════════════════════════════
+

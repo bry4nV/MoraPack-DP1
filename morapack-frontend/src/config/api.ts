@@ -21,6 +21,16 @@ export const API_ENDPOINTS = {
     BULK_CREATE: '/api/airports/bulk-create',
     BULK_DELETE: '/api/airports/bulk-delete',
   },
+  DYNAMIC_EVENTS: {
+    CANCEL_FLIGHT: '/api/simulation/events/cancel-flight',
+    LOAD_CANCELLATIONS: '/api/simulation/events/load-cancellations',
+    ADD_ORDER: '/api/simulation/events/add-order',
+    LOAD_ORDERS: '/api/simulation/events/load-orders',
+    GET_CANCELLATIONS: '/api/simulation/events/cancellations',
+    GET_ORDERS: '/api/simulation/events/orders',
+    GET_CANCELLATIONS_EXECUTED: '/api/simulation/events/cancellations/executed',
+    GET_ORDERS_INJECTED: '/api/simulation/events/orders/injected',
+  },
 } as const;
 
 // HTTP Status Codes
