@@ -1,27 +1,26 @@
 export interface Flight {
   id: number;
-  idAeropuertoOrigen: string;
-  idAeropuertoDestino: string;
-  horaSalida: string; // "03:34:00"
-  horaLlegada: string; // "05:21:00"
-  capacidad: number;
-  estado: FlightStatus; // ← Cambiado
-}
-
-export enum FlightStatus {
-  SCHEDULED = 'SCHEDULED',
-  DELAYED = 'DELAYED',
-  CANCELLED = 'CANCELLED',
-  COMPLETED = 'COMPLETED',
+  originCode: string;
+  destinationCode: string;
+  departureTime: string; // "HH:mm:ss"
+  arrivalTime: string; // "HH:mm:ss"
+  capacity: number;
 }
 
 export interface CreateFlightPayload {
-  idAeropuertoOrigen: string;
-  idAeropuertoDestino: string;
-  horaSalida: string;
-  horaLlegada: string;
-  capacidad: number;
-  estado: FlightStatus;
+  originCode: string;
+  destinationCode: string;
+  departureTime: string;
+  arrivalTime: string;
+  capacity: number;
 }
 
 export type UpdateFlightPayload = Partial<CreateFlightPayload>;
+
+export interface BulkCreateFlightPayload {
+  flights: CreateFlightPayload[];
+}
+
+export interface BulkDeleteFlightPayload {
+  flights: number[];
+}

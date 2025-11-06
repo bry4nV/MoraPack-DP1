@@ -25,12 +25,11 @@ public class FlightService {
     private FlightDto toDto(Flight e) {
         FlightDto d = new FlightDto();
         d.setId(e.getId());
-        d.setOriginAirportId(e.getOriginAirportId()); // ← CAMBIO
-        d.setDestinationAirportId(e.getDestinationAirportId()); // ← CAMBIO
-        d.setDepartureTime(e.getDepartureTime() != null ? e.getDepartureTime().toString() : null); // ← CAMBIO
-        d.setArrivalTime(e.getArrivalTime() != null ? e.getArrivalTime().toString() : null); // ← CAMBIO
-        d.setCapacity(e.getCapacity()); // ← CAMBIO
-        d.setStatus(e.getStatus()); // ← CAMBIO
+        d.setOriginCode(e.getOriginCode());
+        d.setDestinationCode(e.getDestinationCode());
+        d.setDepartureTime(e.getDepartureTime() != null ? e.getDepartureTime().toString() : null);
+        d.setArrivalTime(e.getArrivalTime() != null ? e.getArrivalTime().toString() : null);
+        d.setCapacity(e.getCapacity());
         return d;
     }
 }

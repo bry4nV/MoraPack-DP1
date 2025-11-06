@@ -8,27 +8,23 @@ import java.time.LocalTime;
 public class Flight {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "idVuelo")
-    private Long id;
+    @Column(name = "id")
+    private Integer id;
 
-    @Column(name = "idAeropuertoOrigen")
-    private String originAirportId; // ← CAMBIO: de idAeropuertoOrigen a originAirportId
+    @Column(name = "origin_code")
+    private String originCode;
 
-    @Column(name = "idAeropuertoDestino")
-    private String destinationAirportId; // ← CAMBIO: de idAeropuertoDestino a destinationAirportId
+    @Column(name = "destination_code")
+    private String destinationCode;
 
-    @Column(name = "horaSalida")
-    private LocalTime departureTime; // ← CAMBIO: de horaSalida a departureTime
+    @Column(name = "departure_time")
+    private LocalTime departureTime;
 
-    @Column(name = "horaLlegada")
-    private LocalTime arrivalTime; // ← CAMBIO: de horaLlegada a arrivalTime
+    @Column(name = "arrival_time")
+    private LocalTime arrivalTime;
 
-    @Column(name = "capacidad")
-    private Integer capacity; // ← CAMBIO: de capacidad a capacity
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "estado", columnDefinition = "ENUM('SCHEDULED','DELAYED','CANCELLED','COMPLETED')")
-    private FlightStatus status; // ← CAMBIO: de estado a status
+    @Column(name = "capacity")
+    private Integer capacity;
 
     // domain fields kept for compatibility with algos domain; not persisted here
     private transient Airport origin;
@@ -36,15 +32,26 @@ public class Flight {
 
     public Flight() {}
 
+    // convenience constructor for domain usage
+    public Flight(Integer id, String originCode, String destinationCode, 
+                  LocalTime departureTime, LocalTime arrivalTime, Integer capacity) {
+        this.id = id;
+        this.originCode = originCode;
+        this.destinationCode = destinationCode;
+        this.departureTime = departureTime;
+        this.arrivalTime = arrivalTime;
+        this.capacity = capacity;
+    }
+
     // JPA-friendly getters/setters for persisted columns
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public Integer getId() { return id; }
+    public void setId(Integer id) { this.id = id; }
 
-    public String getOriginAirportId() { return originAirportId; }
-    public void setOriginAirportId(String originAirportId) { this.originAirportId = originAirportId; }
+    public String getOriginCode() { return originCode; }
+    public void setOriginCode(String originCode) { this.originCode = originCode; }
 
-    public String getDestinationAirportId() { return destinationAirportId; }
-    public void setDestinationAirportId(String destinationAirportId) { this.destinationAirportId = destinationAirportId; }
+    public String getDestinationCode() { return destinationCode; }
+    public void setDestinationCode(String destinationCode) { this.destinationCode = destinationCode; }
 
     public LocalTime getDepartureTime() { return departureTime; }
     public void setDepartureTime(LocalTime departureTime) { this.departureTime = departureTime; }
@@ -54,9 +61,6 @@ public class Flight {
 
     public Integer getCapacity() { return capacity; }
     public void setCapacity(Integer capacity) { this.capacity = capacity; }
-
-    public FlightStatus getStatus() { return status; }
-    public void setStatus(FlightStatus status) { this.status = status; }
 
     // Domain accessors (transient)
     public Airport getOrigin() { return origin; }

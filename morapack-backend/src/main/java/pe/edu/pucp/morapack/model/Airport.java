@@ -6,78 +6,92 @@ import jakarta.persistence.*;
 @Table(name = "airport")
 public class Airport {
     @Id
-    @Column(name = "idAeropuerto")
-    private String id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Integer id;
 
-    @Column(name = "nombre")
-    private String name; // ← CAMBIO: de nombre a name
+    @Column(name = "continent")
+    private String continent;
 
-    @Column(name = "pais")
-    private String country; // ← CAMBIO: de pais a country
+    @Column(name = "code")
+    private String code;
 
-    @Column(name = "ciudad")
-    private String city; // ← CAMBIO: de ciudad a city
+    @Column(name = "city")
+    private String city;
 
-    @Column(name = "GMT")
-    private String gmt;
+    @Column(name = "country")
+    private String country;
 
-    @Column(name = "capacidad")
-    private Integer capacity; // ← CAMBIO: de capacidad a capacity
+    @Column(name = "city_acronym")
+    private String cityAcronym;
 
-    @Column(name = "continente")
-    private String continent; // ← CAMBIO: de continente a continent
+    @Column(name = "gmt")
+    private Integer gmt;
 
-    @Column(name = "esSede")
-    private Integer isHub; // ← CAMBIO: de esSede a isHub
+    @Column(name = "capacity")
+    private Integer capacity;
+
+    @Column(name = "latitude")
+    private String latitude;
+
+    @Column(name = "longitude")
+    private String longitude;
+
+    @Column(name = "is_hub")
+    private Integer isHub;
 
     // domain fields kept for compatibility with algos domain; not persisted here
-    private transient Country countryObj; // ← CAMBIO: evitar conflicto con country field
-    private transient double latitude;
-    private transient double longitude;
+    private transient Country countryObj;
 
     public Airport() {}
 
     // convenience constructor for domain usage
-    public Airport(String id, String name, String city, String country, String continent,
-                   int capacity, String latitude, String longitude, String gmt) {
+    public Airport(Integer id, String continent, String code, String city, String country, 
+                   String cityAcronym, Integer gmt, Integer capacity, String latitude, 
+                   String longitude, Integer isHub) {
         this.id = id;
-        this.name = name;
+        this.continent = continent;
+        this.code = code;
         this.city = city;
         this.country = country;
-        this.continent = continent;
-        this.capacity = capacity;
+        this.cityAcronym = cityAcronym;
         this.gmt = gmt;
-        // Parse coordinates for algorithms
-        try {
-            this.latitude = Double.parseDouble(latitude);
-            this.longitude = Double.parseDouble(longitude);
-        } catch (NumberFormatException e) {
-            this.latitude = 0.0;
-            this.longitude = 0.0;
-        }
+        this.capacity = capacity;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.isHub = isHub;
     }
 
     // JPA-friendly getters/setters for persisted columns
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
+    public Integer getId() { return id; }
+    public void setId(Integer id) { this.id = id; }
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
+    public String getContinent() { return continent; }
+    public void setContinent(String continent) { this.continent = continent; }
 
-    public String getCountry() { return country; }
-    public void setCountry(String country) { this.country = country; }
+    public String getCode() { return code; }
+    public void setCode(String code) { this.code = code; }
 
     public String getCity() { return city; }
     public void setCity(String city) { this.city = city; }
 
-    public String getGmt() { return gmt; }
-    public void setGmt(String gmt) { this.gmt = gmt; }
+    public String getCountry() { return country; }
+    public void setCountry(String country) { this.country = country; }
+
+    public String getCityAcronym() { return cityAcronym; }
+    public void setCityAcronym(String cityAcronym) { this.cityAcronym = cityAcronym; }
+
+    public Integer getGmt() { return gmt; }
+    public void setGmt(Integer gmt) { this.gmt = gmt; }
 
     public Integer getCapacity() { return capacity; }
     public void setCapacity(Integer capacity) { this.capacity = capacity; }
 
-    public String getContinent() { return continent; }
-    public void setContinent(String continent) { this.continent = continent; }
+    public String getLatitude() { return latitude; }
+    public void setLatitude(String latitude) { this.latitude = latitude; }
+
+    public String getLongitude() { return longitude; }
+    public void setLongitude(String longitude) { this.longitude = longitude; }
 
     public Integer getIsHub() { return isHub; }
     public void setIsHub(Integer isHub) { this.isHub = isHub; }
@@ -86,15 +100,26 @@ public class Airport {
     public Country getCountryObj() { return countryObj; }
     public void setCountryObj(Country countryObj) { this.countryObj = countryObj; }
 
-    public double getLatitude() { return latitude; }
-    public void setLatitude(double latitude) { this.latitude = latitude; }
-
-    public double getLongitude() { return longitude; }
-    public void setLongitude(double longitude) { this.longitude = longitude; }
-
     // Helper methods
-    public boolean isMainHub() { // ← CAMBIO: nombre más claro
+    public boolean isMainHub() {
         return isHub != null && isHub == 1;
+    }
+
+    // Parse helpers for algorithms
+    public double getLatitudeAsDouble() {
+        try {
+            return Double.parseDouble(latitude);
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
+    }
+
+    public double getLongitudeAsDouble() {
+        try {
+            return Double.parseDouble(longitude);
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
     }
 }
 

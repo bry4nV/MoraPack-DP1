@@ -1,27 +1,24 @@
 package pe.edu.pucp.morapack.dto;
 
-import pe.edu.pucp.morapack.model.FlightStatus;
-
 public class FlightDto {
-    private Long id;
-    private String originAirportId; // ← CAMBIO
-    private String destinationAirportId; // ← CAMBIO
-    private String departureTime; // ← CAMBIO
-    private String arrivalTime; // ← CAMBIO
-    private Integer capacity; // ← CAMBIO
-    private FlightStatus status; // ← CAMBIO
+    private Integer id;
+    private String originCode;
+    private String destinationCode;
+    private String departureTime; // "HH:mm:ss"
+    private String arrivalTime; // "HH:mm:ss"
+    private Integer capacity;
 
     public FlightDto() {}
 
     // Getters y Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public Integer getId() { return id; }
+    public void setId(Integer id) { this.id = id; }
 
-    public String getOriginAirportId() { return originAirportId; }
-    public void setOriginAirportId(String originAirportId) { this.originAirportId = originAirportId; }
+    public String getOriginCode() { return originCode; }
+    public void setOriginCode(String originCode) { this.originCode = originCode; }
 
-    public String getDestinationAirportId() { return destinationAirportId; }
-    public void setDestinationAirportId(String destinationAirportId) { this.destinationAirportId = destinationAirportId; }
+    public String getDestinationCode() { return destinationCode; }
+    public void setDestinationCode(String destinationCode) { this.destinationCode = destinationCode; }
 
     public String getDepartureTime() { return departureTime; }
     public void setDepartureTime(String departureTime) { this.departureTime = departureTime; }
@@ -31,7 +28,4 @@ public class FlightDto {
 
     public Integer getCapacity() { return capacity; }
     public void setCapacity(Integer capacity) { this.capacity = capacity; }
-
-    public FlightStatus getStatus() { return status; }
-    public void setStatus(FlightStatus status) { this.status = status; }
 }

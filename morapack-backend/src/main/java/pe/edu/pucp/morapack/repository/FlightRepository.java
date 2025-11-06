@@ -5,6 +5,6 @@ import org.springframework.stereotype.Repository;
 import pe.edu.pucp.morapack.model.Flight;
 
 @Repository
-public interface FlightRepository extends JpaRepository<Flight, Long> {
+public interface FlightRepository extends JpaRepository<Flight, Integer> {
     // Query methods si es necesario
 }

@@ -5,6 +5,6 @@ import org.springframework.stereotype.Repository;
 import pe.edu.pucp.morapack.model.Airport;
 
 @Repository
-public interface AirportRepository extends JpaRepository<Airport, String> {
+public interface AirportRepository extends JpaRepository<Airport, Integer> {
     // Query methods si es necesario
 }
