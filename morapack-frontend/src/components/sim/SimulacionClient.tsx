@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import AnimatedFlights from "@/components/map/AnimatedFlights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,17 @@ export default function SimulacionClient() {
   const [totalIterations, setTotalIterations] = useState(0);
   const [progress, setProgress] = useState(0);
   const [simulatedTime, setSimulatedTime] = useState("");
+  const [interpolatedTime, setInterpolatedTime] = useState(""); // ✅ Tiempo interpolado
   const [message, setMessage] = useState("Cargando vista previa...");
+  
+  // ✅ Referencias para interpolación de tiempo
+  const lastBackendTimeRef = useRef<string>("");
+  const lastUpdateTimestampRef = useRef<number>(0);
+  const K_MINUTES = 12; // K=12 → cada iteración avanza 60 minutos
+  const ITERATION_DELAY_MS = 10000; // 10 segundos por iteración
+  
+  // ✅ Display time (actualizado cada segundo para evitar "palpitar")
+  const [displayTime, setDisplayTime] = useState("");
   
   // Métricas finales
   const [finalMetrics, setFinalMetrics] = useState<any>(null);
@@ -81,7 +91,14 @@ export default function SimulacionClient() {
                   setTotalIterations(update.totalIterations || 0);
                   setProgress(update.progress || 0);
                   setSpeed(update.currentSpeed || 1);
-                  setSimulatedTime(update.simulatedTime || "");
+                  
+                  // ✅ Update simulated time with interpolation tracking
+                  if (update.simulatedTime) {
+                    setSimulatedTime(update.simulatedTime);
+                    lastBackendTimeRef.current = update.simulatedTime;
+                    lastUpdateTimestampRef.current = Date.now();
+                    setInterpolatedTime(update.simulatedTime);
+                  }
 
                   // Update map with latest results
                   if (update.latestResult) {
@@ -194,6 +211,71 @@ export default function SimulacionClient() {
       stompClient.deactivate();
     };
   }, []);
+
+  // ✅ Time interpolation: smooth time progression between backend updates
+  useEffect(() => {
+    if (simulationState !== 'RUNNING' || !lastBackendTimeRef.current) {
+      return;
+    }
+
+    let animationFrameId: number;
+    
+    const interpolateTime = () => {
+      const now = Date.now();
+      const elapsedMs = now - lastUpdateTimestampRef.current;
+      const totalIterationMs = ITERATION_DELAY_MS;
+      const scMinutes = K_MINUTES * 5; // K * Sa (5 minutes)
+      
+      // Calculate how much simulated time should have passed
+      const progress = Math.min(1, elapsedMs / totalIterationMs);
+      const simulatedMinutesElapsed = progress * scMinutes;
+      
+      // Add elapsed time to last known backend time
+      if (lastBackendTimeRef.current) {
+        const backendDate = new Date(lastBackendTimeRef.current);
+        const interpolatedDate = new Date(backendDate.getTime() + simulatedMinutesElapsed * 60 * 1000);
+        setInterpolatedTime(interpolatedDate.toISOString());
+      }
+      
+      animationFrameId = requestAnimationFrame(interpolateTime);
+    };
+    
+    animationFrameId = requestAnimationFrame(interpolateTime);
+    
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [simulationState, lastBackendTimeRef.current]);
+
+  // ✅ Update display time only once per second (reduce visual "palpitation")
+  useEffect(() => {
+    if (!interpolatedTime) {
+      setDisplayTime(simulatedTime || "Esperando...");
+      return;
+    }
+
+    // Format: "2025-12-01 09:13" (sin segundos para evitar palpitación)
+    const formatTime = (isoString: string) => {
+      const date = new Date(isoString);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${minutes}`;
+    };
+
+    setDisplayTime(formatTime(interpolatedTime));
+
+    // Update display every second
+    const intervalId = setInterval(() => {
+      if (interpolatedTime) {
+        setDisplayTime(formatTime(interpolatedTime));
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [interpolatedTime, simulatedTime]);
 
   // Fetch preview data when date or scenario changes
   useEffect(() => {
@@ -319,6 +401,23 @@ export default function SimulacionClient() {
     setItinerarios([]);
     setCurrentIteration(0);
     setProgress(0);
+    // ✅ FIX: Limpiar pedidos y métricas al resetear
+    setPedidos(previewData?.pedidos || []);
+    setMetricasPedidos(previewData ? {
+      totalPedidos: previewData.totalPedidos,
+      pendientes: previewData.totalPedidos,
+      enTransito: 0,
+      completados: 0,
+      sinAsignar: 0,
+      totalProductos: previewData.totalProductos,
+      productosAsignados: 0,
+      tasaAsignacionPercent: 0
+    } : null);
+    setSimulatedTime("");
+    setInterpolatedTime("");
+    setDisplayTime("");
+    lastBackendTimeRef.current = "";
+    lastUpdateTimestampRef.current = 0;
   };
   const handleSpeedChange = (newSpeed: string) => {
     const speedValue = parseFloat(newSpeed);
@@ -351,7 +450,7 @@ export default function SimulacionClient() {
           {/* Tiempo simulado */}
           <Badge variant="outline" className="flex items-center gap-2 px-3 py-1">
             <Calendar className="h-4 w-4" />
-            {simulatedTime || "Esperando..."}
+            {displayTime}
           </Badge>
         </div>
       </div>
@@ -521,10 +620,10 @@ export default function SimulacionClient() {
                   itinerarios={itinerarios}
                   aeropuertos={aeropuertos}
                   speedKmh={800 * speed}
-                  simulatedTime={simulatedTime}
+                  simulatedTime={interpolatedTime || simulatedTime}
                   center={[-60, -15]}
                   zoom={3}
-                  loop={true}
+                  loop={false}
                 />
             </CardContent>
           </Card>

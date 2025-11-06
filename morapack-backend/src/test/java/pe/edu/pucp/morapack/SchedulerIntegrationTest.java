@@ -1,8 +1,9 @@
 package pe.edu.pucp.morapack;
 
 import org.junit.jupiter.api.*;
+
+import pe.edu.pucp.morapack.algos.data.providers.FileDataProvider;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
-import pe.edu.pucp.morapack.algos.scheduler.FileDataProvider;
 import pe.edu.pucp.morapack.algos.scheduler.PlannerScheduler;
 import pe.edu.pucp.morapack.algos.scheduler.ScenarioConfig;
 

@@ -1,4 +1,4 @@
-package pe.edu.pucp.morapack.algos.scheduler;
+package pe.edu.pucp.morapack.algos.data.providers;
 
 import pe.edu.pucp.morapack.algos.data.DataLoader;
 import pe.edu.pucp.morapack.algos.entities.PlannerAirport;
@@ -166,6 +166,8 @@ public class FileDataProvider implements DataProvider {
         return airportMap.get(code);
     }
 }
+
+
 
 
 

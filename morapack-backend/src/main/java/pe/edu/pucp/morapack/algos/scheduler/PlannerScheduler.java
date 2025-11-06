@@ -2,6 +2,7 @@ package pe.edu.pucp.morapack.algos.scheduler;
 
 import pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSearchPlanner;
 import pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution;
+import pe.edu.pucp.morapack.algos.data.providers.DataProvider;
 import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
 import pe.edu.pucp.morapack.algos.entities.PlannerOrder;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;

@@ -1,4 +1,4 @@
-package pe.edu.pucp.morapack.algos.scheduler;
+package pe.edu.pucp.morapack.algos.data.providers;
 
 import pe.edu.pucp.morapack.algos.entities.PlannerAirport;
 import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
