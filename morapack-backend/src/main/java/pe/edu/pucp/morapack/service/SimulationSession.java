@@ -3,11 +3,11 @@ package pe.edu.pucp.morapack.service;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSearchPlanner;
 import pe.edu.pucp.morapack.algos.algorithm.tabu.TabuSolution;
+import pe.edu.pucp.morapack.algos.data.providers.DataProvider;
 import pe.edu.pucp.morapack.algos.entities.PlannerAirport;
 import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
 import pe.edu.pucp.morapack.algos.entities.PlannerOrder;
 import pe.edu.pucp.morapack.algos.entities.Solution;
-import pe.edu.pucp.morapack.algos.scheduler.DataProvider;
 import pe.edu.pucp.morapack.algos.scheduler.ScenarioConfig;
 import pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse;
 import pe.edu.pucp.morapack.dto.websocket.SimulationState;
@@ -199,14 +199,33 @@ public class SimulationSession implements Runnable {
             
                 // Cast to TabuSolution and convert to DTO
                 if (solution instanceof TabuSolution tabuSolution) {
-                    // Track shipments for metrics
+                    // ✅ FIX: Actualizar solo los pedidos de esta iteración
+                    // TabuSearch devuelve una solución para los pedidos pendientes actuales,
+                    // no para todos los históricos, así que solo actualizamos esos.
+                    
+                    // 1. Identificar qué pedidos están en la solución actual
+                    java.util.Set<Integer> currentOrderIds = new java.util.HashSet<>();
                     for (var shipment : tabuSolution.getPlannerShipments()) {
-                        totalShipmentsCreated++;
+                        currentOrderIds.add(shipment.getOrder().getId());
+                    }
+                    
+                    // 2. Resetear SOLO las asignaciones de pedidos actuales (no históricos)
+                    for (Integer orderId : currentOrderIds) {
+                        totalAssignedPerOrder.put(orderId, 0);
+                    }
+                    
+                    // 3. Recalcular cantidades para esta solución
+                    int shipmentsThisIteration = 0;
+                    for (var shipment : tabuSolution.getPlannerShipments()) {
+                        shipmentsThisIteration++;
                         int orderId = shipment.getOrder().getId();
                         int quantity = shipment.getQuantity();
                         totalAssignedPerOrder.put(orderId, 
                             totalAssignedPerOrder.getOrDefault(orderId, 0) + quantity);
                     }
+                    
+                    // Update total shipments counter (accumulative across all iterations)
+                    totalShipmentsCreated += shipmentsThisIteration;
                     
                     // Remove fully assigned orders from pending queue
                     updatePendingOrders(tabuSolution, allOrders);
@@ -265,17 +284,19 @@ public class SimulationSession implements Runnable {
     
     private void applySpeedControlledDelay() throws InterruptedException {
         // Base delay between iterations (in ms)
-        // For faster simulation, we can use a smaller base delay
-        long baseDelayMs = 500;  // 0.5 seconds base
+        // Ajustado para que la simulación dure ~30 minutos
+        // Con K=12 → 168 iteraciones
+        // 168 iter × ~10s (delay + processing) = ~1800s = 30 min
+        long baseDelayMs = 8000;  // 8 seconds base (+ ~2s TabuSearch = ~10s total)
         
         // Adjust by speed multiplier
-        // speedMultiplier = 1.0 → 500ms delay
-        // speedMultiplier = 2.0 → 250ms delay (2x faster)
-        // speedMultiplier = 0.5 → 1000ms delay (2x slower)
+        // speedMultiplier = 1.0 → 8000ms delay
+        // speedMultiplier = 2.0 → 4000ms delay (2x faster)
+        // speedMultiplier = 0.5 → 16000ms delay (2x slower)
         long adjustedDelay = (long) (baseDelayMs / speedMultiplier);
         
-        // Ensure minimum delay of 10ms
-        adjustedDelay = Math.max(10, adjustedDelay);
+        // Ensure minimum delay of 100ms (para speed muy alto)
+        adjustedDelay = Math.max(100, adjustedDelay);
         
         Thread.sleep(adjustedDelay);
     }

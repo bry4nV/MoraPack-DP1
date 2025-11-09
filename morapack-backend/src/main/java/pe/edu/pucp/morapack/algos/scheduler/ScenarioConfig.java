@@ -116,13 +116,13 @@ public class ScenarioConfig {
     
     /**
      * Factory method: Weekly simulation configuration
-     * K = 24 → Sc = 24 × 5 = 120 minutes of data per iteration
-     * Simulates 7 days in 84 iterations
+     * K = 12 → Sc = 12 × 5 = 60 minutes of data per iteration
+     * Simulates 7 days in 168 iterations (more granular, slower visual)
      * 
      * NOTE: K is adjustable. Use weekly(K) to customize.
      */
     public static ScenarioConfig weekly() {
-        return weekly(24); // Default K=24 (2 hour windows)
+        return weekly(12); // K=12 (1 hour windows, slower visual speed)
     }
     
     /**

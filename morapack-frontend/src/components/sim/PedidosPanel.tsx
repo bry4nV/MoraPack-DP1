@@ -112,7 +112,7 @@ export function PedidosPanel({
       {/* Filtros */}
       <div className="p-3 border-b space-y-2">
         <Input
-          placeholder="🔍 Buscar pedido..."
+          placeholder="Buscar pedido..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           className="text-sm h-9"

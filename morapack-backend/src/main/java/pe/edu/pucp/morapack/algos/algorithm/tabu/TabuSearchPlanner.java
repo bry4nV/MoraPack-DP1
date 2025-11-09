@@ -164,8 +164,8 @@ public class TabuSearchPlanner implements IOptimizer {
     private void initializeTabuSearchComponents() {
         this.config = new TabuSearchConfig(
             20,     // tabuListSize inicial (se adapta dinámicamente)
-            500,    // maxIterations (aumentado para mejor exploración)
-            80,     // maxIterationsWithoutImprovement
+            250,    // maxIterations (reducido porque ahora hay 168 iteraciones vs 84)
+            42,     // maxIterationsWithoutImprovement (ajustado proporcionalmente)
             70,     // directRouteProbability
             25,     // oneStopRouteProbability
             1000,   // bottleneckCapacity
@@ -313,7 +313,7 @@ public class TabuSearchPlanner implements IOptimizer {
                 TabuSolution testSolution = new TabuSolution(currentSolution);
                 move.apply(testSolution);
                 
-                // ✅ VALIDAR: Verificar que la solución respeta capacidades de aeropuertos
+                // VALIDAR: Verificar que la solución respeta capacidades de aeropuertos
                 if (!isValidSolution(testSolution, airports)) {
                     continue;  // Skip este movimiento, viola capacidades
                 }
@@ -476,10 +476,10 @@ public class TabuSearchPlanner implements IOptimizer {
     }
     
     /**
-     * Obtener icono de tendencia del costo
+     * Obtener tendencia del costo
      */
     private String getTrendIcon(List<Double> costHistory, double currentCost) {
-        if (costHistory.size() < 5) return "→";
+        if (costHistory.size() < 5) return "[STABLE]";
         
         // Comparar con las últimas 5 iteraciones
         double recentAvg = 0;
@@ -491,47 +491,47 @@ public class TabuSearchPlanner implements IOptimizer {
         recentAvg /= count;
         
         if (currentCost < recentAvg * 0.98) {
-            return "📉"; // Bajando significativamente
+            return "[DOWN--]"; // Bajando significativamente
         } else if (currentCost < recentAvg * 0.995) {
-            return "↘️"; // Bajando ligeramente
+            return "[DOWN-]"; // Bajando ligeramente
         } else if (currentCost > recentAvg * 1.005) {
-            return "↗️"; // Subiendo
+            return "[UP]"; // Subiendo
         } else {
-            return "→"; // Estable
+            return "[STABLE]"; // Estable
         }
     }
     
     /**
-     * Obtener icono de estado según iteraciones sin mejora
+     * Obtener estado según iteraciones sin mejora
      */
     private String getStatusIcon(int iterationsWithoutImprovement) {
         if (iterationsWithoutImprovement == 0) {
-            return "✅"; // Mejorando
+            return "[IMPROVING]"; // Mejorando
         } else if (iterationsWithoutImprovement < 10) {
-            return "🔄"; // Buscando
+            return "[SEARCHING]"; // Buscando
         } else if (iterationsWithoutImprovement < 30) {
-            return "⏳"; // Esperando
+            return "[WAITING]"; // Esperando
         } else if (iterationsWithoutImprovement < 50) {
-            return "⚠️"; // Advertencia
+            return "[WARNING]"; // Advertencia
         } else {
-            return "🛑"; // Crítico
+            return "[CRITICAL]"; // Crítico
         }
     }
     
     /**
-     * Obtener badge de mejora
+     * Obtener clasificación de mejora
      */
     private String getImprovementBadge(double improvementPercentage) {
         if (improvementPercentage > 50) {
-            return "🌟🌟🌟"; // Excelente
+            return "[EXCELLENT]"; // Excelente
         } else if (improvementPercentage > 25) {
-            return "🌟🌟"; // Muy bueno
+            return "[VERY-GOOD]"; // Muy bueno
         } else if (improvementPercentage > 10) {
-            return "🌟"; // Bueno
+            return "[GOOD]"; // Bueno
         } else if (improvementPercentage > 5) {
-            return "⭐"; // Moderado
+            return "[MODERATE]"; // Moderado
         } else if (improvementPercentage > 0) {
-            return "✨"; // Leve
+            return "[SLIGHT]"; // Leve
         } else {
             return ""; // Sin mejora
         }
@@ -651,7 +651,7 @@ public class TabuSearchPlanner implements IOptimizer {
         TabuSolution solution = new TabuSolution();
         Map<PlannerFlight, Integer> flightCapacityRemaining = new HashMap<>();
         
-        // ✅ NUEVO: Inicializar gestor de capacidades de aeropuertos
+        // NUEVO: Inicializar gestor de capacidades de aeropuertos
         AirportStorageManager airportManager = new AirportStorageManager(airports);
 
         // Inicializar capacidades disponibles de vuelos
@@ -691,7 +691,7 @@ public class TabuSearchPlanner implements IOptimizer {
             // 1. Intentar rutas directas PRIMERO
             List<RouteOption> directRoutes = findDirectRoutes(order, flights, flightCapacityRemaining);
             
-            // ✨ DIVERSIDAD: Mezclar rutas para no siempre elegir las mismas
+            // DIVERSIDAD: Mezclar rutas para no siempre elegir las mismas
             if (directRoutes.size() > 1) {
                 Collections.shuffle(directRoutes.subList(0, Math.min(5, directRoutes.size())), random);
             }
@@ -917,7 +917,7 @@ public class TabuSearchPlanner implements IOptimizer {
 
     private boolean isValidConnection(PlannerFlight first, PlannerFlight second) {
         long connectionHours = ChronoUnit.HOURS.between(first.getArrivalTime(), second.getDepartureTime());
-        return connectionHours >= 1 && connectionHours <= 24;
+        return connectionHours >= 1;  // ✅ Solo mínimo 1 hora (no hay máximo en el enunciado)
     }
     
     private void updateCapacities(List<PlannerFlight> route, int quantity, Map<PlannerFlight, Integer> remaining) {

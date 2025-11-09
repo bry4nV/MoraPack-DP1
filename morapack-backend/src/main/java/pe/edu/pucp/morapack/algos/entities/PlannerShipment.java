@@ -151,9 +151,7 @@ public class PlannerShipment {
                 return false;
             }
             
-            if (connectionHours > 24) {  // Máximo 24 horas (evitar esperas muy largas)
-                return false;
-            }
+            // ✅ NO hay máximo de horas de conexión (no está en el enunciado)
         }
         
         return true;
