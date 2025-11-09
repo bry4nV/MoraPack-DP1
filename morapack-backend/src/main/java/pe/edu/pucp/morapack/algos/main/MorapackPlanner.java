@@ -196,7 +196,7 @@ public class MorapackPlanner {
 
     // ===================== Simulación semanal  =====================
 
-    /** DTO interno: backlog sin mutar Order. */
+ 
     private static class PendingOrder {
         private final int id;
         private final PlannerAirport origin;
@@ -294,7 +294,7 @@ public class MorapackPlanner {
         System.out.println("Unidades pendientes al finalizar la semana: " + remaining);
     }
 
-    // --------------------------- Helpers ---------------------------
+   
 
     private static boolean isSameDay(LocalDateTime dt, LocalDate date) {
         return dt != null && dt.toLocalDate().isEqual(date);

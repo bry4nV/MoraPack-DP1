@@ -21,6 +21,13 @@ export const API_ENDPOINTS = {
     BULK_CREATE: '/api/airports/bulk-create',
     BULK_DELETE: '/api/airports/bulk-delete',
   },
+
+  FLIGHTS: {
+    BASE: '/api/flights', // <-- Este es el endpoint que creamos en el backend
+    BY_ID: (id: string) => `/api/flights/${id}`,
+    // (Puedes añadir bulk_create/delete si los necesitas)
+  },
+
 } as const;
 
 // HTTP Status Codes

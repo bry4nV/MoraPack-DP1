@@ -1,22 +1,26 @@
 "use client";
 
-import { Order, OrderState } from "@/types/order";
+import { Order, OrderState } from "@/types/order"; // El import ahora sí coincide
 import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-const statusColors: Record<OrderState, string> = {
-  [OrderState.PENDIENTE]: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
-  [OrderState.CONFIRMED]: "bg-green-100 text-green-800 hover:bg-green-100",
-  [OrderState.CANCELLED]: "bg-red-100 text-red-800 hover:bg-red-100",
-  [OrderState.ANULLED]: "bg-gray-100 text-gray-800 hover:bg-gray-100",
+// --- ¡ACTUALIZADO! ---
+// Colores para los nuevos estados de 'order.ts'
+const statusColors: Record<string, string> = {
+  [OrderState.UNASSIGNED]: "bg-gray-100 text-gray-800 hover:bg-gray-100",
+  [OrderState.PENDING]: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
+  [OrderState.IN_TRANSIT]: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+  [OrderState.COMPLETED]: "bg-green-100 text-green-800 hover:bg-green-100",
 };
 
-const statusLabels: Record<OrderState, string> = {
-  [OrderState.PENDIENTE]: "Pendiente",
-  [OrderState.CONFIRMED]: "Confirmado",
-  [OrderState.CANCELLED]: "Cancelado",
-  [OrderState.ANULLED]: "Anulado",
+// --- ¡ACTUALIZADO! ---
+// Etiquetas para los nuevos estados de 'order.ts'
+const statusLabels: Record<string, string> = {
+  [OrderState.UNASSIGNED]: "Sin Asignar",
+  [OrderState.PENDING]: "Pendiente",
+  [OrderState.IN_TRANSIT]: "En Tránsito",
+  [OrderState.COMPLETED]: "Completado",
 };
 
 export interface Column<T> {
@@ -28,63 +32,57 @@ export interface Column<T> {
 
 export const orderColumns: Column<Order>[] = [
   {
-    id: "id",
-    header: "ID",
-    accessor: "id",
-    cell: (row) => <div className="font-medium">{row.id}</div>,
+    id: "orderNumber", // <-- ¡ACTUALIZADO!
+    header: "N° Pedido",
+    accessor: "orderNumber",
+    cell: (row) => <div className="font-mono text-xs font-medium">{row.orderNumber}</div>,
   },
   {
-    id: "clientId",
+    id: "clientCode", // <-- ¡ACTUALIZADO!
     header: "Cliente",
-    accessor: "clientId",
-    cell: (row) => <div>{row.clientId}</div>,
+    accessor: "clientCode",
+    cell: (row) => <div>{row.clientCode}</div>,
   },
   {
-    id: "airportDestinationId",
+    id: "airportDestinationCode", // <-- ¡ACTUALIZADO!
     header: "Destino",
-    accessor: "airportDestinationId",
+    accessor: "airportDestinationCode",
     cell: (row) => (
-      <div className="font-mono text-xs">{row.airportDestinationId}</div>
+      <div className="font-mono text-xs">{row.airportDestinationCode}</div>
     ),
   },
   {
-    id: "packageCount",
+    id: "quantity", // <-- ¡ACTUALIZADO!
     header: "Paquetes",
-    accessor: "packageCount",
-    cell: (row) => <div className="text-center">{row.packageCount}</div>,
+    accessor: "quantity",
+    cell: (row) => <div className="text-center">{row.quantity}</div>,
   },
   {
     id: "status",
     header: "Estado",
     accessor: "status",
-    cell: (row) => (
-      <Badge className={statusColors[row.status]}>
-        {statusLabels[row.status]}
-      </Badge>
-    ),
+    cell: (row) => {
+      // Lógica actualizada para manejar los nuevos estados
+      const statusKey = row.status as OrderState;
+      const label = statusLabels[statusKey] || row.status;
+      const color = statusColors[statusKey] || statusColors[OrderState.UNASSIGNED];
+      return <Badge className={color}>{label}</Badge>;
+    }
   },
   {
     id: "date",
-    header: "Fecha",
+    header: "Fecha y Hora", // <-- ¡ACTUALIZADO!
     cell: (row) => (
+      // Lógica actualizada para arreglar "Día - undefinedundefinedundefined"
       <div className="text-sm">
-        Día {row.day} -{" "}
-        {String(row.hour).padStart(2, "0")}:
-        {String(row.minute).padStart(2, "0")}
+        <div>{row.orderDate}</div> {/* Muestra "YYYY-MM-DD" */}
+        <div className="text-xs text-muted-foreground">
+          {row.orderTime} {/* Muestra "HH:MM:SS" */}
+        </div>
       </div>
     ),
   },
-  {
-    id: "priority",
-    header: "Prioridad",
-    accessor: "priority",
-    cell: (row) =>
-      row.priority ? (
-        <Badge variant="outline">{row.priority}</Badge>
-      ) : (
-        <span className="text-muted-foreground text-sm">-</span>
-      ),
-  },
+  // La columna "priority" se elimina porque ya no existe en el nuevo 'order.ts'
   {
     id: "actions",
     header: "Acciones",

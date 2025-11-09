@@ -1,6 +1,6 @@
 "use client";
 
-import { Airport } from "@/types/airport";
+import { Aeropuerto } from "@/types/aeropuerto"; // Asegúrate que la ruta sea correcta
 import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -12,18 +12,12 @@ export interface Column<T> {
   cell?: (row: T) => React.ReactNode;
 }
 
-export const airportColumns: Column<Airport>[] = [
+export const airportColumns: Column<Aeropuerto>[] = [
   {
-    id: "id",
+    id: "code", // <-- Usa el nuevo campo 'code'
     header: "Código",
-    accessor: "id",
-    cell: (row) => <div className="font-mono text-xs font-medium">{row.id}</div>,
-  },
-  {
-    id: "name",
-    header: "Nombre",
-    accessor: "name",
-    cell: (row) => <div className="font-medium">{row.name}</div>,
+    accessor: "code",
+    cell: (row) => <div className="font-medium">{row.code}</div>,
   },
   {
     id: "city",
@@ -60,13 +54,14 @@ export const airportColumns: Column<Airport>[] = [
     cell: (row) => <div className="font-mono text-xs">{row.gmt}</div>,
   },
   {
-    id: "isHub",
+    id: "isHub", // <-- Usa el nuevo campo 'isHub'
     header: "Sede",
     accessor: "isHub",
     cell: (row) =>
+      // Esta lógica ahora funcionará porque row.isHub será 'true'
       row.isHub ? (
         <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-          Hub Principal
+          Si
         </Badge>
       ) : (
         <span className="text-muted-foreground text-sm">No</span>
@@ -77,14 +72,7 @@ export const airportColumns: Column<Airport>[] = [
     header: "Acciones",
     cell: (row) => (
       <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => console.log("Ver detalles de aeropuerto:", row.id)}
-          title="Ver detalles"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
+        {/* ... (Tus botones de acciones) ... */}
         <Button
           variant="ghost"
           size="icon"

@@ -1,11 +1,15 @@
+// Contenido para tu archivo types/flight.ts
+
 export interface Flight {
+  // Campos que SÍ vienen del backend
   id: number;
-  idAeropuertoOrigen: string;
-  idAeropuertoDestino: string;
-  horaSalida: string; // "03:34:00"
-  horaLlegada: string; // "05:21:00"
-  capacidad: number;
-  estado: FlightStatus; // ← Cambiado
+  airportOriginCode: string;    // <-- CAMBIADO
+  airportDestinationCode: string; // <-- CAMBIADO
+  flightDate: string;           // <-- ¡AÑADIDO!
+  departureTime: string;
+  arrivalTime: string;
+  capacity: number;
+  status: FlightStatus; // Esto ya estaba bien
 }
 
 export enum FlightStatus {
@@ -15,13 +19,15 @@ export enum FlightStatus {
   COMPLETED = 'COMPLETED',
 }
 
+// Payloads actualizados
 export interface CreateFlightPayload {
-  idAeropuertoOrigen: string;
-  idAeropuertoDestino: string;
-  horaSalida: string;
-  horaLlegada: string;
-  capacidad: number;
-  estado: FlightStatus;
+  airportOriginCode: string;
+  airportDestinationCode: string;
+  flightDate: string; // "YYYY-MM-DD"
+  departureTime: string; // "HH:MM:SS"
+  arrivalTime: string; // "HH:MM:SS"
+  capacity: number;
+  status: FlightStatus;
 }
 
 export type UpdateFlightPayload = Partial<CreateFlightPayload>;
