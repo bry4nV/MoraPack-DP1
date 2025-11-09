@@ -8,6 +8,7 @@ import { DataTablePagination } from "@/components/common/data-table/data-table-p
 import { airportColumns } from "@/components/airports/columns";
 import { useAirports } from "@/hooks/use-airports";
 import { FileDown, Plus, Upload } from "lucide-react";
+// (o la ruta que tenga)
 
 export default function AeropuertosPage() {
   const { airports, isLoading } = useAirports();
