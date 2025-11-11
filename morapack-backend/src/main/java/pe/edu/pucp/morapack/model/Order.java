@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "order") // Esto ya estaba correcto
+@Table(name = "`order`")
 public class Order {
 
     // --- CAMPOS PERSISTIDOS (SINCRONIZADOS CON LA NUEVA BD) ---
