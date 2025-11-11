@@ -1,7 +1,7 @@
 SET autocommit=0;
 START TRANSACTION;
 
-INSERT INTO `moraTravelSimulation`.`flight` (`airport_origin_code`,`airport_destination_code`,`flight_date`,`departure_time`,`arrival_time`,`capacity`) VALUES
+INSERT INTO `moraTravelDaily`.`flight` (`airport_origin_code`,`airport_destination_code`,`flight_date`,`departure_time`,`arrival_time`,`capacity`) VALUES
 ('SKBO','SEQM',CURRENT_DATE(),'03:34:00','05:21:00',300),
 ('SEQM','SKBO',CURRENT_DATE(),'04:29:00','06:16:00',340),
 ('SKBO','SEQM',CURRENT_DATE(),'14:22:00','16:09:00',320),
@@ -2003,7 +2003,7 @@ INSERT INTO `moraTravelSimulation`.`flight` (`airport_origin_code`,`airport_dest
 ('EBCI','LDZA',CURRENT_DATE(),'21:17:00','00:36:00',360),
 ('LDZA','EBCI',CURRENT_DATE(),'22:17:00','01:36:00',340);
 
-INSERT INTO `moraTravelSimulation`.`flight` (`airport_origin_code`,`airport_destination_code`,`flight_date`,`departure_time`,`arrival_time`,`capacity`) VALUES
+INSERT INTO `moraTravelDaily`.`flight` (`airport_origin_code`,`airport_destination_code`,`flight_date`,`departure_time`,`arrival_time`,`capacity`) VALUES
 ('EBCI','EKCH',CURRENT_DATE(),'03:00:00','05:58:00',300),
 ('EKCH','EBCI',CURRENT_DATE(),'04:22:00','06:20:00',340),
 ('EBCI','EKCH',CURRENT_DATE(),'10:47:00','12:45:00',340),
@@ -2876,7 +2876,7 @@ COMMIT;
 
 SET @base_date = CURRENT_DATE();
 
-INSERT IGNORE INTO moraTravelSimulation.flight
+INSERT IGNORE INTO moraTravelDaily.flight
 (airport_origin_code, airport_destination_code, flight_date, departure_time, arrival_time, capacity, status)
 SELECT
   f.airport_origin_code,
@@ -2886,7 +2886,7 @@ SELECT
   f.arrival_time,
   f.capacity,
   f.status
-FROM moraTravelSimulation.flight AS f
+FROM moraTravelDaily.flight AS f
 JOIN (
   SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
   UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10

@@ -1,4 +1,4 @@
-INSERT INTO `moraTravelSimulation`.`airport`
+INSERT INTO `moraTravelDaily`.`airport`
 (`continent`, `code`, `city`, `country`, `city_acronym`, `gmt`, `capacity`, `latitude`, `longitude`, `status`, `is_hub`)
 VALUES
 -- América del Sur
