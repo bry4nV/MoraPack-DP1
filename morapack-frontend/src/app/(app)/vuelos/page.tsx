@@ -1,23 +1,39 @@
-// Contenido para tu nuevo src/app/vuelos/page.tsx
-
 "use client";
-import { useEffect, useState } from "react";
-import { flightColumns } from "./components/columns"; // <-- Importa las nuevas columnas
-import { Flight } from "@/types/flight";              // <-- Importa el nuevo "molde"
-import { API_ENDPOINTS, api } from "@/lib/api";
-import { DataTable } from "@/components/ui/data-table"; // (Asumo que tienes esto)
+
+// 1. Imports de React (añadimos 'useMemo')
+import { useState, useEffect, useMemo } from "react";
+
+// 2. Import del "molde"
+import { Flight } from "@/types/flight";
+
+// 3. Import de las columnas (ruta corregida)
+import { flightColumns } from "@/components/flights/columns";
+
+// 4. Import de la API de vuelos (ruta corregida)
+import { flightsApi } from "@/api/flights/flights"; 
+
+// 5. Imports de la Tabla y Paginación
+// (¡OJO! Asumo que estas rutas a 'common/data-table' son correctas,
+// las copié de tu 'aeropuertos/page.tsx')
+import { DataTable } from "@/components/common/data-table/data-table";
+import { DataTablePagination } from "@/components/common/data-table/data-table-pagination";
+
+
 
 export default function VuelosPage() {
   const [data, setData] = useState<Flight[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // --- ¡LÓGICA DE PAGINACIÓN AÑADIDA! ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10); // Muestra 10 por página
+
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // ¡Asegúrate de que este endpoint exista en tu api.ts!
-        const response = await api.get(API_ENDPOINTS.FLIGHTS.BASE); 
-        setData(response.data);
+        const responseData = await flightsApi.getFlights();
+        setData(responseData); // Carga TODOS los datos
       } catch (error) {
         console.error("Error al obtener vuelos:", error);
       }
@@ -26,6 +42,14 @@ export default function VuelosPage() {
 
     fetchData();
   }, []);
+
+  // --- LÓGICA PARA PAGINAR LOS DATOS (usando useMemo) ---
+  const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+  
+  const paginatedFlights = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return data.slice(start, start + pageSize);
+  }, [data, currentPage, pageSize]);
 
   return (
     <div className="space-y-6">
@@ -36,13 +60,26 @@ export default function VuelosPage() {
         </p>
       </div>
       
-      {/* (Aquí puedes añadir tus botones de "Agregar", "Exportar", etc.) */}
+      {/* Idealmente, esto iría dentro de un <Card> y <CardContent> 
+        como en tu página de aeropuertos, pero lo mantenemos simple por ahora.
+      */}
 
       <DataTable
-        columns={flightColumns} // <-- Usa las nuevas columnas
-        data={data}
+        columns={flightColumns}
+        data={paginatedFlights} // <-- ¡CAMBIADO! Usa solo los datos paginados
         isLoading={isLoading}
-        // (Añade filtros si los necesitas)
+        getRowKey={(row: Flight) => row.id}
+        emptyMessage="No se encontraron vuelos"
+      />
+
+      {/* --- ¡COMPONENTE DE PAGINACIÓN AÑADIDO! --- */}
+      <DataTablePagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={data.length} // El total de items
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={setPageSize}
       />
     </div>
   );

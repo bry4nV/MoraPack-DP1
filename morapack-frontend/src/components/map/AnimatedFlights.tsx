@@ -314,10 +314,24 @@ export default function AnimatedFlights({
           let targetDistByFlights: number | null = null;
           let allFlightsCompleted = false;
           
-          if (simulatedTime && it.segmentos.length > 0) {
+          // 🚀 MODO PRESENTACIÓN: Forzar movimiento visual ignorando horarios
+          const FORCE_VISUAL_MOVEMENT = true; // Cambia a false para modo normal
+          
+          if (simulatedTime && it.segmentos.length > 0 && !FORCE_VISUAL_MOVEMENT) {
             const currentTime = new Date(simulatedTime).getTime();
             let accumulatedDist = 0;
             let foundCurrentFlight = false;
+            
+            // 🔍 DEBUG (solo para el primer itinerario)
+            if (idx === 0 && Math.random() < 0.01) { // Log 1% del tiempo
+              console.log(`[AnimatedFlights] Itinerario 0:`, {
+                simulatedTime,
+                currentTimeDate: new Date(currentTime).toISOString(),
+                totalSegments: it.segmentos.length,
+                firstFlightDep: it.segmentos[0]?.vuelo.salidaProgramadaISO,
+                firstFlightArr: it.segmentos[0]?.vuelo.llegadaProgramadaISO,
+              });
+            }
             
             for (let s = 0; s < it.segmentos.length; s++) {
               const flight = it.segmentos[s].vuelo;
@@ -330,6 +344,11 @@ export default function AnimatedFlights({
               if (currentTime < depTime) {
                 targetDistByFlights = accumulatedDist;
                 foundCurrentFlight = true;
+                
+                // 🔍 DEBUG
+                if (idx === 0 && s === 0 && Math.random() < 0.01) {
+                  console.log(`[AnimatedFlights] Vuelo no despegado aún`);
+                }
                 break;
               }
               
@@ -339,6 +358,15 @@ export default function AnimatedFlights({
                 const progress = flightDuration > 0 ? elapsed / flightDuration : 1;
                 targetDistByFlights = accumulatedDist + (progress * segmentLength);
                 foundCurrentFlight = true;
+                
+                // 🔍 DEBUG
+                if (idx === 0 && Math.random() < 0.01) {
+                  console.log(`[AnimatedFlights] Vuelo ${s} en progreso:`, {
+                    progress: (progress * 100).toFixed(1) + '%',
+                    elapsed: (elapsed / 1000 / 60).toFixed(0) + ' min',
+                    targetDist: targetDistByFlights.toFixed(0),
+                  });
+                }
                 break;
               }
               
@@ -365,6 +393,18 @@ export default function AnimatedFlights({
             // Usar velocidad visual para movimiento suave
             const traveled = elapsedSecRef.current * speedMps;
             const visualDist = loop ? (traveled % total) : Math.min(traveled, total);
+            
+            // 🔍 DEBUG
+            if (idx === 0 && Math.random() < 0.005) {
+              console.log(`[AnimatedFlights] Movimiento:`, {
+                elapsedSec: elapsedSecRef.current.toFixed(1),
+                speedMps: speedMps.toFixed(0),
+                traveled: traveled.toFixed(0),
+                visualDist: visualDist.toFixed(0),
+                targetDist: targetDistByFlights.toFixed(0),
+                total: total.toFixed(0),
+              });
+            }
             
             // Aplicar corrección según desviación
             const deviation = Math.abs(visualDist - targetDistByFlights);
@@ -453,17 +493,6 @@ export default function AnimatedFlights({
         >
           {playing ? "Pausa" : "Play"}
         </button>
-        <label className="text-sm">
-          Velocidad: <span className="font-medium">{speedKmh} km/h</span>
-        </label>
-        <input
-          type="range"
-          min={50}
-          max={1000}
-          step={10}
-          value={speedKmh}
-          onChange={(e) => setSpeedKmh(parseInt(e.target.value))}
-        />
       </div>
     </div>
   );

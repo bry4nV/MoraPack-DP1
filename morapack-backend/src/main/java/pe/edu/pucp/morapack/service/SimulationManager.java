@@ -2,8 +2,9 @@ package pe.edu.pucp.morapack.service;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
-import pe.edu.pucp.morapack.algos.scheduler.DataProvider;
-import pe.edu.pucp.morapack.algos.scheduler.FileDataProvider;
+
+import pe.edu.pucp.morapack.algos.data.providers.DataProvider;
+import pe.edu.pucp.morapack.algos.data.providers.FileDataProvider;
 import pe.edu.pucp.morapack.algos.scheduler.ScenarioConfig;
 import pe.edu.pucp.morapack.dto.websocket.SimulationState;
 import pe.edu.pucp.morapack.dto.websocket.SimulationStatusUpdate;
