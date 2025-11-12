@@ -25,14 +25,13 @@ public class OrderService {
     private OrderDto toDto(Order e) {
         OrderDto d = new OrderDto();
         d.setId(e.getId());
-        d.setPackageCount(e.getPackageCount());
-        d.setAirportDestinationId(e.getAirportDestinationId());
-        d.setPriority(e.getPriority());
-        d.setClientId(e.getClientId());
+        d.setOrderNumber(e.getOrderNumber());
+        d.setOrderDate(e.getOrderDate() != null ? e.getOrderDate().toString() : null);
+        d.setOrderTime(e.getOrderTime() != null ? e.getOrderTime().toString() : null);
+        d.setAirportDestinationCode(e.getAirportDestinationCode());
+        d.setQuantity(e.getQuantity());
+        d.setClientCode(e.getClientCode());
         d.setStatus(e.getStatus());
-        d.setDay(e.getDay());
-        d.setHour(e.getHour());
-        d.setMinute(e.getMinute());
         return d;
     }
 }

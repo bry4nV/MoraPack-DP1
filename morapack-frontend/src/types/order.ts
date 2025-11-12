@@ -1,41 +1,48 @@
+/**
+ * Esta es la interfaz principal para un Pedido (Order).
+ * Coincide con lo que envía el OrderDto.java del backend.
+ */
 export interface Order {
   id: number;
-  packageCount: number;
-  airportDestinationId: string;
-  priority: number | null; // si luego dejan de mandar null, cámbialo a number
-  clientId: string;
-  status: OrderState;
-  day: number;
-  hour: number;
-  minute: number;
+  orderNumber: string;
+  orderDate: string;
+  orderTime: string;
+  airportDestinationCode: string;
+  quantity: number;
+  clientCode: string;
+  status: OrderState | string;
 }
 
+/**
+ * Estados posibles de un Pedido.
+ * Sincronizado con la nueva base de datos.
+ */
 export enum OrderState {
-  PENDIENTE = 'PENDIENTE',
-  CONFIRMED = 'CONFIRMED',
-  CANCELLED = 'CANCELLED',
-  ANULLED = 'ANULLED',
+  UNASSIGNED = 'UNASSIGNED',
+  PENDING = 'PENDING',
+  IN_TRANSIT = 'IN_TRANSIT',
+  COMPLETED = 'COMPLETED',
 }
 
-// Tipos para los payloads de creación y actualización
+// --- Payloads para API (Actualizados) ---
+// (Estos definen qué datos se necesitan para CREAR o ACTUALIZAR un pedido)
+
 export interface CreateOrderPayload {
-  packageCount: number;
-  airportDestinationId: string;
-  priority: number | null;
-  clientId: string;
+  orderNumber: string;
+  orderDate: string; // (ej: "YYYY-MM-DD")
+  orderTime: string; // (ej: "HH:MM:SS")
+  airportDestinationCode: string;
+  quantity: number;
+  clientCode: string;
   status: OrderState;
-  day: number;
-  hour: number;
-  minute: number;
 }
 
 export type UpdateOrderPayload = Partial<CreateOrderPayload>;
 
-//carga masiva;BulkCreateCommunityPayload
 export interface BulkCreateOrderPayload {
-  orders: CreateOrderPayload[];
+  orders: CreateOrderPayload[]; // <-- ¡CORREGIDO!
 }
 
 export interface BulkDeleteOrderPayload {
-  orders: string[]; // array of order IDs
+  orders: number[]; // array of order IDs (ahora son numéricos)
 }

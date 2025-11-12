@@ -31,6 +31,13 @@ export const API_ENDPOINTS = {
     GET_CANCELLATIONS_EXECUTED: '/api/simulation/events/cancellations/executed',
     GET_ORDERS_INJECTED: '/api/simulation/events/orders/injected',
   },
+
+  FLIGHTS: {
+    BASE: '/api/flights', // <-- Este es el endpoint que creamos en el backend
+    BY_ID: (id: string) => `/api/flights/${id}`,
+    // (Puedes añadir bulk_create/delete si los necesitas)
+  },
+
 } as const;
 
 // HTTP Status Codes

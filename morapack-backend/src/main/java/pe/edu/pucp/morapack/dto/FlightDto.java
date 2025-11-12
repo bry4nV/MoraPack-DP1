@@ -1,27 +1,36 @@
 package pe.edu.pucp.morapack.dto;
 
 import pe.edu.pucp.morapack.model.FlightStatus;
+import java.time.LocalTime; 
 
 public class FlightDto {
+
+    // --- CAMPOS SINCRONIZADOS ---
+    
     private Long id;
-    private String originAirportId; // ← CAMBIO
-    private String destinationAirportId; // ← CAMBIO
-    private String departureTime; // ← CAMBIO
-    private String arrivalTime; // ← CAMBIO
-    private Integer capacity; // ← CAMBIO
-    private FlightStatus status; // ← CAMBIO
+    private String airportOriginCode;    // <-- CAMBIADO (antes originAirportId)
+    private String airportDestinationCode; // <-- CAMBIADO (antes destinationAirportId)
+    private String flightDate;           // <-- ¡AÑADIDO!
+    private String departureTime;
+    private String arrivalTime;
+    private Integer capacity;
+    private FlightStatus status; // Esto está bien porque tu enum ya coincidía
 
     public FlightDto() {}
 
-    // Getters y Setters
+    // --- Getters y Setters ---
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
-    public String getOriginAirportId() { return originAirportId; }
-    public void setOriginAirportId(String originAirportId) { this.originAirportId = originAirportId; }
+    public String getAirportOriginCode() { return airportOriginCode; }
+    public void setAirportOriginCode(String airportOriginCode) { this.airportOriginCode = airportOriginCode; }
 
-    public String getDestinationAirportId() { return destinationAirportId; }
-    public void setDestinationAirportId(String destinationAirportId) { this.destinationAirportId = destinationAirportId; }
+    public String getAirportDestinationCode() { return airportDestinationCode; }
+    public void setAirportDestinationCode(String airportDestinationCode) { this.airportDestinationCode = airportDestinationCode; }
+
+    public String getFlightDate() { return flightDate; }
+    public void setFlightDate(String flightDate) { this.flightDate = flightDate; }
 
     public String getDepartureTime() { return departureTime; }
     public void setDepartureTime(String departureTime) { this.departureTime = departureTime; }

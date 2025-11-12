@@ -3,98 +3,149 @@ package pe.edu.pucp.morapack.model;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "airport")
+@Table(name = "airport") // Coincide con tu tabla: "airport"
 public class Airport {
+
     @Id
-    @Column(name = "idAeropuerto")
-    private String id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id") // SQL: id bigint UN AI PK
+    private Long id;
 
-    @Column(name = "nombre")
-    private String name; // ← CAMBIO: de nombre a name
+    @Column(name = "continent") // SQL: continent enum(...)
+    private String continent;
 
-    @Column(name = "pais")
-    private String country; // ← CAMBIO: de pais a country
+    @Column(name = "code") // SQL: code char(4)
+    private String code;
 
-    @Column(name = "ciudad")
-    private String city; // ← CAMBIO: de ciudad a city
+    @Column(name = "city") // SQL: city varchar(100)
+    private String city;
 
-    @Column(name = "GMT")
-    private String gmt;
+    @Column(name = "country") // SQL: country varchar(100)
+    private String country;
 
-    @Column(name = "capacidad")
-    private Integer capacity; // ← CAMBIO: de capacidad a capacity
+    @Column(name = "city_acronym") // SQL: city_acronym varchar(10)
+    private String cityAcronym; // Java usa camelCase
 
-    @Column(name = "continente")
-    private String continent; // ← CAMBIO: de continente a continent
+    @Column(name = "gmt") // SQL: gmt int
+    private Integer gmt;
 
-    @Column(name = "esSede")
-    private Integer isHub; // ← CAMBIO: de esSede a isHub
+    @Column(name = "capacity") // SQL: capacity int
+    private Integer capacity;
 
-    // domain fields kept for compatibility with algos domain; not persisted here
-    private transient Country countryObj; // ← CAMBIO: evitar conflicto con country field
-    private transient double latitude;
-    private transient double longitude;
+    @Column(name = "latitude") // SQL: latitude varchar(20)
+    private String latitude; // Es un varchar en tu BD, así que lo ponemos String
 
-    public Airport() {}
+    @Column(name = "longitude") // SQL: longitude varchar(20)
+    private String longitude; // Es un varchar en tu BD, así que lo ponemos String
 
-    // convenience constructor for domain usage
-    public Airport(String id, String name, String city, String country, String continent,
-                   int capacity, String latitude, String longitude, String gmt) {
+    @Column(name = "status") // SQL: status enum(...)
+    private String status;
+
+    @Column(name = "is_hub") // SQL: is_hub tinyint(1)
+    private boolean isHub; // tinyint(1) se mapea a boolean
+
+    // --- Constructor, Getters y Setters ---
+    // JPA necesita un constructor vacío
+    public Airport() {
+    }
+
+    // --- GETTERS Y SETTERS ---
+    // (Asegúrate de tenerlos para TODOS los campos)
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
         this.id = id;
-        this.name = name;
-        this.city = city;
-        this.country = country;
+    }
+
+    public String getContinent() {
+        return continent;
+    }
+
+    public void setContinent(String continent) {
         this.continent = continent;
-        this.capacity = capacity;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getCountry() {
+        return country;
+    }
+
+    public void setCountry(String country) {
+        this.country = country;
+    }
+
+    public String getCityAcronym() {
+        return cityAcronym;
+    }
+
+    public void setCityAcronym(String cityAcronym) {
+        this.cityAcronym = cityAcronym;
+    }
+
+    public Integer getGmt() {
+        return gmt;
+    }
+
+    public void setGmt(Integer gmt) {
         this.gmt = gmt;
-        // Parse coordinates for algorithms
-        try {
-            this.latitude = Double.parseDouble(latitude);
-            this.longitude = Double.parseDouble(longitude);
-        } catch (NumberFormatException e) {
-            this.latitude = 0.0;
-            this.longitude = 0.0;
-        }
     }
 
-    // JPA-friendly getters/setters for persisted columns
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-
-    public String getCountry() { return country; }
-    public void setCountry(String country) { this.country = country; }
-
-    public String getCity() { return city; }
-    public void setCity(String city) { this.city = city; }
-
-    public String getGmt() { return gmt; }
-    public void setGmt(String gmt) { this.gmt = gmt; }
-
-    public Integer getCapacity() { return capacity; }
-    public void setCapacity(Integer capacity) { this.capacity = capacity; }
-
-    public String getContinent() { return continent; }
-    public void setContinent(String continent) { this.continent = continent; }
-
-    public Integer getIsHub() { return isHub; }
-    public void setIsHub(Integer isHub) { this.isHub = isHub; }
-
-    // Domain accessors (transient)
-    public Country getCountryObj() { return countryObj; }
-    public void setCountryObj(Country countryObj) { this.countryObj = countryObj; }
-
-    public double getLatitude() { return latitude; }
-    public void setLatitude(double latitude) { this.latitude = latitude; }
-
-    public double getLongitude() { return longitude; }
-    public void setLongitude(double longitude) { this.longitude = longitude; }
-
-    // Helper methods
-    public boolean isMainHub() { // ← CAMBIO: nombre más claro
-        return isHub != null && isHub == 1;
+    public Integer getCapacity() {
+        return capacity;
     }
+
+    public void setCapacity(Integer capacity) {
+        this.capacity = capacity;
+    }
+
+    public String getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(String latitude) {
+        this.latitude = latitude;
+    }
+
+    public String getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(String longitude) {
+        this.longitude = longitude;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public boolean isHub() {
+        return isHub;
+    }
+
+    public void setHub(boolean hub) {
+        isHub = hub;
+    }
+
 }
-

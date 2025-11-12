@@ -1,62 +1,61 @@
 package pe.edu.pucp.morapack.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+import java.time.LocalDate; // <-- IMPORTADO
+import java.time.LocalTime; // <-- IMPORTADO
 import java.time.LocalDateTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-// Map to a safe table name (avoid SQL reserved word `order`)
-@Table(name = "order")
+@Table(name = "`order`")
 public class Order {
+
+    // --- CAMPOS PERSISTIDOS (SINCRONIZADOS CON LA NUEVA BD) ---
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "ID_Pedido")
+    @Column(name = "id") // <-- CAMBIADO (antes ID_Pedido)
     private Long id;
 
-    @Column(name = "CantidadPedidos")
-    private Integer packageCount;
+    @Column(name = "order_number") // <-- NUEVO CAMPO
+    private String orderNumber;
 
-    @Column(name = "dest")
-    // DB column is VARCHAR(4) (airport code) according to provided DDL
-    private String airportDestinationId;
+    @Column(name = "order_date") // <-- NUEVO CAMPO (reemplaza 'dia')
+    private LocalDate orderDate;
 
-    @Column(name = "prioridad")
-    private Integer priority;
+    @Column(name = "order_time") // <-- NUEVO CAMPO (reemplaza 'hora' y 'minutos')
+    private LocalTime persistedOrderTime; // <-- RENOMBRADO para evitar conflicto con tu transient 'orderTime'
 
-    @Column(name = "idClien")
-    // DB column is VARCHAR(10) according to provided DDL
-    private String clientId;
+    @Column(name = "airport_destination_code") // <-- CAMBIADO (antes 'dest')
+    private String airportDestinationCode;
 
-    @Column(name = "estado")
+    @Column(name = "quantity") // <-- CAMBIADO (antes 'CantidadPedidos')
+    private Integer quantity;
+
+    @Column(name = "client_code") // <-- CAMBIADO (antes 'idClien')
+    private String clientCode;
+
+    @Column(name = "status") // <-- CAMBIADO (antes 'estado')
     private String status;
 
-    @Column(name = "dia")
-    private Integer day;
+    // --- CAMPOS TRANSIENT (TU LÓGICA DE DOMINIO - CONSERVADA) ---
+    // (Estos campos NO se guardan en la BD, los usa tu lógica)
 
-    @Column(name = "hora")
-    private Integer hour;
-
-    @Column(name = "minutos")
-    private Integer minute;
-
-    // domain fields kept for compatibility with algos domain; not persisted here
     private transient int totalQuantity;
     private transient Airport origin;
     private transient Airport destination;
     private transient long maxDeliveryHours;
-    private transient LocalDateTime orderTime;
+    private transient LocalDateTime orderTime; // <-- CONSERVADO (tu campo transient)
     private transient List<Shipment> shipments = new ArrayList<>();
+
+    
+    // --- CONSTRUCTORES (CONSERVADOS) ---
 
     public Order() {}
 
-    // convenience constructor for domain usage
+    // convenience constructor for domain usage (CONSERVADO)
     public Order(int id, int quantity, Airport origin, Airport destination) {
         this.id = (long) id;
         this.totalQuantity = quantity;
@@ -66,35 +65,35 @@ public class Order {
         this.orderTime = LocalDateTime.now();
     }
 
-    // JPA-friendly getters/setters for persisted columns
+    // --- GETTERS/SETTERS PERSISTIDOS (ACTUALIZADOS) ---
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
-    public Integer getPackageCount() { return packageCount; }
-    public void setPackageCount(Integer packageCount) { this.packageCount = packageCount; }
+    public String getOrderNumber() { return orderNumber; }
+    public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
 
-    public String getAirportDestinationId() { return airportDestinationId; }
-    public void setAirportDestinationId(String airportDestinationId) { this.airportDestinationId = airportDestinationId; }
+    public LocalDate getOrderDate() { return orderDate; }
+    public void setOrderDate(LocalDate orderDate) { this.orderDate = orderDate; }
 
-    public Integer getPriority() { return priority; }
-    public void setPriority(Integer priority) { this.priority = priority; }
+    public LocalTime getPersistedOrderTime() { return persistedOrderTime; }
+    public void setPersistedOrderTime(LocalTime persistedOrderTime) { this.persistedOrderTime = persistedOrderTime; }
 
-    public String getClientId() { return clientId; }
-    public void setClientId(String clientId) { this.clientId = clientId; }
+    public String getAirportDestinationCode() { return airportDestinationCode; }
+    public void setAirportDestinationCode(String airportDestinationCode) { this.airportDestinationCode = airportDestinationCode; }
+
+    public Integer getQuantity() { return quantity; }
+    public void setQuantity(Integer quantity) { this.quantity = quantity; }
+
+    public String getClientCode() { return clientCode; }
+    public void setClientCode(String clientCode) { this.clientCode = clientCode; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 
-    public Integer getDay() { return day; }
-    public void setDay(Integer day) { this.day = day; }
+    
+    // --- GETTERS/SETTERS Y MÉTODOS DE DOMINIO (CONSERVADOS) ---
 
-    public Integer getHour() { return hour; }
-    public void setHour(Integer hour) { this.hour = hour; }
-
-    public Integer getMinute() { return minute; }
-    public void setMinute(Integer minute) { this.minute = minute; }
-
-    // Domain accessors (transient)
     public int getTotalQuantity() { return totalQuantity; }
     public Airport getOrigin() { return origin; }
     public Airport getDestination() { return destination; }
@@ -129,16 +128,12 @@ public class Order {
         return Duration.between(orderTime, lastDelivery);
     }
     
-    /**
-     * Determina si el pedido es intercontinental
-     */
     public boolean isInterContinental() {
         if (origin == null || destination == null) return false;
         
         String originContinent = origin.getContinent();
         String destContinent = destination.getContinent();
         
-        // Si alguno de los continentes es null, asumimos que NO es intercontinental
         if (originContinent == null || destContinent == null) return false;
         
         return !originContinent.equals(destContinent);

@@ -1,43 +1,88 @@
 package pe.edu.pucp.morapack.dto;
 
+// Importamos los tipos que usará el Service para la conversión
+import java.time.LocalDate;
+import java.time.LocalTime;
+
 public class OrderDto {
+
+    // --- CAMPOS SINCRONIZADOS ---
     private Long id;
-    private Integer packageCount;
-    private String airportDestinationId;
-    private Integer priority;
-    private String clientId;
+    private String orderNumber;
+    private String orderDate; // Se convertirá de LocalDate a String
+    private String orderTime; // Se convertirá de LocalTime a String
+    private String airportDestinationCode;
+    private Integer quantity;
+    private String clientCode;
     private String status;
-    private Integer day;
-    private Integer hour;
-    private Integer minute;
 
     public OrderDto() {}
 
-    // getters & setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    // --- GETTERS Y SETTERS ---
 
-    public Integer getPackageCount() { return packageCount; }
-    public void setPackageCount(Integer packageCount) { this.packageCount = packageCount; }
+    public Long getId() {
+        return id;
+    }
 
-    public String getAirportDestinationId() { return airportDestinationId; }
-    public void setAirportDestinationId(String airportDestinationId) { this.airportDestinationId = airportDestinationId; }
+    public void setId(Long id) {
+        this.id = id;
+    }
 
-    public Integer getPriority() { return priority; }
-    public void setPriority(Integer priority) { this.priority = priority; }
+    public String getOrderNumber() {
+        return orderNumber;
+    }
 
-    public String getClientId() { return clientId; }
-    public void setClientId(String clientId) { this.clientId = clientId; }
+    public void setOrderNumber(String orderNumber) {
+        this.orderNumber = orderNumber;
+    }
 
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public String getOrderDate() {
+        return orderDate;
+    }
 
-    public Integer getDay() { return day; }
-    public void setDay(Integer day) { this.day = day; }
+    // El Service llamará a este método con un String
+    public void setOrderDate(String orderDate) {
+        this.orderDate = orderDate;
+    }
 
-    public Integer getHour() { return hour; }
-    public void setHour(Integer hour) { this.hour = hour; }
+    public String getOrderTime() {
+        return orderTime;
+    }
 
-    public Integer getMinute() { return minute; }
-    public void setMinute(Integer minute) { this.minute = minute; }
+    // El Service llamará a este método con un String
+    public void setOrderTime(String orderTime) {
+        this.orderTime = orderTime;
+    }
+
+    public String getAirportDestinationCode() {
+        return airportDestinationCode;
+    }
+
+    public void setAirportDestinationCode(String airportDestinationCode) {
+        this.airportDestinationCode = airportDestinationCode;
+    }
+
+    public Integer getQuantity() {
+        return quantity;
+    }
+
+    public void setQuantity(Integer quantity) {
+        this.quantity = quantity;
+    }
+
+    public String getClientCode() {
+        return clientCode;
+    }
+
+    public void setClientCode(String clientCode) {
+        this.clientCode = clientCode;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
 }
