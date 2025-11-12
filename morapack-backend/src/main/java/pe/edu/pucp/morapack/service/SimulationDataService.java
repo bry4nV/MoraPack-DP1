@@ -31,7 +31,7 @@ public class SimulationDataService {
     // Data file paths
     private static final String AIRPORTS_FILE = "data/airports_real.txt";
     private static final String FLIGHTS_FILE = "data/flights.csv";
-    private static final String ORDERS_FILE = "data/pedidos_generados.csv";
+    private static final String ORDERS_FILE = "data/_pedidos_SUAA_.txt";
     
     /**
      * Get orders within a specific date range.
@@ -88,19 +88,16 @@ public class SimulationDataService {
                 Map<String, PlannerAirport> airportMap = airports.stream()
                     .collect(Collectors.toMap(PlannerAirport::getCode, a -> a));
                 
-                // Load flights with airport map
-                List<PlannerFlight> allFlights = DataLoader.loadFlights(FLIGHTS_FILE, airportMap);
+                // Generate flights for the simulation period starting from the exact start date
+                List<PlannerFlight> allFlights = DataLoader.loadFlights(
+                    FLIGHTS_FILE, 
+                    airportMap, 
+                    startDate,  // Use LocalDate directly instead of year/month
+                    durationDays
+                );
                 
-                LocalDateTime rangeStart = startDate.atStartOfDay();
-                LocalDateTime rangeEnd = rangeStart.plusDays(durationDays);
-                
-                List<PlannerFlight> filtered = allFlights.stream()
-                    .filter(f -> !f.getDepartureTime().isBefore(rangeStart) && 
-                                 f.getDepartureTime().isBefore(rangeEnd))
-                    .collect(Collectors.toList());
-                
-                System.out.println("[SimulationDataService] Loaded " + filtered.size() + " flights for range");
-                return filtered;
+                System.out.println("[SimulationDataService] Generated " + allFlights.size() + " flights for range");
+                return allFlights;
                 
             } catch (IOException e) {
                 System.err.println("[SimulationDataService] Error loading flights: " + e.getMessage());

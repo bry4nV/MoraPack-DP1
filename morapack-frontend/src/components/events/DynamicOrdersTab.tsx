@@ -26,10 +26,8 @@ export default function DynamicOrdersTab({
   onOrderCreated,
   onRefresh,
 }: DynamicOrdersTabProps) {
-  const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [quantity, setQuantity] = useState("100");
-  const [deadlineHours, setDeadlineHours] = useState("48");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,10 +41,8 @@ export default function DynamicOrdersTab({
 
     try {
       const result = await addDynamicOrder({
-        origin,
         destination,
         quantity: parseInt(quantity, 10),
-        deadlineHours: parseInt(deadlineHours, 10),
         reason: reason || "Manual order",
       });
 
@@ -54,10 +50,8 @@ export default function DynamicOrdersTab({
         onOrderCreated(result.order);
         setSuccess(true);
         // Reset form
-        setOrigin("");
         setDestination("");
         setQuantity("100");
-        setDeadlineHours("48");
         setReason("");
         // Refresh list
         setTimeout(() => onRefresh(), 500);
@@ -77,22 +71,6 @@ export default function DynamicOrdersTab({
       <div className="p-3 border-b">
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="origin" className="text-xs">Origen</Label>
-            <Select value={origin} onValueChange={setOrigin} required>
-              <SelectTrigger id="origin" className="h-9 text-sm">
-                <SelectValue placeholder="Seleccionar aeropuerto" />
-              </SelectTrigger>
-              <SelectContent>
-                {aeropuertos.map((a) => (
-                  <SelectItem key={a.codigo} value={a.codigo}>
-                    {a.codigo} - {a.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
             <Label htmlFor="destination" className="text-xs">Destino</Label>
             <Select value={destination} onValueChange={setDestination} required>
               <SelectTrigger id="destination" className="h-9 text-sm">
@@ -106,34 +84,22 @@ export default function DynamicOrdersTab({
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              El pedido se inyecta inmediatamente. Origen y plazo (48h/72h) se determinan automáticamente según continente.
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="quantity" className="text-xs">Cantidad</Label>
-              <Input
-                id="quantity"
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="h-9 text-sm"
-                required
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="deadline" className="text-xs">Plazo (horas)</Label>
-              <Input
-                id="deadline"
-                type="number"
-                min="1"
-                value={deadlineHours}
-                onChange={(e) => setDeadlineHours(e.target.value)}
-                className="h-9 text-sm"
-                required
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="quantity" className="text-xs">Cantidad</Label>
+            <Input
+              id="quantity"
+              type="number"
+              min="1"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="h-9 text-sm"
+              required
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -162,7 +128,7 @@ export default function DynamicOrdersTab({
 
           <Button
             type="submit"
-            disabled={loading || !origin || !destination || !quantity || !deadlineHours}
+            disabled={loading || !destination || !quantity}
             className="w-full h-9 text-sm"
           >
             {loading ? "Agregando..." : "Agregar Pedido"}
@@ -237,4 +203,5 @@ function DynamicOrderCard({ order }: { order: DynamicOrder }) {
     </Card>
   );
 }
+
 

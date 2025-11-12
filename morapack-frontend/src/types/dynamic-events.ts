@@ -31,11 +31,10 @@ export interface CancelFlightRequest {
 }
 
 export interface DynamicOrderRequest {
-  origin: string;
   destination: string;
   quantity: number;
-  deadlineHours: number;
   reason?: string;
+  // origin y deadlineHours se determinan automáticamente en el backend
 }
 
 export interface CancellationApiResponse {
@@ -61,4 +60,5 @@ export interface DynamicOrdersListResponse {
   count: number;
   orders: DynamicOrder[];
 }
+
 

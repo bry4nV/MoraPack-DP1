@@ -216,13 +216,40 @@ public class TabuSearchPlanner implements IOptimizer {
                         break;
                     }
                 }
-                // Otherwise pick a flight from the same origin or any flight as last resort
+                // Otherwise pick a flight from the same origin that goes to the correct destination
                 if (chosen == null) {
                     for (PlannerFlight f : flights) {
-                        if (f.getOrigin().equals(firstOrder.getOrigin())) { chosen = f; break; }
+                        // Must match both origin AND destination
+                        if (f.getOrigin().equals(firstOrder.getOrigin()) && 
+                            f.getDestination().equals(firstOrder.getDestination())) { 
+                            chosen = f; 
+                            break; 
+                        }
                     }
                 }
-                if (chosen == null) chosen = flights.get(0);
+                // DISABLED: Don't send to wrong destinations
+                // Last resort: any flight from same origin (even if destination doesn't match - better than nothing)
+                // if (chosen == null) {
+                //     for (PlannerFlight f : flights) {
+                //         if (f.getOrigin().equals(firstOrder.getOrigin())) { 
+                //             System.out.println("[TABU][DEMO-FALLBACK][WARNING] No direct flight found, using indirect: " + 
+                //                 f.getOrigin().getCode() + "->" + f.getDestination().getCode() + 
+                //                 " (order wants: " + firstOrder.getDestination().getCode() + ")");
+                //             chosen = f; 
+                //             break; 
+                //         }
+                //     }
+                // }
+                // if (chosen == null) chosen = flights.get(0);
+                
+                // If no valid flight found, don't force wrong destination
+                if (chosen == null) {
+                    System.out.println("[TABU][DEMO-FALLBACK] ❌ No valid flight found for order #" + firstOrder.getId() + 
+                        " (" + firstOrder.getOrigin().getCode() + "→" + firstOrder.getDestination().getCode() + ")");
+                    System.out.println("[TABU][DEMO-FALLBACK] Order will remain PENDING until correct flight is available.");
+                    // Don't create invalid shipment
+                    return currentSolution;
+                }
 
                 int demoQty = Math.max(1, Math.min(firstOrder.getTotalQuantity(), 10));
                 PlannerShipment demoShipment = new PlannerShipment(nextShipmentId++, firstOrder, List.of(chosen), demoQty);
@@ -846,14 +873,84 @@ public class TabuSearchPlanner implements IOptimizer {
             }
         }
         
-        // 🔍 DEBUG: Reportar hallazgos
+        // 🔍 DEBUG: Reportar hallazgos Y escribir a archivo de log
         if (matchingOriginDest > 0 && routes.isEmpty()) {
-            System.out.println(String.format("   🔍 DEBUG findDirectRoutes: Found %d flights %s→%s but NONE valid:", 
-                matchingOriginDest, order.getOrigin().getCode(), order.getDestination().getCode()));
+            String debugMsg = String.format("   🔍 DEBUG findDirectRoutes: Found %d flights %s→%s but NONE valid:", 
+                matchingOriginDest, order.getOrigin().getCode(), order.getDestination().getCode());
+            System.out.println(debugMsg);
             System.out.println(String.format("      - Wrong time: %d flights", matchingButWrongTime));
             System.out.println(String.format("      - No capacity: %d flights", matchingButNoCapacity));
             System.out.println(String.format("      - Order time: %s, deadline: %d hours", 
                 order.getOrderTime(), order.getMaxDeliveryHours()));
+            
+            // Write detailed debug info to file
+            try (java.io.FileWriter fw = new java.io.FileWriter("flight_debug.log", true);
+                 java.io.PrintWriter pw = new java.io.PrintWriter(fw)) {
+                
+                pw.println("=".repeat(80));
+                pw.println(String.format("ORDER #%d: %d products, %s → %s", 
+                    order.getId(), order.getTotalQuantity(), 
+                    order.getOrigin().getCode(), order.getDestination().getCode()));
+                pw.println(String.format("Order time: %s", order.getOrderTime()));
+                pw.println(String.format("Deadline: %d hours (delivery by: %s)", 
+                    order.getMaxDeliveryHours(), 
+                    order.getOrderTime().plusHours(order.getMaxDeliveryHours())));
+                pw.println(String.format("Found %d matching flights but NONE valid", matchingOriginDest));
+                pw.println(String.format("  Wrong time: %d | No capacity: %d", 
+                    matchingButWrongTime, matchingButNoCapacity));
+                pw.println();
+                
+                // Show ALL matching flights with detailed analysis
+                int flightNum = 0;
+                for (PlannerFlight flight : flights) {
+                    if (flight.getOrigin().equals(order.getOrigin()) && 
+                        flight.getDestination().equals(order.getDestination())) {
+                        flightNum++;
+                        long hoursUntilDep = java.time.temporal.ChronoUnit.HOURS.between(
+                            order.getOrderTime(), flight.getDepartureTime());
+                        int capacity = capacityRemaining.getOrDefault(flight, 0);
+                        boolean timeValid = isValidDepartureTime(order, flight);
+                        
+                        pw.println(String.format("  Flight #%d: %s", flightNum, flight.getCode()));
+                        pw.println(String.format("    Departs: %s (in %d hours from order)", 
+                            flight.getDepartureTime(), hoursUntilDep));
+                        pw.println(String.format("    Arrives: %s", flight.getArrivalTime()));
+                        pw.println(String.format("    Capacity: %d", capacity));
+                        pw.println(String.format("    Time valid: %s (0 <= %d <= %d)?", 
+                            timeValid, hoursUntilDep, order.getMaxDeliveryHours()));
+                        
+                        if (!timeValid) {
+                            if (hoursUntilDep < 0) {
+                                pw.println("    ❌ REJECTED: Flight departs BEFORE order time");
+                            } else {
+                                pw.println("    ❌ REJECTED: Flight departs AFTER deadline");
+                            }
+                        } else if (capacity == 0) {
+                            pw.println("    ❌ REJECTED: No capacity remaining");
+                        }
+                        pw.println();
+                    }
+                }
+                pw.println();
+                pw.flush();
+                
+            } catch (Exception e) {
+                System.err.println("   ⚠️  Failed to write debug log: " + e.getMessage());
+            }
+            
+            // Show sample flights in console (limited to 3)
+            int sampleCount = 0;
+            for (PlannerFlight flight : flights) {
+                if (flight.getOrigin().equals(order.getOrigin()) && 
+                    flight.getDestination().equals(order.getDestination())) {
+                    long hoursUntilDep = java.time.temporal.ChronoUnit.HOURS.between(
+                        order.getOrderTime(), flight.getDepartureTime());
+                    System.out.println(String.format("      Sample flight: departs %s (in %d hours), arrives %s, capacity=%d",
+                        flight.getDepartureTime(), hoursUntilDep, flight.getArrivalTime(),
+                        capacityRemaining.getOrDefault(flight, 0)));
+                    if (++sampleCount >= 3) break;
+                }
+            }
         }
         
         // Ordenar por prioridad (tiempo, costo)

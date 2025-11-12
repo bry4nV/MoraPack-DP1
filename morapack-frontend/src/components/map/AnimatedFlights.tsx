@@ -314,29 +314,60 @@ export default function AnimatedFlights({
           let targetDistByFlights: number | null = null;
           let allFlightsCompleted = false;
           
-          // 🚀 MODO PRESENTACIÓN: Forzar movimiento visual ignorando horarios
-          const FORCE_VISUAL_MOVEMENT = true; // Cambia a false para modo normal
+          // ✅ SINCRONIZACIÓN CON TIEMPO SIMULADO: Los aviones se mueven según el reloj
+          const FORCE_VISUAL_MOVEMENT = false; // true = modo demo visual, false = modo simulación real
+          
+          // ✅ FIX: Helper para normalizar fechas (quitar Z si existe para interpretar como hora local)
+          const parseAsLocal = (isoString: string): number => {
+            // Si tiene Z, quitarla para que se interprete como hora local
+            const normalized = isoString.replace('Z', '').replace(/\.\d{3}$/, '');
+            return new Date(normalized).getTime();
+          };
           
           if (simulatedTime && it.segmentos.length > 0 && !FORCE_VISUAL_MOVEMENT) {
-            const currentTime = new Date(simulatedTime).getTime();
+            const currentTime = parseAsLocal(simulatedTime);
             let accumulatedDist = 0;
             let foundCurrentFlight = false;
             
-            // 🔍 DEBUG (solo para el primer itinerario)
-            if (idx === 0 && Math.random() < 0.01) { // Log 1% del tiempo
-              console.log(`[AnimatedFlights] Itinerario 0:`, {
-                simulatedTime,
-                currentTimeDate: new Date(currentTime).toISOString(),
-                totalSegments: it.segmentos.length,
-                firstFlightDep: it.segmentos[0]?.vuelo.salidaProgramadaISO,
-                firstFlightArr: it.segmentos[0]?.vuelo.llegadaProgramadaISO,
+            // 🔍 DEBUG CRÍTICO: Loguear el tiempo recibido
+            if (idx === 0 && Math.random() < 0.05) {
+              console.log(`[AnimatedFlights] 🔍 RECIBIDO:`, {
+                simulatedTimeRaw: simulatedTime,
+                currentTimestamp: currentTime,
+                parsedDate: new Date(currentTime).toISOString(),
               });
             }
             
             for (let s = 0; s < it.segmentos.length; s++) {
               const flight = it.segmentos[s].vuelo;
-              const depTime = new Date(flight.salidaProgramadaISO).getTime();
-              const arrTime = new Date(flight.llegadaProgramadaISO).getTime();
+              
+              // 🔍 DEBUG: Ver TODAS las propiedades del vuelo
+              if (!flight) {
+                console.error(`[AnimatedFlights] ❌ Vuelo ${s} es null/undefined`);
+                accumulatedDist += segLengths[idx][s];
+                continue;
+              }
+              
+              // (Debug logs removed for performance)
+              
+              // Verificar que las propiedades de fecha existan
+              if (!flight.salidaProgramadaISO || !flight.llegadaProgramadaISO) {
+                if (idx === 0) {
+                  console.error(`[AnimatedFlights] ❌ Vuelo ${s} SIN fechas - tratando como completado:`, {
+                    codigo: flight.codigo || flight.id,
+                    origen: flight.origen?.codigo,
+                    destino: flight.destino?.codigo,
+                    allKeys: Object.keys(flight),
+                  });
+                }
+                // Si no hay fechas, tratar como vuelo completado
+                accumulatedDist += segLengths[idx][s];
+                continue;
+              }
+              
+              // ✅ FIX: Usar parseAsLocal para interpretar fechas en la misma zona horaria
+              const depTime = parseAsLocal(flight.salidaProgramadaISO);
+              const arrTime = parseAsLocal(flight.llegadaProgramadaISO);
               const flightDuration = arrTime - depTime;
               const segmentLength = segLengths[idx][s];
               
@@ -345,10 +376,7 @@ export default function AnimatedFlights({
                 targetDistByFlights = accumulatedDist;
                 foundCurrentFlight = true;
                 
-                // 🔍 DEBUG
-                if (idx === 0 && s === 0 && Math.random() < 0.01) {
-                  console.log(`[AnimatedFlights] Vuelo no despegado aún`);
-                }
+                // Logs removed for performance
                 break;
               }
               
@@ -359,18 +387,17 @@ export default function AnimatedFlights({
                 targetDistByFlights = accumulatedDist + (progress * segmentLength);
                 foundCurrentFlight = true;
                 
-                // 🔍 DEBUG
-                if (idx === 0 && Math.random() < 0.01) {
-                  console.log(`[AnimatedFlights] Vuelo ${s} en progreso:`, {
-                    progress: (progress * 100).toFixed(1) + '%',
-                    elapsed: (elapsed / 1000 / 60).toFixed(0) + ' min',
-                    targetDist: targetDistByFlights.toFixed(0),
-                  });
-                }
+                // Logs removed for performance
                 break;
               }
               
               // Caso 3: Vuelo completado → acumular y continuar al siguiente
+              if (idx === 0) {
+                console.log(`[AnimatedFlights] ✅ Vuelo ${s} COMPLETADO, acumulando distancia:`, {
+                  segmentLength: segmentLength.toFixed(0),
+                  newAccumulated: (accumulatedDist + segmentLength).toFixed(0),
+                });
+              }
               accumulatedDist += segmentLength;
             }
             
@@ -378,6 +405,14 @@ export default function AnimatedFlights({
             if (!foundCurrentFlight) {
               targetDistByFlights = total;
               allFlightsCompleted = true;
+              
+              // 🔍 DEBUG INTENSIVO
+              if (idx === 0) {
+                console.log(`[AnimatedFlights] 🏁 TODOS LOS VUELOS COMPLETADOS:`, {
+                  targetDist: total.toFixed(0),
+                  totalSegments: it.segmentos.length,
+                });
+              }
             }
           }
           
@@ -388,36 +423,12 @@ export default function AnimatedFlights({
               finishedRef.current[idx] = true;
             }
           }
-          // Caso 2: Hay sincronización por vuelos → combinar con animación visual
+          // Caso 2: Hay sincronización por vuelos → usar DIRECTAMENTE targetDistByFlights
           else if (targetDistByFlights !== null) {
-            // Usar velocidad visual para movimiento suave
-            const traveled = elapsedSecRef.current * speedMps;
-            const visualDist = loop ? (traveled % total) : Math.min(traveled, total);
+            // ✅ MODO SIMULACIÓN: Usar SOLO el tiempo simulado, ignorar elapsedSecRef
+            dist = targetDistByFlights;
             
-            // 🔍 DEBUG
-            if (idx === 0 && Math.random() < 0.005) {
-              console.log(`[AnimatedFlights] Movimiento:`, {
-                elapsedSec: elapsedSecRef.current.toFixed(1),
-                speedMps: speedMps.toFixed(0),
-                traveled: traveled.toFixed(0),
-                visualDist: visualDist.toFixed(0),
-                targetDist: targetDistByFlights.toFixed(0),
-                total: total.toFixed(0),
-              });
-            }
-            
-            // Aplicar corrección según desviación
-            const deviation = Math.abs(visualDist - targetDistByFlights);
-            if (deviation > total * 0.15) {
-              // Desviación grande: corrección agresiva
-              dist = visualDist * 0.5 + targetDistByFlights * 0.5;
-            } else if (deviation > total * 0.05) {
-              // Desviación media: corrección suave
-              dist = visualDist * 0.8 + targetDistByFlights * 0.2;
-            } else {
-              // Bien sincronizado: solo visual
-              dist = visualDist;
-            }
+            // Logs removed for performance
           }
           // Caso 3: Sin tiempo simulado → velocidad visual pura
           else {

@@ -215,3 +215,4 @@ function CancellationCard({ cancellation }: { cancellation: FlightCancellation }
   );
 }
 
+

@@ -44,17 +44,17 @@ public class SimulationManager {
     // Data paths (configurable)
     private final String airportsFile = "data/airports_real.txt";
     private final String flightsFile = "data/flights.csv";
-    private final String ordersFile = "data/pedidos_generados.csv";
+    private final String ordersFile = "data/_pedidos_SUAA_.txt";  // Nuevo formato
     private final String cancellationsFile = "data/cancellations.csv";  // Future use
     
     // Default simulation parameters
     private final int simulationYear = 2025;
-    private final int simulationMonth = 12;  // December
+    private final int simulationMonth = 1;  // January
     private final int simulationDays = 7;    // 1 week
     
     // Valid date range for simulation data
-    private final LocalDate FIRST_DATA_DATE = LocalDate.of(2025, 12, 1);
-    private final LocalDate LAST_DATA_DATE = LocalDate.of(2025, 12, 31);
+    private final LocalDate FIRST_DATA_DATE = LocalDate.of(2025, 1, 2);  // Primera fecha con datos
+    private final LocalDate LAST_DATA_DATE = LocalDate.of(2025, 1, 31);
     
     public SimulationManager(
             SimpMessagingTemplate messagingTemplate,

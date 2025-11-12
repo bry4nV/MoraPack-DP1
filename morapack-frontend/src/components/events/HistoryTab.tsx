@@ -157,3 +157,4 @@ function EventCard({ event }: { event: HistoryEvent }) {
   return null;
 }
 
+

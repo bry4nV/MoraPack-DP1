@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.time.format.DateTimeFormatter;
 
 public class TabuSolutionToDtoConverter {
+    // ✅ FIX: Usar ISO_LOCAL_DATE_TIME (sin conversión de zona horaria)
+    // El backend y frontend trabajan en la MISMA zona horaria (hora local)
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     public static AeropuertoDTO[] toAirportDtos(List<PlannerAirport> airports) {
@@ -48,6 +50,7 @@ public class TabuSolutionToDtoConverter {
         for (PlannerShipment ps : solution.getPlannerShipments()) {
             ItinerarioDTO it = new ItinerarioDTO();
             it.id = "sh-" + ps.getId();
+            it.orderId = ps.getOrder().getId(); // ✅ Asignar el ID del pedido
             List<SegmentoDTO> segs = new ArrayList<>();
 
             // Build segmentos and compute distances/times
@@ -65,6 +68,8 @@ public class TabuSolutionToDtoConverter {
                 v.codigo = f.getCode();
                 v.origen = airportToDto(f.getOrigin());
                 v.destino = airportToDto(f.getDestination());
+                // ✅ FIX: Formatear directamente como hora local (sin conversión de zona)
+                // Backend y frontend usan la MISMA referencia de tiempo (hora local)
                 v.salidaProgramadaISO = f.getDepartureTime().format(ISO);
                 v.llegadaProgramadaISO = f.getArrivalTime().format(ISO);
                 v.capacidad = f.getCapacity();

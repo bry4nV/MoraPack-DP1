@@ -34,7 +34,7 @@ export default function SimulacionClient() {
   const [simulationState, setSimulationState] = useState<SimulationState>('IDLE');
   const [scenarioType, setScenarioType] = useState<ScenarioType>('WEEKLY');
   const [speed, setSpeed] = useState<number>(1);
-  const [startDate, setStartDate] = useState<string>("2025-12-01"); // Default start date
+  const [startDate, setStartDate] = useState<string>("2025-01-02"); // Default start date (primera fecha con datos)
   
   // Métricas en tiempo real
   const [currentIteration, setCurrentIteration] = useState(0);
@@ -47,7 +47,7 @@ export default function SimulacionClient() {
   // ✅ Referencias para interpolación de tiempo
   const lastBackendTimeRef = useRef<string>("");
   const lastUpdateTimestampRef = useRef<number>(0);
-  const K_MINUTES = 12; // K=12 → cada iteración avanza 60 minutos
+  const K_MINUTES = 24; // K=24 → cada iteración avanza 120 minutos (WEEKLY scenario)
   const ITERATION_DELAY_MS = 10000; // 10 segundos por iteración
   
   // ✅ Display time (actualizado cada segundo para evitar "palpitar")
@@ -91,6 +91,19 @@ export default function SimulacionClient() {
                 try {
                   const update = JSON.parse(sessionMessage.body);
                   console.log("Simulation update:", update);
+                  
+                  // 🔍 DEBUG: Ver estructura completa de itinerarios
+                  if (update.latestResult?.itinerarios && update.latestResult.itinerarios.length > 0) {
+                    const firstItin = update.latestResult.itinerarios[0];
+                    console.log("🔍 [SimulacionClient] Primer itinerario RAW del JSON:", {
+                      id: firstItin.id,
+                      orderId: firstItin.orderId,
+                      numSegmentos: firstItin.segmentos?.length || 0,
+                      firstSegment: firstItin.segmentos?.[0],
+                      vueloKeys: firstItin.segmentos?.[0]?.vuelo ? Object.keys(firstItin.segmentos[0].vuelo) : [],
+                      fullVueloJSON: JSON.stringify(firstItin.segmentos?.[0]?.vuelo),
+                    });
+                  }
 
                   // Update state
                   setSimulationState(update.state);
@@ -181,6 +194,12 @@ export default function SimulacionClient() {
                               capacidadAlmacen: 1000,
                               pais: { id: 0, nombre: "Unknown", continente: "Unknown" },
                             },
+                            // ✅ FIX: Agregar las fechas que estaban faltando
+                            salidaProgramadaISO: seg.vuelo.salidaProgramadaISO,
+                            llegadaProgramadaISO: seg.vuelo.llegadaProgramadaISO,
+                            capacidad: seg.vuelo.capacidad,
+                            preplanificado: seg.vuelo.preplanificado,
+                            estado: seg.vuelo.estado,
                           },
                         })),
                       }));
@@ -222,11 +241,14 @@ export default function SimulacionClient() {
 
   // ✅ Time interpolation: smooth time progression between backend updates
   useEffect(() => {
-    if (simulationState !== 'RUNNING' || !lastBackendTimeRef.current) {
+    if (simulationState !== 'RUNNING') {
       return;
     }
 
+    console.log('[SimulacionClient] 🚀 Interpolación ACTIVADA');
+    
     let animationFrameId: number;
+    let frameCount = 0;
     
     const interpolateTime = () => {
       const now = Date.now();
@@ -242,7 +264,28 @@ export default function SimulacionClient() {
       if (lastBackendTimeRef.current) {
         const backendDate = new Date(lastBackendTimeRef.current);
         const interpolatedDate = new Date(backendDate.getTime() + simulatedMinutesElapsed * 60 * 1000);
-        setInterpolatedTime(interpolatedDate.toISOString());
+        // ✅ FIX: Formatear como hora local (sin Z) para coincidir con el backend
+        const isoLocal = interpolatedDate.getFullYear() + '-' +
+          String(interpolatedDate.getMonth() + 1).padStart(2, '0') + '-' +
+          String(interpolatedDate.getDate()).padStart(2, '0') + 'T' +
+          String(interpolatedDate.getHours()).padStart(2, '0') + ':' +
+          String(interpolatedDate.getMinutes()).padStart(2, '0') + ':' +
+          String(interpolatedDate.getSeconds()).padStart(2, '0');
+        
+        // 🔍 DEBUG CRÍTICO: Log cada 60 frames
+        if (frameCount % 60 === 0) {
+          console.log('[SimulacionClient] 🔍 INTERPOLACIÓN:', {
+            backendTime: lastBackendTimeRef.current,
+            elapsedMs: elapsedMs.toFixed(0),
+            progress: (progress * 100).toFixed(1) + '%',
+            minutesElapsed: simulatedMinutesElapsed.toFixed(2),
+            interpolatedTime: isoLocal,
+            willSetTo: isoLocal,
+          });
+        }
+        frameCount++;
+        
+        setInterpolatedTime(isoLocal);
       }
       
       animationFrameId = requestAnimationFrame(interpolateTime);
@@ -251,8 +294,10 @@ export default function SimulacionClient() {
     animationFrameId = requestAnimationFrame(interpolateTime);
     
     return () => {
+      console.log('[SimulacionClient] 🛑 Interpolación DESACTIVADA');
       cancelAnimationFrame(animationFrameId);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simulationState, lastBackendTimeRef.current]);
 
   // ✅ Update display time only once per second (reduce visual "palpitation")
@@ -523,8 +568,8 @@ export default function SimulacionClient() {
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  min="2025-12-01"
-                  max="2025-12-31"
+                  min="2025-01-02"
+                  max="2025-01-31"
                   disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
                   className="w-40"
                 />
@@ -672,7 +717,15 @@ export default function SimulacionClient() {
 
               <TabsContent value="pedidos" className="flex-1 m-0 overflow-hidden">
                 <PedidosPanel
-                  pedidos={pedidos}
+                  pedidos={pedidos.filter(p => {
+                    // En preview mode, mostrar todos
+                    if (simulationState === 'IDLE') return true;
+                    
+                    // En modo realtime, solo mostrar pedidos que ya "llegaron" según el reloj
+                    const currentSimTime = new Date(simulatedTime || interpolatedTime);
+                    const orderTime = new Date(p.fechaSolicitudISO);
+                    return orderTime <= currentSimTime;
+                  })}
                   metricas={metricasPedidos}
                   mode={simulationState === 'IDLE' ? 'preview' : 'realtime'}
                   onSelectPedido={(id) => {

@@ -35,7 +35,8 @@ export function PedidosPanel({
       filtered = filtered.filter((p) => p.estado === filtro);
     }
 
-    // Búsqueda por código, origen o destino
+    // Búsqueda por código, origen o destino (temporalmente deshabilitado)
+    /*
     if (busqueda) {
       const search = busqueda.toLowerCase();
       filtered = filtered.filter(
@@ -47,9 +48,35 @@ export function PedidosPanel({
           p.destinoCodigo.toLowerCase().includes(search)
       );
     }
+    */
 
     return filtered;
-  }, [pedidos, filtro, busqueda]);
+  }, [pedidos, filtro]);
+
+  // Recalcular métricas basadas en pedidos visibles (filtrados por tiempo)
+  const metricasAjustadas = useMemo(() => {
+    if (!metricas) return null;
+    
+    // Contar estados en pedidos visibles
+    const pendientes = pedidos.filter(p => p.estado === 'PENDING').length;
+    const enTransito = pedidos.filter(p => p.estado === 'IN_TRANSIT').length;
+    const completados = pedidos.filter(p => p.estado === 'COMPLETED').length;
+    const sinAsignar = pedidos.filter(p => p.estado === 'UNASSIGNED').length;
+    
+    const totalProductos = pedidos.reduce((sum, p) => sum + p.cantidadTotal, 0);
+    const productosAsignados = pedidos.reduce((sum, p) => sum + p.cantidadAsignada, 0);
+    
+    return {
+      totalPedidos: pedidos.length,
+      pendientes,
+      enTransito,
+      completados,
+      sinAsignar,
+      totalProductos,
+      productosAsignados,
+      tasaAsignacionPercent: totalProductos > 0 ? (productosAsignados / totalProductos) * 100 : 0
+    };
+  }, [pedidos, metricas]);
 
   return (
     <div className="h-full flex flex-col bg-white border-l">
@@ -64,46 +91,46 @@ export function PedidosPanel({
           )}
         </div>
 
-        {metricas && (
+        {metricasAjustadas && (
           <div className="grid grid-cols-4 gap-1.5 text-xs">
             <MetricBadge
               label="Total"
-              value={metricas.totalPedidos}
+              value={metricasAjustadas.totalPedidos}
               color="blue"
             />
             <MetricBadge
               label="Pendientes"
-              value={metricas.pendientes}
+              value={metricasAjustadas.pendientes}
               color="yellow"
             />
             <MetricBadge
               label="En tránsito"
-              value={metricas.enTransito}
+              value={metricasAjustadas.enTransito}
               color="orange"
             />
             <MetricBadge
               label="Completados"
-              value={metricas.completados}
+              value={metricasAjustadas.completados}
               color="green"
             />
           </div>
         )}
 
-        {metricas && mode === "realtime" && (
+        {metricasAjustadas && mode === "realtime" && (
           <div className="mt-2 pt-2 border-t">
             <div className="flex justify-between text-[11px] mb-1">
               <span className="text-muted-foreground">Asignación</span>
               <span className="font-semibold">
-                {metricas.productosAsignados.toLocaleString()} /{" "}
-                {metricas.totalProductos.toLocaleString()}
+                {metricasAjustadas.productosAsignados.toLocaleString()} /{" "}
+                {metricasAjustadas.totalProductos.toLocaleString()}
               </span>
             </div>
             <Progress
-              value={metricas.tasaAsignacionPercent}
+              value={metricasAjustadas.tasaAsignacionPercent}
               className="h-1.5"
             />
             <div className="text-right text-[10px] text-muted-foreground mt-0.5">
-              {metricas.tasaAsignacionPercent.toFixed(1)}%
+              {metricasAjustadas.tasaAsignacionPercent.toFixed(1)}%
             </div>
           </div>
         )}
@@ -111,12 +138,14 @@ export function PedidosPanel({
 
       {/* Filtros */}
       <div className="p-3 border-b space-y-2">
+        {/* Barra de búsqueda oculta temporalmente
         <Input
           placeholder="Buscar pedido..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           className="text-sm h-9"
         />
+        */}
 
         <Tabs
           value={filtro}
@@ -248,6 +277,20 @@ function PedidoCard({
               {pedido.destinoNombre} ({pedido.destinoCodigo})
             </span>
           </div>
+        </div>
+
+        {/* Fecha de solicitud */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="font-medium">Solicitado:</span>
+          <span>
+            {new Date(pedido.fechaSolicitudISO).toLocaleDateString('es-PE', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </span>
         </div>
 
         {/* Productos */}

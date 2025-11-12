@@ -101,8 +101,8 @@ public class FlightStatusTracker {
                     flightId,
                     vuelo.origen.codigo,
                     vuelo.destino.codigo,
-                    LocalDateTime.parse(vuelo.salidaProgramadaISO),
-                    LocalDateTime.parse(vuelo.llegadaProgramadaISO)
+                    parseToLocalDateTime(vuelo.salidaProgramadaISO),
+                    parseToLocalDateTime(vuelo.llegadaProgramadaISO)
                 );
                 
                 flightStatusCache.put(flightId, info);
@@ -174,8 +174,8 @@ public class FlightStatusTracker {
      * Determina el estado de un vuelo basado en el tiempo actual.
      */
     private FlightStatus determineFlightStatus(VueloDTO vuelo, LocalDateTime currentTime) {
-        LocalDateTime departure = LocalDateTime.parse(vuelo.salidaProgramadaISO);
-        LocalDateTime arrival = LocalDateTime.parse(vuelo.llegadaProgramadaISO);
+        LocalDateTime departure = parseToLocalDateTime(vuelo.salidaProgramadaISO);
+        LocalDateTime arrival = parseToLocalDateTime(vuelo.llegadaProgramadaISO);
         
         // Antes de la salida → En tierra en origen
         if (currentTime.isBefore(departure)) {
@@ -209,11 +209,33 @@ public class FlightStatusTracker {
     }
     
     /**
+     * ✅ FIX: Parsea un timestamp ISO a LocalDateTime, aceptando formato con o sin zona horaria.
+     */
+    private LocalDateTime parseToLocalDateTime(String isoTimestamp) {
+        if (isoTimestamp.contains("Z") || isoTimestamp.matches(".*[+-]\\d{2}:\\d{2}$")) {
+            // Si tiene zona horaria, parsearlo como OffsetDateTime y luego convertir a LocalDateTime
+            java.time.OffsetDateTime offsetDateTime = java.time.OffsetDateTime.parse(isoTimestamp);
+            return offsetDateTime.toLocalDateTime();
+        } else {
+            // Si no tiene zona horaria, parsearlo directamente como LocalDateTime
+            return LocalDateTime.parse(isoTimestamp);
+        }
+    }
+    
+    /**
      * Extrae solo la hora (HH:mm) de un timestamp ISO.
+     * ✅ FIX: Ahora acepta fechas con zona horaria (Z)
      */
     private String extractTime(String isoTimestamp) {
-        LocalDateTime dateTime = LocalDateTime.parse(isoTimestamp);
-        return String.format("%02d:%02d", dateTime.getHour(), dateTime.getMinute());
+        // Si tiene zona horaria (Z o +/-offset), usar OffsetDateTime
+        if (isoTimestamp.contains("Z") || isoTimestamp.matches(".*[+-]\\d{2}:\\d{2}$")) {
+            java.time.OffsetDateTime dateTime = java.time.OffsetDateTime.parse(isoTimestamp);
+            return String.format("%02d:%02d", dateTime.getHour(), dateTime.getMinute());
+        } else {
+            // Si no tiene zona horaria, usar LocalDateTime
+            LocalDateTime dateTime = LocalDateTime.parse(isoTimestamp);
+            return String.format("%02d:%02d", dateTime.getHour(), dateTime.getMinute());
+        }
     }
     
     /**

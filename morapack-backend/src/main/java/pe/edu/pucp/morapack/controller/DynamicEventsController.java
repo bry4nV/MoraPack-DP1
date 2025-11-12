@@ -174,12 +174,15 @@ public class DynamicEventsController {
     /**
      * Crear un pedido dinámico manualmente durante la simulación.
      * 
+     * El origen y deadline se determinan automáticamente según restricciones del caso:
+     * - Origen: SPIM (América), EBCI (Europa), o UBBB (Asia/Medio Oriente)
+     * - Deadline: 48h mismo continente, 72h intercontinental
+     * 
      * Formato del request:
      * {
-     *   "origin": "SPIM",
-     *   "destination": "EBCI",
+     *   "destination": "SUAA",
      *   "quantity": 250,
-     *   "deadlineHours": 48
+     *   "reason": "Pedido urgente"
      * }
      */
     @PostMapping("/add-order")
@@ -187,28 +190,39 @@ public class DynamicEventsController {
             @RequestBody DynamicOrderDTO orderDto) {
         
         try {
-            // Obtener tiempo actual de simulación
-            LocalDateTime currentTime = LocalDateTime.now(); // Simplificado por ahora
-            
-            // Crear pedido manual
-            int deadlineHours = orderDto.getDeadlineHours();
-            if (deadlineHours <= 0) {
-                deadlineHours = 48; // Default
+            // Validar destino
+            if (orderDto.getDestination() == null || orderDto.getDestination().isEmpty()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "Destination is required");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
             }
             
+            // Determinar origen automáticamente según restricciones del caso
+            String origin = determineOptimalOrigin(orderDto.getDestination());
+            
+            // Obtener tiempo actual de simulación (se inyecta INMEDIATAMENTE)
+            LocalDateTime currentTime = LocalDateTime.now(); // TODO: Obtener de SimulationSession
+            
+            // Deadline se calcula automáticamente según restricciones:
+            // - 48h si origen y destino están en el mismo continente
+            // - 72h si es envío intercontinental
+            // (Ver PlannerOrder constructor línea 25)
+            int deadlineHours = 48; // Placeholder, se recalcula en PlannerOrder
+            
             DynamicOrder order = dynamicOrderService.createManualOrder(
-                orderDto.getOrigin(),
+                origin,
                 orderDto.getDestination(),
                 orderDto.getQuantity(),
-                deadlineHours,
-                currentTime,
+                deadlineHours, // Se recalcula automáticamente
+                currentTime,   // Se inyecta inmediatamente
                 orderDto.getReason() != null ? orderDto.getReason() : "Manual order"
             );
             
             // Respuesta
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "Order created successfully");
+            response.put("message", "Order created successfully (Origin: " + origin + ", automatically determined)");
             response.put("order", toOrderDTO(order));
             
             return ResponseEntity.ok(response);
@@ -218,6 +232,37 @@ public class DynamicEventsController {
             error.put("success", false);
             error.put("message", "Failed to create order: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        }
+    }
+    
+    /**
+     * Determina el origen óptimo basado en el destino.
+     * Sigue las mismas reglas que DataLoader.determineOptimalOrigin().
+     * 
+     * Hubs de distribución:
+     * - SPIM (Lima, Perú) → América del Sur
+     * - EBCI (Bruselas, Bélgica) → Europa
+     * - UBBB (Baku, Azerbaiyán) → Asia/Medio Oriente
+     */
+    private String determineOptimalOrigin(String destinationCode) {
+        // Simplificación: usar primera letra del código ICAO
+        // S = Sudamérica → SPIM
+        // L, E, U, O = Europa/África/Asia → EBCI o UBBB
+        
+        char firstChar = destinationCode.charAt(0);
+        
+        if (firstChar == 'S') {
+            // Sudamérica (ICAO codes starting with 'S')
+            return "SPIM";
+        } else if (firstChar == 'L' || firstChar == 'E') {
+            // Europa (ICAO codes starting with 'L' or 'E')
+            return "EBCI";
+        } else if (firstChar == 'U' || firstChar == 'O' || firstChar == 'V') {
+            // Asia/Medio Oriente/Oceanía
+            return "UBBB";
+        } else {
+            // Default: Europa (más conexiones)
+            return "EBCI";
         }
     }
     
