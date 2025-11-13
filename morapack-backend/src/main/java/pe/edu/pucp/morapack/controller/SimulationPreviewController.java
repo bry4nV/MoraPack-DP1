@@ -64,9 +64,9 @@ public class SimulationPreviewController {
             SimulationPreviewResponse preview = dataService.buildPreview(start, scenario);
             
             System.out.println("[SimulationPreviewController] Preview generated:");
-            System.out.println("   Total orders: " + preview.totalPedidos);
-            System.out.println("   Total products: " + preview.totalProductos);
-            System.out.println("   Total flights: " + preview.totalVuelos);
+            System.out.println("   Total orders: " + preview.totalOrders);
+            System.out.println("   Total products: " + preview.totalProducts);
+            System.out.println("   Total flights: " + preview.totalFlights);
             
             return ResponseEntity.ok(preview);
             

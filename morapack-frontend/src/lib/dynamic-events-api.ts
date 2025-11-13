@@ -12,7 +12,7 @@ import type {
   DynamicOrderApiResponse,
   CancellationsListResponse,
   DynamicOrdersListResponse,
-} from '@/types/dynamic-events';
+} from '@/types/simulation/events.types';
 
 const baseUrl = API_CONFIG.BASE_URL;
 

@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Package, MapPin, Target, Clock, AlertCircle } from "lucide-react";
 import { addDynamicOrder } from "@/lib/dynamic-events-api";
-import type { DynamicOrder } from "@/types/dynamic-events";
+import type { DynamicOrder } from "@/types/simulation/events.types";
 import type { Aeropuerto } from "@/types";
 
 interface DynamicOrdersTabProps {

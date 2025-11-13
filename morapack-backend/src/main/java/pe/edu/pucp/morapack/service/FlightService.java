@@ -3,7 +3,7 @@ package pe.edu.pucp.morapack.service;
 import org.springframework.stereotype.Service;
 import pe.edu.pucp.morapack.dto.FlightDto;
 import pe.edu.pucp.morapack.model.Flight;
-import pe.edu.pucp.morapack.repository.FlightRepository;
+import pe.edu.pucp.morapack.repository.daily.FlightRepository;
 
 import java.util.List;
 import java.util.stream.Collectors;

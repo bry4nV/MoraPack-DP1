@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Plane, MapPin, Target, Clock, AlertCircle } from "lucide-react";
 import { cancelFlight } from "@/lib/dynamic-events-api";
-import type { FlightCancellation } from "@/types/dynamic-events";
+import type { FlightCancellation } from "@/types/simulation/events.types";
 import type { Aeropuerto } from "@/types";
 
 interface CancellationsTabProps {

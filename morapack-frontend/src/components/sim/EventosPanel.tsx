@@ -6,8 +6,8 @@ import { Plane, Package, History } from "lucide-react";
 import CancellationsTab from "@/components/events/CancellationsTab";
 import DynamicOrdersTab from "@/components/events/DynamicOrdersTab";
 import HistoryTab from "@/components/events/HistoryTab";
-import type { FlightCancellation, DynamicOrder } from "@/types/dynamic-events";
-import type { Aeropuerto } from "@/types";
+import type { FlightCancellation, DynamicOrder } from "@/types/simulation/events.types";
+import type { Aeropuerto } from "@/types/aeropuerto";
 
 interface EventosPanelProps {
   aeropuertos: Aeropuerto[];

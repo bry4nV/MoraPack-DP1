@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MapPin, Target, Plane, Package } from "lucide-react";
-import type { OrderSummary, OrderMetrics, OrderStatus } from "@/types";
+import type { OrderSummary, OrderMetrics } from "@/types/simulation/order-summary.types";
+import type { OrderStatus } from "@/types/shared";
 
 interface PedidosPanelProps {
   pedidos: OrderSummary[];
@@ -32,7 +33,7 @@ export function PedidosPanel({
 
     // Filtrar por estado
     if (filtro !== "todos") {
-      filtered = filtered.filter((p) => p.estado === filtro);
+      filtered = filtered.filter((p) => p.status === filtro);
     }
 
     // Búsqueda por código, origen o destino (temporalmente deshabilitado)
@@ -41,11 +42,11 @@ export function PedidosPanel({
       const search = busqueda.toLowerCase();
       filtered = filtered.filter(
         (p) =>
-          p.codigo.toLowerCase().includes(search) ||
-          p.origenNombre.toLowerCase().includes(search) ||
-          p.destinoNombre.toLowerCase().includes(search) ||
-          p.origenCodigo.toLowerCase().includes(search) ||
-          p.destinoCodigo.toLowerCase().includes(search)
+          p.code.toLowerCase().includes(search) ||
+          p.originName.toLowerCase().includes(search) ||
+          p.destinationName.toLowerCase().includes(search) ||
+          p.originCode.toLowerCase().includes(search) ||
+          p.destinationCode.toLowerCase().includes(search)
       );
     }
     */
@@ -56,25 +57,25 @@ export function PedidosPanel({
   // Recalcular métricas basadas en pedidos visibles (filtrados por tiempo)
   const metricasAjustadas = useMemo(() => {
     if (!metricas) return null;
-    
+
     // Contar estados en pedidos visibles
-    const pendientes = pedidos.filter(p => p.estado === 'PENDING').length;
-    const enTransito = pedidos.filter(p => p.estado === 'IN_TRANSIT').length;
-    const completados = pedidos.filter(p => p.estado === 'COMPLETED').length;
-    const sinAsignar = pedidos.filter(p => p.estado === 'UNASSIGNED').length;
-    
-    const totalProductos = pedidos.reduce((sum, p) => sum + p.cantidadTotal, 0);
-    const productosAsignados = pedidos.reduce((sum, p) => sum + p.cantidadAsignada, 0);
-    
+    const pending = pedidos.filter(p => p.status === 'PENDING').length;
+    const inTransit = pedidos.filter(p => p.status === 'IN_TRANSIT').length;
+    const completed = pedidos.filter(p => p.status === 'COMPLETED').length;
+    const unassigned = pedidos.filter(p => p.status === 'UNASSIGNED').length;
+
+    const totalProducts = pedidos.reduce((sum, p) => sum + p.totalQuantity, 0);
+    const assignedProducts = pedidos.reduce((sum, p) => sum + p.assignedQuantity, 0);
+
     return {
-      totalPedidos: pedidos.length,
-      pendientes,
-      enTransito,
-      completados,
-      sinAsignar,
-      totalProductos,
-      productosAsignados,
-      tasaAsignacionPercent: totalProductos > 0 ? (productosAsignados / totalProductos) * 100 : 0
+      totalOrders: pedidos.length,
+      pending,
+      inTransit,
+      completed,
+      unassigned,
+      totalProducts,
+      assignedProducts,
+      assignmentRatePercent: totalProducts > 0 ? (assignedProducts / totalProducts) * 100 : 0
     };
   }, [pedidos, metricas]);
 
@@ -95,22 +96,22 @@ export function PedidosPanel({
           <div className="grid grid-cols-4 gap-1.5 text-xs">
             <MetricBadge
               label="Total"
-              value={metricasAjustadas.totalPedidos}
+              value={metricasAjustadas.totalOrders}
               color="blue"
             />
             <MetricBadge
               label="Pendientes"
-              value={metricasAjustadas.pendientes}
+              value={metricasAjustadas.pending}
               color="yellow"
             />
             <MetricBadge
               label="En tránsito"
-              value={metricasAjustadas.enTransito}
+              value={metricasAjustadas.inTransit}
               color="orange"
             />
             <MetricBadge
               label="Completados"
-              value={metricasAjustadas.completados}
+              value={metricasAjustadas.completed}
               color="green"
             />
           </div>
@@ -121,16 +122,16 @@ export function PedidosPanel({
             <div className="flex justify-between text-[11px] mb-1">
               <span className="text-muted-foreground">Asignación</span>
               <span className="font-semibold">
-                {metricasAjustadas.productosAsignados.toLocaleString()} /{" "}
-                {metricasAjustadas.totalProductos.toLocaleString()}
+                {metricasAjustadas.assignedProducts.toLocaleString()} /{" "}
+                {metricasAjustadas.totalProducts.toLocaleString()}
               </span>
             </div>
             <Progress
-              value={metricasAjustadas.tasaAsignacionPercent}
+              value={metricasAjustadas.assignmentRatePercent}
               className="h-1.5"
             />
             <div className="text-right text-[10px] text-muted-foreground mt-0.5">
-              {metricasAjustadas.tasaAsignacionPercent.toFixed(1)}%
+              {metricasAjustadas.assignmentRatePercent.toFixed(1)}%
             </div>
           </div>
         )}
@@ -249,7 +250,7 @@ function PedidoCard({
     },
   };
 
-  const config = estadoConfig[pedido.estado];
+  const config = estadoConfig[pedido.status];
 
   return (
     <Card
@@ -259,7 +260,7 @@ function PedidoCard({
       <CardContent className="p-4 space-y-3">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <span className="font-bold text-base">{pedido.codigo}</span>
+          <span className="font-bold text-base">{pedido.code}</span>
           <Badge className={`text-xs px-2.5 py-0.5 ${config.color}`}>{config.label}</Badge>
         </div>
 
@@ -268,13 +269,13 @@ function PedidoCard({
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4 text-blue-500 flex-shrink-0" />
             <span className="truncate">
-              {pedido.origenNombre} ({pedido.origenCodigo})
+              {pedido.originName} ({pedido.originCode})
             </span>
           </div>
           <div className="flex items-center gap-2">
             <Target className="h-4 w-4 text-green-500 flex-shrink-0" />
             <span className="truncate">
-              {pedido.destinoNombre} ({pedido.destinoCodigo})
+              {pedido.destinationName} ({pedido.destinationCode})
             </span>
           </div>
         </div>
@@ -283,7 +284,7 @@ function PedidoCard({
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="font-medium">Solicitado:</span>
           <span>
-            {new Date(pedido.fechaSolicitudISO).toLocaleDateString('es-PE', {
+            {new Date(pedido.requestDateISO).toLocaleDateString('es-PE', {
               day: '2-digit',
               month: '2-digit',
               year: 'numeric',
@@ -297,7 +298,7 @@ function PedidoCard({
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Package className="h-4 w-4" />
           <span className="font-medium">
-            {pedido.cantidadTotal} producto{pedido.cantidadTotal !== 1 && "s"}
+            {pedido.totalQuantity} producto{pedido.totalQuantity !== 1 && "s"}
           </span>
         </div>
 
@@ -307,20 +308,20 @@ function PedidoCard({
             <div className="flex justify-between text-sm mb-1.5">
               <span className="text-muted-foreground">Asignado</span>
               <span className="font-bold">
-                {pedido.cantidadAsignada}/{pedido.cantidadTotal}
+                {pedido.assignedQuantity}/{pedido.totalQuantity}
               </span>
             </div>
-            <Progress value={pedido.progresoPercent} className="h-2.5" />
+            <Progress value={pedido.progressPercent} className="h-2.5" />
           </div>
         )}
 
         {/* Vuelos asignados (solo en modo realtime si hay) */}
-        {mode === "realtime" && pedido.vuelosAsignados.length > 0 && (
+        {mode === "realtime" && pedido.assignedFlights.length > 0 && (
           <div className="text-sm text-muted-foreground flex items-center gap-2">
             <Plane className="h-4 w-4" />
             <span className="font-medium">
-              {pedido.vuelosAsignados.length} vuelo
-              {pedido.vuelosAsignados.length !== 1 && "s"}
+              {pedido.assignedFlights.length} vuelo
+              {pedido.assignedFlights.length !== 1 && "s"}
             </span>
           </div>
         )}

@@ -1,4 +1,4 @@
-package pe.edu.pucp.morapack.repository;
+package pe.edu.pucp.morapack.repository.daily;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;

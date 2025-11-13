@@ -9,16 +9,18 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { Itinerario } from "@/types/itinerario";
-import type { Aeropuerto, OrderSummary, OrderMetrics, SimulationPreview } from "@/types";
-import { Play, Pause, Square, RotateCcw, Plane, Calendar, Clock, Gauge, PackageCheck, TrendingUp } from "lucide-react";
+import type { Itinerario } from "@/types/simulation/itinerary.types";
+import type { Aeropuerto } from "@/types/aeropuerto";
+import type { OrderSummary, OrderMetrics } from "@/types/simulation/order-summary.types";
+import type { SimulationPreview } from "@/types/simulation/preview.types";
+import { Play, Pause, Square, RotateCcw, Plane, Calendar, Clock, Gauge, PackageCheck, TrendingUp, ChevronLeft, ChevronRight, Timer, Menu, ChevronDown, ChevronUp } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 import { PedidosPanel } from "./PedidosPanel";
 import { EventosPanel } from "./EventosPanel";
 import { getCancellations, getDynamicOrders } from "@/lib/dynamic-events-api";
-import type { FlightCancellation, DynamicOrder } from "@/types/dynamic-events";
+import type { FlightCancellation, DynamicOrder } from "@/types/simulation/events.types";
 
 type SimulationState = 'IDLE' | 'STARTING' | 'RUNNING' | 'PAUSED' | 'STOPPED' | 'COMPLETED' | 'ERROR';
 type ScenarioType = 'WEEKLY' | 'DAILY' | 'COLLAPSE';
@@ -35,6 +37,12 @@ export default function SimulacionClient() {
   const [scenarioType, setScenarioType] = useState<ScenarioType>('WEEKLY');
   const [speed, setSpeed] = useState<number>(1);
   const [startDate, setStartDate] = useState<string>("2025-01-02"); // Default start date (primera fecha con datos)
+  const [startTime, setStartTime] = useState<string>("00:00"); // Default start time
+
+  // UI state
+  const [isPanelOpen, setIsPanelOpen] = useState<boolean>(true);
+  const [isHeaderOpen, setIsHeaderOpen] = useState<boolean>(true); // Controls panel
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   
   // Métricas en tiempo real
   const [currentIteration, setCurrentIteration] = useState(0);
@@ -126,43 +134,43 @@ export default function SimulacionClient() {
                     const result = update.latestResult;
 
                     // Update airports
-                    if (result.aeropuertos && result.aeropuertos.length > 0) {
-                      const mappedAeropuertos = result.aeropuertos.map((a: any) => ({
+                    if (result.airports && result.airports.length > 0) {
+                      const mappedAeropuertos = result.airports.map((a: any) => ({
                         id: a.id,
-                        nombre: a.nombre || a.codigo,
-                        codigo: a.codigo,
-                        ciudad: a.ciudad || a.codigo,
-                        latitud: a.latitud,
-                        longitud: a.longitud,
+                        nombre: a.name || a.code,
+                        codigo: a.code,
+                        ciudad: a.city || a.code,
+                        latitud: a.latitude,
+                        longitud: a.longitude,
                         gmt: a.gmt,
-                        esSede: a.esSede || false,
-                        capacidadAlmacen: a.capacidadTotal || 1000,
+                        esSede: a.isHub || false,
+                        capacidadAlmacen: a.totalCapacity || 1000,
                         // ✅ Capacity information
-                        capacidadTotal: a.capacidadTotal || 1000,
-                        capacidadUsada: a.capacidadUsada || 0,
-                        capacidadDisponible: a.capacidadDisponible || 1000,
-                        porcentajeUso: a.porcentajeUso || 0,
+                        capacidadTotal: a.totalCapacity || 1000,
+                        capacidadUsada: a.usedCapacity || 0,
+                        capacidadDisponible: a.availableCapacity || 1000,
+                        porcentajeUso: a.usagePercentage || 0,
                         // Dynamic info
-                        pedidosEnEspera: a.pedidosEnEspera || 0,
-                        productosEnEspera: a.productosEnEspera || 0,
-                        vuelosActivosDesde: a.vuelosActivosDesde || 0,
-                        vuelosActivosHacia: a.vuelosActivosHacia || 0,
+                        pedidosEnEspera: a.pendingOrders || 0,
+                        productosEnEspera: a.pendingProducts || 0,
+                        vuelosActivosDesde: a.activeFlightsFrom || 0,
+                        vuelosActivosHacia: a.activeFlightsTo || 0,
                         pais: { id: a.id, nombre: "Unknown", continente: "AMERICA" as const },
                       }));
                       setAeropuertos(mappedAeropuertos);
                     }
 
-                    //Update pedidos
-                    if (result.pedidos) {
-                      setPedidos(result.pedidos);
+                    //Update orders
+                    if (result.orders) {
+                      setPedidos(result.orders);
                     }
-                    if (result.metricas) {
-                      setMetricasPedidos(result.metricas);
+                    if (result.metrics) {
+                      setMetricasPedidos(result.metrics);
                     }
 
                     // Update itinerarios
-                    if (result.itinerarios) {
-                      const mappedItinerarios = result.itinerarios.map((itin: any) => ({
+                    if (result.itineraries) {
+                      const mappedItinerarios = result.itineraries.map((itin: any) => ({
                         id: itin.id,
                         segmentos: (itin.segmentos || []).map((seg: any) => ({
                           id: `${itin.id}-${seg.orden}`,
@@ -238,6 +246,31 @@ export default function SimulacionClient() {
       stompClient.deactivate();
     };
   }, []);
+
+  // ✅ Elapsed time counter: track real-world time spent in simulation
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
+    if (simulationState === 'RUNNING') {
+      intervalId = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    } else if (simulationState === 'IDLE' || simulationState === 'STOPPED') {
+      setElapsedSeconds(0);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [simulationState]);
+
+  // Format elapsed time as HH:MM:SS
+  const formatElapsedTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   // ✅ Time interpolation: smooth time progression between backend updates
   useEffect(() => {
@@ -369,33 +402,33 @@ export default function SimulacionClient() {
         .then((preview: SimulationPreview) => {
           console.log("✅ Preview received:", preview);
           setPreviewData(preview);
-          setPedidos(preview.pedidos);
-          
+          setPedidos(preview.orders);
+
           // Update airports from preview
-          if (preview.aeropuertos && preview.aeropuertos.length > 0) {
-            const mappedAeropuertos = preview.aeropuertos.map((a: any) => ({
+          if (preview.airports && preview.airports.length > 0) {
+            const mappedAeropuertos = preview.airports.map((a: any) => ({
               id: a.id,
-              nombre: a.nombre || a.codigo,
-              codigo: a.codigo,
-              ciudad: a.ciudad || a.codigo,
-              latitud: a.latitud,
-              longitud: a.longitud,
+              nombre: a.name || a.code,
+              codigo: a.code,
+              ciudad: a.city || a.code,
+              latitud: a.latitude,
+              longitud: a.longitude,
               gmt: a.gmt,
-              esSede: a.esSede || false,
-              capacidadAlmacen: a.capacidadTotal || 1000,
+              esSede: a.isHub || false,
+              capacidadAlmacen: a.totalCapacity || 1000,
               // ✅ Capacity information
-              capacidadTotal: a.capacidadTotal || 1000,
-              capacidadUsada: a.capacidadUsada || 0,
-              capacidadDisponible: a.capacidadDisponible || (a.capacidadTotal || 1000),
-              porcentajeUso: a.porcentajeUso || 0,
+              capacidadTotal: a.totalCapacity || 1000,
+              capacidadUsada: a.usedCapacity || 0,
+              capacidadDisponible: a.availableCapacity || (a.totalCapacity || 1000),
+              porcentajeUso: a.usagePercentage || 0,
               // Dynamic info
-              pedidosEnEspera: a.pedidosEnEspera || 0,
-              productosEnEspera: a.productosEnEspera || 0,
-              vuelosActivosDesde: a.vuelosActivosDesde || 0,
-              vuelosActivosHacia: a.vuelosActivosHacia || 0,
-              pais: { 
-                id: a.id, 
-                nombre: "Unknown", 
+              pedidosEnEspera: a.pendingOrders || 0,
+              productosEnEspera: a.pendingProducts || 0,
+              vuelosActivosDesde: a.activeFlightsFrom || 0,
+              vuelosActivosHacia: a.activeFlightsTo || 0,
+              pais: {
+                id: a.id,
+                nombre: "Unknown",
                 continente: "AMERICA" as const
               },
             }));
@@ -405,19 +438,19 @@ export default function SimulacionClient() {
           
           // Calculate preview metrics
           const metrics: OrderMetrics = {
-            totalPedidos: preview.totalPedidos,
-            pendientes: preview.totalPedidos, // All pending in preview
-            enTransito: 0,
-            completados: 0,
-            sinAsignar: 0,
-            totalProductos: preview.totalProductos,
-            productosAsignados: 0,
-            tasaAsignacionPercent: 0
+            totalOrders: preview.totalOrders,
+            pending: preview.totalOrders, // All pending in preview
+            inTransit: 0,
+            completed: 0,
+            unassigned: 0,
+            totalProducts: preview.totalProducts,
+            assignedProducts: 0,
+            assignmentRatePercent: 0
           };
           setMetricasPedidos(metrics);
-          
+
           // Update message
-          setMessage(`Vista previa: ${preview.totalPedidos} pedidos, ${preview.totalProductos} productos`);
+          setMessage(`Vista previa: ${preview.totalOrders} pedidos, ${preview.totalProducts} productos`);
         })
         .catch(err => {
           console.error("❌ Error fetching preview:", err);
@@ -445,6 +478,11 @@ export default function SimulacionClient() {
   // Control handlers
   const sendControlMessage = (action: string, extras = {}) => {
     if (client && connected) {
+      // Combine date and time for START action
+      const startDateTime = action === 'START'
+        ? `${startDate}T${startTime}:00`
+        : undefined;
+
       client.publish({
         destination: "/app/simulation/control",
         body: JSON.stringify({
@@ -452,11 +490,11 @@ export default function SimulacionClient() {
           scenarioType,
           customK: scenarioType === 'WEEKLY' ? 24 : undefined, // K=24 (Sc=120 min)
           speed,
-          startDate: action === 'START' ? startDate : undefined, // Only send startDate on START
+          startDate: startDateTime, // Send combined date+time as ISO string
           ...extras,
         }),
       });
-      console.log(`Sent control: ${action}`, extras);
+      console.log(`Sent control: ${action}`, { startDateTime, ...extras });
     }
   };
 
@@ -475,16 +513,16 @@ export default function SimulacionClient() {
     setCurrentIteration(0);
     setProgress(0);
     // ✅ FIX: Limpiar pedidos y métricas al resetear
-    setPedidos(previewData?.pedidos || []);
+    setPedidos(previewData?.orders || []);
     setMetricasPedidos(previewData ? {
-      totalPedidos: previewData.totalPedidos,
-      pendientes: previewData.totalPedidos,
-      enTransito: 0,
-      completados: 0,
-      sinAsignar: 0,
-      totalProductos: previewData.totalProductos,
-      productosAsignados: 0,
-      tasaAsignacionPercent: 0
+      totalOrders: previewData.totalOrders,
+      pending: previewData.totalOrders,
+      inTransit: 0,
+      completed: 0,
+      unassigned: 0,
+      totalProducts: previewData.totalProducts,
+      assignedProducts: 0,
+      assignmentRatePercent: 0
     } : null);
     setSimulatedTime("");
     setInterpolatedTime("");
@@ -499,176 +537,187 @@ export default function SimulacionClient() {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Header con badges */}
+    <div className="space-y-2">
+      {/* Header mínimo - SIEMPRE VISIBLE */}
       <div className="flex items-center justify-between">
-        <h1 className="text-4xl font-bold tracking-tight">Simulación de vuelos</h1>
-        
-        <div className="flex items-center gap-4">
-          {/* Estado */}
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">Simulación</h1>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsHeaderOpen(!isHeaderOpen)}
+            className="h-7 gap-1.5"
+          >
+            <Menu className="h-3.5 w-3.5" />
+            <span className="text-xs">Controles</span>
+            {isHeaderOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </Button>
+        </div>
+
+        {/* Badges siempre visibles (info crítica) */}
+        <div className="flex items-center gap-2">
           <Badge variant={
             simulationState === 'RUNNING' ? 'default' :
             simulationState === 'COMPLETED' ? 'outline' :
             simulationState === 'ERROR' ? 'destructive' : 'secondary'
-          } className="flex items-center gap-2 px-3 py-1">
+          } className="text-[10px] px-2 py-0.5">
             {simulationState}
           </Badge>
-          
-          {/* Itinerarios */}
-          <Badge variant="outline" className="flex items-center gap-2 px-3 py-1">
-            <Plane className="h-4 w-4" />
-            Itinerarios: {itinerarios.length}
-          </Badge>
-          
-          {/* Tiempo simulado */}
-          <Badge variant="outline" className="flex items-center gap-2 px-3 py-1">
-            <Calendar className="h-4 w-4" />
-            {displayTime}
+          <Badge variant="outline" className="text-[10px] px-2 py-0.5">
+            {currentIteration}/{totalIterations}
           </Badge>
         </div>
       </div>
 
-      {/* Controles de simulación */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between gap-4">
-            {/* Configuración izquierda */}
-            <div className="flex items-center gap-6">
+      {/* Panel de controles - COLAPSABLE */}
+      {isHeaderOpen && (
+        <Card>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center justify-between gap-3">
+            {/* Configuración izquierda - MÁS COMPACTA */}
+            <div className="flex items-center gap-3">
               {/* Escenario - Radio buttons */}
-              <div className="flex items-center gap-3">
-                <Label className="text-sm">Tipo:</Label>
-                <RadioGroup 
-                  value={scenarioType} 
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">Tipo:</Label>
+                <RadioGroup
+                  value={scenarioType}
                   onValueChange={(value: ScenarioType) => setScenarioType(value)}
                   disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
-                  className="flex items-center gap-4"
+                  className="flex items-center gap-3"
                 >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="WEEKLY" id="weekly" />
-                    <Label htmlFor="weekly" className="font-normal cursor-pointer">
+                  <div className="flex items-center space-x-1.5">
+                    <RadioGroupItem value="WEEKLY" id="weekly" className="h-3.5 w-3.5" />
+                    <Label htmlFor="weekly" className="text-xs font-normal cursor-pointer">
                       Semanal
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="COLLAPSE" id="collapse" />
-                    <Label htmlFor="collapse" className="font-normal cursor-pointer">
+                  <div className="flex items-center space-x-1.5">
+                    <RadioGroupItem value="COLLAPSE" id="collapse" className="h-3.5 w-3.5" />
+                    <Label htmlFor="collapse" className="text-xs font-normal cursor-pointer">
                       Colapso
                     </Label>
                   </div>
                 </RadioGroup>
               </div>
 
-              {/* Fecha de inicio */}
+              {/* Fecha y hora de inicio */}
               <div className="flex items-center gap-2">
-                <Label className="text-sm flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  Fecha inicio:
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5" />
+                  Inicio:
                 </Label>
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  min="2025-01-02"
-                  max="2025-01-31"
-                  disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
-                  className="w-40"
-                />
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    min="2025-01-02"
+                    max="2025-01-31"
+                    disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
+                    className="w-32 h-8 text-xs"
+                  />
+                  <Input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
+                    className="w-24 h-8 text-xs"
+                  />
+                </div>
               </div>
 
               {/* Velocidad */}
               <div className="flex items-center gap-2">
-                <Label className="text-sm flex items-center gap-1">
-                  <Gauge className="h-4 w-4" />
-                  Velocidad:
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Gauge className="h-3.5 w-3.5" />
+                  Vel:
                 </Label>
-                <div className="flex items-center gap-2">
-                  <Select 
-                    value={speed.toString()} 
-                    onValueChange={handleSpeedChange}
-                    disabled={simulationState !== 'RUNNING'}
-                  >
-                    <SelectTrigger className="w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0.5">0.5x</SelectItem>
-                      <SelectItem value="1">1x</SelectItem>
-                      <SelectItem value="2">2x</SelectItem>
-                      <SelectItem value="5">5x</SelectItem>
-                      <SelectItem value="10">10x</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {simulationState === 'RUNNING' && (
-                    <span className="text-xs text-muted-foreground" title="Velocidad visual de aviones">
-                      ({(800 * speed).toLocaleString()} km/h visual)
-                    </span>
-                  )}
-                </div>
+                <Select
+                  value={speed.toString()}
+                  onValueChange={handleSpeedChange}
+                  disabled={simulationState !== 'RUNNING'}
+                >
+                  <SelectTrigger className="w-16 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0.5">0.5x</SelectItem>
+                    <SelectItem value="1">1x</SelectItem>
+                    <SelectItem value="2">2x</SelectItem>
+                    <SelectItem value="5">5x</SelectItem>
+                    <SelectItem value="10">10x</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {/* Controles derecha */}
-            <div className="flex items-center gap-3">
+            {/* Controles derecha - MÁS COMPACTO */}
+            <div className="flex items-center gap-2">
               {/* Progreso */}
-              <div className="flex flex-col items-end min-w-[120px]">
-                <span className="text-sm font-medium">
-                  Iter: {currentIteration}/{totalIterations}
+              <div className="flex flex-col items-end min-w-[100px]">
+                <span className="text-xs font-medium">
+                  {currentIteration}/{totalIterations}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-[10px] text-muted-foreground">
                   {Math.round(progress * 100)}%
                 </span>
               </div>
 
-              {/* Botones de control */}
+              {/* Botones de control - MÁS PEQUEÑOS */}
               <Button
                 variant="outline"
-                size="icon"
+                size="sm"
                 onClick={handleReset}
                 disabled={!connected || simulationState === 'STARTING'}
                 title="Reset"
+                className="h-8 w-8 p-0"
               >
-                <RotateCcw className="h-4 w-4" />
+                <RotateCcw className="h-3.5 w-3.5" />
               </Button>
 
               <Button
                 variant="outline"
-                size="icon"
+                size="sm"
                 onClick={handleStop}
                 disabled={!connected || simulationState === 'IDLE' || simulationState === 'STOPPED'}
                 title="Stop"
+                className="h-8 w-8 p-0"
               >
-                <Square className="h-4 w-4" />
+                <Square className="h-3.5 w-3.5" />
               </Button>
 
               {simulationState === 'PAUSED' ? (
                 <Button
                   variant="default"
-                  size="icon"
+                  size="sm"
                   onClick={handleResume}
                   disabled={!connected}
                   title="Resume"
+                  className="h-8 w-8 p-0"
                 >
-                  <Play className="h-4 w-4" />
+                  <Play className="h-3.5 w-3.5" />
                 </Button>
               ) : simulationState === 'RUNNING' ? (
                 <Button
                   variant="default"
-                  size="icon"
+                  size="sm"
                   onClick={handlePause}
                   disabled={!connected}
                   title="Pause"
+                  className="h-8 w-8 p-0"
                 >
-                  <Pause className="h-4 w-4" />
+                  <Pause className="h-3.5 w-3.5" />
                 </Button>
               ) : (
                 <Button
                   variant="default"
-                  size="icon"
+                  size="sm"
                   onClick={handleStart}
                   disabled={!connected || simulationState === 'STARTING'}
                   title="Start"
+                  className="h-8 w-8 p-0"
                 >
-                  <Play className="h-4 w-4" />
+                  <Play className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>
@@ -676,44 +725,82 @@ export default function SimulacionClient() {
 
           {/* Mensaje de estado */}
           {message && (
-            <div className="mt-3 text-sm text-muted-foreground text-center">
+            <div className="mt-2 text-xs text-muted-foreground text-center">
               {message}
             </div>
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* Layout: Mapa + Panel de Pedidos/Eventos */}
-      <div className="flex gap-4">
-        {/* Mapa (principal) */}
-        <div className="flex-1">
-          <Card className="overflow-hidden h-[calc(100vh-14rem)]">
-            <CardContent className="p-0 h-full">
-                <AnimatedFlights
-                  itinerarios={itinerarios}
-                  aeropuertos={aeropuertos}
-                  speedKmh={800 * speed}
-                  simulatedTime={interpolatedTime || simulatedTime}
-                  center={[-60, -15]}
-                  zoom={3}
-                  loop={false}
-                />
+      {/* Layout: Mapa + Panel de Pedidos/Eventos COLAPSABLE */}
+      <div className="relative flex gap-2">
+        {/* Mapa (principal) - OCUPA CASI TODA LA PANTALLA */}
+        <div className={`transition-all duration-300 ${isPanelOpen ? 'flex-1' : 'w-full'}`}>
+          <Card className="overflow-hidden h-[calc(100vh-8rem)]">
+            <CardContent className="p-0 h-full relative">
+              <AnimatedFlights
+                itinerarios={itinerarios}
+                aeropuertos={aeropuertos}
+                speedKmh={800 * speed}
+                simulatedTime={interpolatedTime || simulatedTime}
+                center={[-60, -15]}
+                zoom={3}
+                loop={false}
+              />
+
+              {/* INFO FLOTANTE SOBRE EL MAPA - SIEMPRE VISIBLE */}
+              <div className="absolute top-3 left-3 z-10 flex flex-col gap-2">
+                {/* Tiempo simulado - GRANDE Y VISIBLE */}
+                <Badge variant="secondary" className="text-sm px-3 py-1.5 shadow-lg bg-white/95 backdrop-blur">
+                  <Calendar className="h-4 w-4 mr-1.5" />
+                  {displayTime || "Cargando..."}
+                </Badge>
+
+                {/* Tiempo transcurrido (real) */}
+                {simulationState === 'RUNNING' && (
+                  <Badge variant="secondary" className="text-xs px-2.5 py-1 shadow-lg bg-white/95 backdrop-blur">
+                    <Timer className="h-3.5 w-3.5 mr-1" />
+                    {formatElapsedTime(elapsedSeconds)}
+                  </Badge>
+                )}
+
+                {/* Itinerarios activos */}
+                {itinerarios.length > 0 && (
+                  <Badge variant="outline" className="text-xs px-2.5 py-1 shadow-lg bg-white/95 backdrop-blur">
+                    <Plane className="h-3.5 w-3.5 mr-1" />
+                    {itinerarios.length} vuelos
+                  </Badge>
+                )}
+              </div>
+
+              {/* Botón para toggle panel lateral - DERECHA */}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsPanelOpen(!isPanelOpen)}
+                className="absolute top-3 right-3 z-10 h-8 w-8 p-0 shadow-lg"
+                title={isPanelOpen ? "Ocultar panel" : "Mostrar panel"}
+              >
+                {isPanelOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              </Button>
             </CardContent>
           </Card>
         </div>
-        
-        {/* Panel lateral con tabs (Pedidos + Eventos) */}
-        <div className="w-96">
-          <Card className="overflow-hidden h-[calc(100vh-14rem)]">
-            <Tabs defaultValue="pedidos" className="h-full flex flex-col">
-              <TabsList className="grid grid-cols-2 m-3 mb-0">
-                <TabsTrigger value="pedidos" className="text-sm">
-                  Pedidos
-                </TabsTrigger>
-                <TabsTrigger value="eventos" className="text-sm">
-                  Eventos
-                </TabsTrigger>
-              </TabsList>
+
+        {/* Panel lateral con tabs (Pedidos + Eventos) - COLAPSABLE */}
+        {isPanelOpen && (
+          <div className="w-80 transition-all duration-300">
+            <Card className="overflow-hidden h-[calc(100vh-8rem)]">
+              <Tabs defaultValue="pedidos" className="h-full flex flex-col">
+                <TabsList className="grid grid-cols-2 m-2 mb-0">
+                  <TabsTrigger value="pedidos" className="text-xs">
+                    Pedidos
+                  </TabsTrigger>
+                  <TabsTrigger value="eventos" className="text-xs">
+                    Eventos
+                  </TabsTrigger>
+                </TabsList>
 
               <TabsContent value="pedidos" className="flex-1 m-0 overflow-hidden">
                 <PedidosPanel
@@ -723,7 +810,7 @@ export default function SimulacionClient() {
                     
                     // En modo realtime, solo mostrar pedidos que ya "llegaron" según el reloj
                     const currentSimTime = new Date(simulatedTime || interpolatedTime);
-                    const orderTime = new Date(p.fechaSolicitudISO);
+                    const orderTime = new Date(p.requestDateISO);
                     return orderTime <= currentSimTime;
                   })}
                   metricas={metricasPedidos}
@@ -734,19 +821,20 @@ export default function SimulacionClient() {
                 />
               </TabsContent>
 
-              <TabsContent value="eventos" className="flex-1 m-0 overflow-hidden">
-                <EventosPanel
-                  aeropuertos={aeropuertos}
-                  cancellations={cancellations}
-                  dynamicOrders={dynamicOrders}
-                  onCancellationCreated={(c) => setCancellations([...cancellations, c])}
-                  onOrderCreated={(o) => setDynamicOrders([...dynamicOrders, o])}
-                  onRefresh={loadDynamicEvents}
-                />
-              </TabsContent>
-            </Tabs>
-          </Card>
-        </div>
+                <TabsContent value="eventos" className="flex-1 m-0 overflow-hidden">
+                  <EventosPanel
+                    aeropuertos={aeropuertos}
+                    cancellations={cancellations}
+                    dynamicOrders={dynamicOrders}
+                    onCancellationCreated={(c) => setCancellations([...cancellations, c])}
+                    onOrderCreated={(o) => setDynamicOrders([...dynamicOrders, o])}
+                    onRefresh={loadDynamicEvents}
+                  />
+                </TabsContent>
+              </Tabs>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   );

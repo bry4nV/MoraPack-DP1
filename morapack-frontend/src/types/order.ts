@@ -1,6 +1,12 @@
+import { OrderStatus } from './shared';
+
+// ═══════════════════════════════════════════════════════════════
+// ORDER (CRUD)
+// ═══════════════════════════════════════════════════════════════
+
 /**
- * Esta es la interfaz principal para un Pedido (Order).
- * Coincide con lo que envía el OrderDto.java del backend.
+ * Main Order interface for CRUD operations in /pedidos.
+ * Matches backend OrderDto.java
  */
 export interface Order {
   id: number;
@@ -10,19 +16,23 @@ export interface Order {
   airportDestinationCode: string;
   quantity: number;
   clientCode: string;
-  status: OrderState | string;
+  status: OrderStatus | string;
 }
 
 /**
- * Estados posibles de un Pedido.
- * Sincronizado con la nueva base de datos.
+ * @deprecated Use OrderStatus from shared.ts instead
+ * Kept for backward compatibility
  */
-export enum OrderState {
-  UNASSIGNED = 'UNASSIGNED',
-  PENDING = 'PENDING',
-  IN_TRANSIT = 'IN_TRANSIT',
-  COMPLETED = 'COMPLETED',
-}
+export const OrderState = {
+  UNASSIGNED: 'UNASSIGNED' as OrderStatus,
+  PENDING: 'PENDING' as OrderStatus,
+  IN_TRANSIT: 'IN_TRANSIT' as OrderStatus,
+  COMPLETED: 'COMPLETED' as OrderStatus,
+} as const;
+
+// ═══════════════════════════════════════════════════════════════
+// API PAYLOADS
+// ═══════════════════════════════════════════════════════════════
 
 // --- Payloads para API (Actualizados) ---
 // (Estos definen qué datos se necesitan para CREAR o ACTUALIZAR un pedido)
@@ -34,7 +44,7 @@ export interface CreateOrderPayload {
   airportDestinationCode: string;
   quantity: number;
   clientCode: string;
-  status: OrderState;
+  status: OrderStatus;
 }
 
 export type UpdateOrderPayload = Partial<CreateOrderPayload>;

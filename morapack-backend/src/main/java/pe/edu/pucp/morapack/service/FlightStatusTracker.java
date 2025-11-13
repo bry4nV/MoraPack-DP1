@@ -1,8 +1,8 @@
 package pe.edu.pucp.morapack.service;
 
-import pe.edu.pucp.morapack.dto.simulation.ItinerarioDTO;
-import pe.edu.pucp.morapack.dto.simulation.SegmentoDTO;
-import pe.edu.pucp.morapack.dto.simulation.VueloDTO;
+import pe.edu.pucp.morapack.dto.simulation.ItineraryDTO;
+import pe.edu.pucp.morapack.dto.simulation.RouteSegmentDTO;
+import pe.edu.pucp.morapack.dto.simulation.FlightDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -82,33 +82,33 @@ public class FlightStatusTracker {
      * @param itinerarios Lista de itinerarios actuales
      * @param currentTime Tiempo actual de la simulación
      */
-    public void updateFlightStatuses(List<ItinerarioDTO> itinerarios, LocalDateTime currentTime) {
+    public void updateFlightStatuses(List<ItineraryDTO> itineraries, LocalDateTime currentTime) {
         logger.debug("🔍 Actualizando estados de vuelos (tiempo: {})", currentTime);
-        
+
         // Limpiar cache
         flightStatusCache.clear();
-        
+
         // Procesar todos los vuelos
-        for (ItinerarioDTO itinerario : itinerarios) {
-            for (SegmentoDTO segmento : itinerario.segmentos) {
-                VueloDTO vuelo = segmento.vuelo;
-                
-                String flightId = getFlightId(vuelo);
-                FlightStatus status = determineFlightStatus(vuelo, currentTime);
-                
+        for (ItineraryDTO itinerary : itineraries) {
+            for (RouteSegmentDTO segment : itinerary.segments) {
+                FlightDTO flight = segment.flight;
+
+                String flightId = getFlightId(flight);
+                FlightStatus status = determineFlightStatus(flight, currentTime);
+
                 FlightStatusInfo info = new FlightStatusInfo(
                     status,
                     flightId,
-                    vuelo.origen.codigo,
-                    vuelo.destino.codigo,
-                    parseToLocalDateTime(vuelo.salidaProgramadaISO),
-                    parseToLocalDateTime(vuelo.llegadaProgramadaISO)
+                    flight.origin.code,
+                    flight.destination.code,
+                    parseToLocalDateTime(flight.scheduledDepartureISO),
+                    parseToLocalDateTime(flight.scheduledArrivalISO)
                 );
-                
+
                 flightStatusCache.put(flightId, info);
             }
         }
-        
+
         logger.debug("✅ Estados actualizados: {} vuelos rastreados", flightStatusCache.size());
     }
     
@@ -173,37 +173,37 @@ public class FlightStatusTracker {
     /**
      * Determina el estado de un vuelo basado en el tiempo actual.
      */
-    private FlightStatus determineFlightStatus(VueloDTO vuelo, LocalDateTime currentTime) {
-        LocalDateTime departure = parseToLocalDateTime(vuelo.salidaProgramadaISO);
-        LocalDateTime arrival = parseToLocalDateTime(vuelo.llegadaProgramadaISO);
-        
+    private FlightStatus determineFlightStatus(FlightDTO flight, LocalDateTime currentTime) {
+        LocalDateTime departure = parseToLocalDateTime(flight.scheduledDepartureISO);
+        LocalDateTime arrival = parseToLocalDateTime(flight.scheduledArrivalISO);
+
         // Antes de la salida → En tierra en origen
         if (currentTime.isBefore(departure)) {
             return FlightStatus.ON_GROUND_ORIGIN;
         }
-        
+
         // Entre salida y llegada → En vuelo
         if (currentTime.isAfter(departure) && currentTime.isBefore(arrival)) {
             return FlightStatus.IN_AIR;
         }
-        
+
         // Después de la llegada → En tierra en destino
         if (currentTime.isAfter(arrival) || currentTime.isEqual(arrival)) {
             return FlightStatus.ON_GROUND_DESTINATION;
         }
-        
+
         // Caso por defecto (no debería llegar aquí)
         return FlightStatus.NOT_SCHEDULED;
     }
-    
+
     /**
      * Genera un ID único para un vuelo.
      */
-    private String getFlightId(VueloDTO vuelo) {
-        String scheduledTime = extractTime(vuelo.salidaProgramadaISO);
-        return String.format("%s-%s-%s", 
-            vuelo.origen.codigo, 
-            vuelo.destino.codigo, 
+    private String getFlightId(FlightDTO flight) {
+        String scheduledTime = extractTime(flight.scheduledDepartureISO);
+        return String.format("%s-%s-%s",
+            flight.origin.code,
+            flight.destination.code,
             scheduledTime
         );
     }

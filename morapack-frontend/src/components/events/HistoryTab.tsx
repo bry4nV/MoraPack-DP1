@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plane, Package, Clock } from "lucide-react";
-import type { FlightCancellation, DynamicOrder } from "@/types/dynamic-events";
+import type { FlightCancellation, DynamicOrder } from "@/types/simulation/events.types";
 
 interface HistoryTabProps {
   cancellations: FlightCancellation[];
