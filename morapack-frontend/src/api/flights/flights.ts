@@ -24,4 +24,8 @@ export const flightsApi = {
   deleteFlight: async (id: string): Promise<void> => {
     return await apiClient.delete<void>(API_ENDPOINTS.FLIGHTS.BY_ID(id));
   },
+
+  cancelFlight: async (id: string): Promise<Flight> => {
+    return await apiClient.patch<Flight>(API_ENDPOINTS.FLIGHTS.CANCEL(id),{});
+  },
 };

@@ -7,7 +7,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.CrossOrigin; 
 import pe.edu.pucp.morapack.dto.FlightDto;
 import pe.edu.pucp.morapack.service.FlightService;
-
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.http.ResponseEntity;
 import java.util.List;
 
 @RestController
@@ -25,5 +27,13 @@ public class FlightController {
     @GetMapping
     public List<FlightDto> list() {
         return flightService.listAll();
+    }
+
+    // ... (después de tu método @GetMapping list()...)
+
+    @PatchMapping("/{id}/cancel")
+    public ResponseEntity<FlightDto> cancelFlight(@PathVariable Long id) {
+        FlightDto updatedFlight = flightService.cancelFlight(id);
+        return ResponseEntity.ok(updatedFlight); 
     }
 }
