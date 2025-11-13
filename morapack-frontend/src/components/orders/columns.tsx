@@ -1,26 +1,22 @@
 "use client";
 
-import { Order, OrderState } from "@/types/order"; // El import ahora sí coincide
+import { Order, OrderState } from "@/types/order";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { Trash2, Calendar, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-// --- ¡ACTUALIZADO! ---
-// Colores para los nuevos estados de 'order.ts'
 const statusColors: Record<string, string> = {
-  [OrderState.UNASSIGNED]: "bg-gray-100 text-gray-800 hover:bg-gray-100",
-  [OrderState.PENDING]: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
-  [OrderState.IN_TRANSIT]: "bg-blue-100 text-blue-800 hover:bg-blue-100",
-  [OrderState.COMPLETED]: "bg-green-100 text-green-800 hover:bg-green-100",
+  UNASSIGNED: "bg-gray-100 text-gray-800 hover:bg-gray-100",
+  PENDING: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
+  IN_TRANSIT: "bg-blue-100 text-blue-800 hover:bg-blue-100",
+  COMPLETED: "bg-green-100 text-green-800 hover:bg-green-100",
 };
 
-// --- ¡ACTUALIZADO! ---
-// Etiquetas para los nuevos estados de 'order.ts'
 const statusLabels: Record<string, string> = {
-  [OrderState.UNASSIGNED]: "Sin Asignar",
-  [OrderState.PENDING]: "Pendiente",
-  [OrderState.IN_TRANSIT]: "En Tránsito",
-  [OrderState.COMPLETED]: "Completado",
+  UNASSIGNED: "Sin Asignar",
+  PENDING: "Pendiente",
+  IN_TRANSIT: "En Tránsito",
+  COMPLETED: "Completado",
 };
 
 export interface Column<T> {
@@ -28,84 +24,91 @@ export interface Column<T> {
   header: string;
   accessor?: keyof T;
   cell?: (row: T) => React.ReactNode;
+  className?: string;
+  headerClassName?: string;
 }
 
 export const orderColumns: Column<Order>[] = [
   {
-    id: "orderNumber", // <-- ¡ACTUALIZADO!
-    header: "N° Pedido",
+    id: "orderNumber",
+    header: "Nro. Pedido",
     accessor: "orderNumber",
-    cell: (row) => <div className="font-mono text-xs font-medium">{row.orderNumber}</div>,
+    headerClassName: "pl-6",
+    className: "pl-6",
+    cell: (row) => <div className="font-mono text-sm font-medium">{row.orderNumber || "-"}</div>,
   },
   {
-    id: "clientCode", // <-- ¡ACTUALIZADO!
+    id: "clientCode",
     header: "Cliente",
     accessor: "clientCode",
-    cell: (row) => <div>{row.clientCode}</div>,
+    cell: (row) => <div>{row.clientCode || "-"}</div>,
   },
   {
-    id: "airportDestinationCode", // <-- ¡ACTUALIZADO!
+    id: "airportDestinationCode",
     header: "Destino",
     accessor: "airportDestinationCode",
     cell: (row) => (
-      <div className="font-mono text-xs">{row.airportDestinationCode}</div>
+      <div className="font-mono text-sm">{row.airportDestinationCode || "-"}</div>
     ),
   },
   {
-    id: "quantity", // <-- ¡ACTUALIZADO!
+    id: "quantity",
     header: "Paquetes",
     accessor: "quantity",
-    cell: (row) => <div className="text-center">{row.quantity}</div>,
+    headerClassName: "text-center",
+    className: "text-center",
+    cell: (row) => <div className="tabular-nums">{row.quantity || 0}</div>,
   },
   {
     id: "status",
     header: "Estado",
     accessor: "status",
     cell: (row) => {
-      // Lógica actualizada para manejar los nuevos estados
-      const statusKey = row.status as OrderState;
-      const label = statusLabels[statusKey] || row.status;
-      const color = statusColors[statusKey] || statusColors[OrderState.UNASSIGNED];
-      return <Badge className={color}>{label}</Badge>;
-    }
+      const status = String(row.status);
+      return (
+        <Badge className={statusColors[status] || statusColors.UNASSIGNED}>
+          {statusLabels[status] || status}
+        </Badge>
+      );
+    },
   },
   {
-    id: "date",
-    header: "Fecha y Hora", // <-- ¡ACTUALIZADO!
+    id: "orderDate",
+    header: "Fecha",
+    accessor: "orderDate",
     cell: (row) => (
-      // Lógica actualizada para arreglar "Día - undefinedundefinedundefined"
-      <div className="text-sm">
-        <div>{row.orderDate}</div> {/* Muestra "YYYY-MM-DD" */}
-        <div className="text-xs text-muted-foreground">
-          {row.orderTime} {/* Muestra "HH:MM:SS" */}
-        </div>
+      <div className="flex items-center gap-1.5 text-sm">
+        <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+        <span>{row.orderDate || "-"}</span>
       </div>
     ),
   },
-  // La columna "priority" se elimina porque ya no existe en el nuevo 'order.ts'
+  {
+    id: "orderTime",
+    header: "Hora",
+    accessor: "orderTime",
+    cell: (row) => (
+      <div className="flex items-center gap-1.5 text-sm">
+        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="font-mono">{row.orderTime || "-"}</span>
+      </div>
+    ),
+  },
   {
     id: "actions",
     header: "Acciones",
+    headerClassName: "text-right pr-6 w-24",
+    className: "text-right pr-6 w-24",
     cell: (row) => (
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => console.log("Ver detalles de orden:", row.id)}
-          title="Ver detalles"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => console.log("Eliminar orden:", row.id)}
-          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-          title="Eliminar orden"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => console.log("Eliminar orden:", row.id)}
+        className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8"
+        title="Eliminar orden"
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
     ),
   },
 ];

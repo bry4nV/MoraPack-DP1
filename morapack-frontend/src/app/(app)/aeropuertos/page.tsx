@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { DataTableToolbar } from "@/components/common/data-table/data-table-toolbar";
 import { DataTable } from "@/components/common/data-table/data-table";
@@ -11,7 +12,8 @@ import { FileDown, Plus, Upload } from "lucide-react";
 // (o la ruta que tenga)
 
 export default function AeropuertosPage() {
-  const { airports, isLoading } = useAirports();
+  const router = useRouter();
+  const { airports, isLoading, error } = useAirports();
   const [searchValue, setSearchValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -31,7 +33,8 @@ export default function AeropuertosPage() {
   const totalPages = Math.max(1, Math.ceil(filteredAirports.length / pageSize));
   const paginatedAirports = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filteredAirports.slice(start, start + pageSize);
+    const paginated = filteredAirports.slice(start, start + pageSize);
+    return paginated;
   }, [filteredAirports, currentPage, pageSize]);
 
   // Acciones del toolbar
@@ -75,9 +78,15 @@ export default function AeropuertosPage() {
             primaryAction={{
               label: "Agregar",
               icon: Plus,
-              onClick: () => console.log("Agregar aeropuerto (próximamente)"),
+              onClick: () => router.push("/aeropuertos/agregar"),
             }}
           />
+
+          {error && (
+            <div className="p-4 bg-red-50 text-red-600 rounded-md">
+              Error: {error.message}
+            </div>
+          )}
 
           <DataTable
             columns={airportColumns}

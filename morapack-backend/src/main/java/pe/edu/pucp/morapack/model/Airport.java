@@ -44,7 +44,6 @@ public class Airport {
     @Column(name = "is_hub") // SQL: is_hub tinyint(1)
     private boolean isHub; // tinyint(1) se mapea a boolean
 
-    
     // --- Constructor, Getters y Setters ---
     // JPA necesita un constructor vacío
     public Airport() {

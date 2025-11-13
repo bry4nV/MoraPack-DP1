@@ -5,12 +5,12 @@
 export interface Order {
   id: number;
   orderNumber: string;
-  orderDate: string; // El backend lo envía como String (ej: "2025-11-06")
-  orderTime: string; // El backend lo envía como String (ej: "14:30:00")
+  orderDate: string;
+  orderTime: string;
   airportDestinationCode: string;
   quantity: number;
   clientCode: string;
-  status: OrderState | string; // Acepta el enum o un string por si acaso
+  status: OrderState | string;
 }
 
 /**
