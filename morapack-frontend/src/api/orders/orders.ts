@@ -1,6 +1,7 @@
 import { apiClient } from '@/lib/api-client';
 import { API_ENDPOINTS } from '@/config/api';
-import { Order } from '@/types/order';
+// Importamos los dos tipos
+import { Order, CreateOrderDto } from '@/types/order'; 
 
 export const ordersApi = {
   getOrders: async (): Promise<Order[]> => {
@@ -11,7 +12,9 @@ export const ordersApi = {
     return await apiClient.get<Order>(API_ENDPOINTS.ORDERS.BY_ID(id));
   },
 
-  createOrder: async (payload: Partial<Order>): Promise<Order> => {
+  // --- ¡CAMBIO AQUÍ! ---
+  // Usamos el tipo específico CreateOrderDto en lugar de Partial<Order>
+  createOrder: async (payload: CreateOrderDto): Promise<Order> => {
     return await apiClient.post<Order>(API_ENDPOINTS.ORDERS.BASE, payload);
   },
 
