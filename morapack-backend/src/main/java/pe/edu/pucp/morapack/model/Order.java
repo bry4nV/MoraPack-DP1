@@ -1,8 +1,8 @@
 package pe.edu.pucp.morapack.model;
 
 import jakarta.persistence.*;
-import java.time.LocalDate; // <-- IMPORTADO
-import java.time.LocalTime; // <-- IMPORTADO
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.LocalDateTime;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -12,50 +12,52 @@ import java.util.List;
 @Table(name = "`order`")
 public class Order {
 
-    // --- CAMPOS PERSISTIDOS (SINCRONIZADOS CON LA NUEVA BD) ---
+    // --- CAMPOS PERSISTIDOS ---
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id") // <-- CAMBIADO (antes ID_Pedido)
+    @Column(name = "id")
     private Long id;
 
-    @Column(name = "order_number") // <-- NUEVO CAMPO
+    @Column(name = "order_number")
     private String orderNumber;
 
-    @Column(name = "order_date") // <-- NUEVO CAMPO (reemplaza 'dia')
+    @Column(name = "order_date")
     private LocalDate orderDate;
 
-    @Column(name = "order_time") // <-- NUEVO CAMPO (reemplaza 'hora' y 'minutos')
-    private LocalTime persistedOrderTime; // <-- RENOMBRADO para evitar conflicto con tu transient 'orderTime'
+    @Column(name = "order_time")
+    private LocalTime persistedOrderTime; 
 
-    @Column(name = "airport_destination_code") // <-- CAMBIADO (antes 'dest')
+    @Column(name = "airport_destination_code")
     private String airportDestinationCode;
 
-    @Column(name = "quantity") // <-- CAMBIADO (antes 'CantidadPedidos')
+    @Column(name = "quantity")
     private Integer quantity;
 
-    @Column(name = "client_code") // <-- CAMBIADO (antes 'idClien')
+    @Column(name = "client_code")
     private String clientCode;
 
-    @Column(name = "status") // <-- CAMBIADO (antes 'estado')
-    private String status;
+    // --- ¡ARREGLO DEL ESTADO! ---
+    // Le damos un valor por defecto en Java para que los
+    // nuevos pedidos se creen con "UNASSIGNED".
+    @Column(name = "status")
+    private String status = "UNASSIGNED"; 
 
-    // --- CAMPOS TRANSIENT (TU LÓGICA DE DOMINIO - CONSERVADA) ---
-    // (Estos campos NO se guardan en la BD, los usa tu lógica)
+    
+    // --- CAMPOS TRANSIENT ---
+    // ... (El resto de tu archivo no necesita cambios) ...
 
     private transient int totalQuantity;
     private transient Airport origin;
     private transient Airport destination;
     private transient long maxDeliveryHours;
-    private transient LocalDateTime orderTime; // <-- CONSERVADO (tu campo transient)
+    private transient LocalDateTime orderTime; 
     private transient List<Shipment> shipments = new ArrayList<>();
 
     
-    // --- CONSTRUCTORES (CONSERVADOS) ---
-
+    // --- CONSTRUCTORES ---
     public Order() {}
 
-    // convenience constructor for domain usage (CONSERVADO)
     public Order(int id, int quantity, Airport origin, Airport destination) {
         this.id = (long) id;
         this.totalQuantity = quantity;
@@ -63,10 +65,10 @@ public class Order {
         this.destination = destination;
         this.maxDeliveryHours = origin.getContinent().equals(destination.getContinent()) ? 48 : 72;
         this.orderTime = LocalDateTime.now();
+        // Nota: el status se inicializará a "UNASSIGNED" gracias al valor por defecto
     }
 
-    // --- GETTERS/SETTERS PERSISTIDOS (ACTUALIZADOS) ---
-
+    // --- GETTERS/SETTERS PERSISTIDOS ---
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -92,8 +94,8 @@ public class Order {
     public void setStatus(String status) { this.status = status; }
 
     
-    // --- GETTERS/SETTERS Y MÉTODOS DE DOMINIO (CONSERVADOS) ---
-
+    // --- GETTERS/SETTERS Y MÉTODOS DE DOMINIO ---
+    // ... (El resto de tus métodos están perfectos) ...
     public int getTotalQuantity() { return totalQuantity; }
     public Airport getOrigin() { return origin; }
     public Airport getDestination() { return destination; }
@@ -121,7 +123,7 @@ public class Order {
         
         LocalDateTime lastDelivery = shipments.stream()
             .map(Shipment::getEstimatedArrival)
-            .filter(arrival -> arrival != null)  // Filter out null values
+            .filter(arrival -> arrival != null)
             .max(LocalDateTime::compareTo)
             .orElse(orderTime);
             
