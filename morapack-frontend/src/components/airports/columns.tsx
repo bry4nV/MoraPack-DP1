@@ -107,4 +107,11 @@ export const airportColumns: Column<Airport>[] = [
 		className: "text-center",
 		headerClassName: "text-center",
 	},
+	{
+		id: "actions",
+		header: "Acciones",
+		headerClassName: "text-right pr-6 w-24",
+		className: "text-right pr-6 w-24",
+		cell: () => null, // Será reemplazado dinámicamente
+	},
 ];

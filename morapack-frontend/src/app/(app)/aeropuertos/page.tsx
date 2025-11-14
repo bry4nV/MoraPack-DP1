@@ -6,17 +6,50 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DataTableToolbar } from "@/components/common/data-table/data-table-toolbar";
 import { DataTable } from "@/components/common/data-table/data-table";
 import { DataTablePagination } from "@/components/common/data-table/data-table-pagination";
+import { DeleteDialog } from "@/components/common/delete-dialog";
 import { airportColumns } from "@/components/airports/columns";
 import { useAirports } from "@/hooks/use-airports";
+import { airportsApi } from "@/api/airports/airports";
 import { FileDown, Plus, Upload } from "lucide-react";
-// (o la ruta que tenga)
+import type { Airport } from "@/types/airport";
 
 export default function AeropuertosPage() {
   const router = useRouter();
-  const { airports, isLoading, error } = useAirports();
+  const { airports, isLoading, error, refetch } = useAirports();
   const [searchValue, setSearchValue] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  // Función para eliminar aeropuerto
+  const handleDelete = async (airport: Airport) => {
+    try {
+      await airportsApi.deleteAirport(airport.id); // Ahora id es number
+      refetch();
+    } catch (error) {
+      console.error("Error al eliminar aeropuerto:", error);
+      throw error;
+    }
+  };
+
+  // Columnas con la función de eliminar
+  const columnsWithActions = useMemo(() => {
+    return airportColumns.map(col => {
+      if (col.id === "actions") {
+        return {
+          ...col,
+          cell: (row: Airport) => (
+            <DeleteDialog
+              title="¿Eliminar aeropuerto?"
+              description="Esta acción eliminará permanentemente este aeropuerto del sistema."
+              itemName={`${row.code} - ${row.city}, ${row.country}`}
+              onConfirm={() => handleDelete(row)}
+            />
+          )
+        };
+      }
+      return col;
+    });
+  }, []);
 
   // Filtrar aeropuertos por búsqueda
   const filteredAirports = useMemo(() => {
@@ -89,7 +122,7 @@ export default function AeropuertosPage() {
           )}
 
           <DataTable
-            columns={airportColumns}
+            columns={columnsWithActions}
             data={paginatedAirports}
             isLoading={isLoading}
             emptyMessage="No se encontraron aeropuertos"

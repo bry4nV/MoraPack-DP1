@@ -1,3 +1,4 @@
+import { API_CONFIG, API_ENDPOINTS } from '@/config/api';
 import type { 
   Airport, 
   CreateAirportPayload, 
@@ -6,44 +7,38 @@ import type {
   BulkDeleteAirportPayload
 } from "@/types/airport";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const getFullUrl = (path: string) => `${API_CONFIG.BASE_URL}${path}`;
 
 export const airportsApi = {
   async getAllAirports(): Promise<Airport[]> {
     try {
-      console.log("Fetching from:", `${API_BASE_URL}/airports`);
-      const response = await fetch(`${API_BASE_URL}/airports`, {
+      const response = await fetch(getFullUrl(API_ENDPOINTS.AIRPORTS.BASE), {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
       });
       
-      console.log("Response status:", response.status);
-      
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      console.log("Parsed data:", data);
-      return data;
+      return await response.json();
     } catch (error) {
       console.error("API Error:", error);
       throw error;
     }
   },
 
-  async getAirportById(id: string): Promise<Airport> {
-    const response = await fetch(`${API_BASE_URL}/airports/${id}`);
+  async getAirportById(id: number): Promise<Airport> {
+    const response = await fetch(getFullUrl(API_ENDPOINTS.AIRPORTS.BY_ID(id)));
     if (!response.ok) throw new Error("Error al obtener aeropuerto");
     return response.json();
   },
 
   async createAirport(payload: CreateAirportPayload): Promise<Airport> {
     try {
-      console.log("Creating airport with payload:", payload);
-      const response = await fetch(`${API_BASE_URL}/airports`, {
+      const response = await fetch(getFullUrl(API_ENDPOINTS.AIRPORTS.BASE), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -51,25 +46,20 @@ export const airportsApi = {
         body: JSON.stringify(payload),
       });
       
-      console.log("Create response status:", response.status);
-      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error("Error response:", errorData);
         throw new Error(errorData.message || `Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      console.log("Airport created successfully:", data);
-      return data;
+      return await response.json();
     } catch (error) {
       console.error("API Error creating airport:", error);
       throw error;
     }
   },
 
-  async updateAirport(id: string, payload: UpdateAirportPayload): Promise<Airport> {
-    const response = await fetch(`${API_BASE_URL}/airports/${id}`, {
+  async updateAirport(id: number, payload: UpdateAirportPayload): Promise<Airport> {
+    const response = await fetch(getFullUrl(API_ENDPOINTS.AIRPORTS.BY_ID(id)), {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -80,15 +70,18 @@ export const airportsApi = {
     return response.json();
   },
 
-  async deleteAirport(id: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/airports/${id}`, {
+  async deleteAirport(id: number): Promise<void> {
+    const response = await fetch(getFullUrl(API_ENDPOINTS.AIRPORTS.BY_ID(id)), {
       method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
     });
     if (!response.ok) throw new Error("Error al eliminar aeropuerto");
   },
 
   async bulkCreateAirports(payload: BulkCreateAirportPayload): Promise<Airport[]> {
-    const response = await fetch(`${API_BASE_URL}/airports/bulk`, {
+    const response = await fetch(getFullUrl(API_ENDPOINTS.AIRPORTS.BULK_CREATE), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -100,7 +93,7 @@ export const airportsApi = {
   },
 
   async bulkDeleteAirports(payload: BulkDeleteAirportPayload): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/airports/bulk`, {
+    const response = await fetch(getFullUrl(API_ENDPOINTS.AIRPORTS.BULK_DELETE), {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",

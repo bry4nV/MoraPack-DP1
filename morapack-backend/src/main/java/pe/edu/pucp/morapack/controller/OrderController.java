@@ -1,26 +1,19 @@
 package pe.edu.pucp.morapack.controller;
 
-// --- IMPORTACIONES AÑADIDAS ---
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.CrossOrigin; // ¡Importante!
-import pe.edu.pucp.morapack.dto.CreateOrderDto; // El DTO de creación
-// ---
-
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import pe.edu.pucp.morapack.dto.OrderDto;
+import pe.edu.pucp.morapack.dto.CreateOrderDto;
 import pe.edu.pucp.morapack.service.OrderService;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/orders")
-@CrossOrigin(origins = "http://localhost:3000") // <-- ¡AÑADIDO! Da permiso al frontend
+@Tag(name = "Pedidos", description = "API para gestión de pedidos")
 public class OrderController {
 
     private final OrderService orderService;
@@ -30,15 +23,37 @@ public class OrderController {
     }
 
     @GetMapping
-    public List<OrderDto> list() {
-        return orderService.listAll();
+    @Operation(summary = "Listar todos los pedidos", description = "Obtiene la lista completa de pedidos")
+    public ResponseEntity<List<OrderDto>> listAll() {
+        List<OrderDto> orders = orderService.listAll();
+        return ResponseEntity.ok(orders);
     }
 
-    // --- ¡NUEVO MÉTODO AÑADIDO! ---
+    @GetMapping("/{id}")
+    @Operation(summary = "Obtener pedido por ID", description = "Obtiene un pedido específico por su ID")
+    public ResponseEntity<OrderDto> getById(@PathVariable Long id) {
+        OrderDto order = orderService.getById(id);
+        return ResponseEntity.ok(order);
+    }
+
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED) // Devuelve un código 201 (Creado)
-    public OrderDto create(@RequestBody CreateOrderDto createOrderDto) {
-        // Llama al método 'createOrder' que hicimos en el servicio
-        return orderService.createOrder(createOrderDto);
+    @Operation(summary = "Crear nuevo pedido", description = "Crea un nuevo pedido en el sistema")
+    public ResponseEntity<OrderDto> create(@RequestBody CreateOrderDto orderDto) {
+        OrderDto created = orderService.createOrder(orderDto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @PutMapping("/{id}")
+    @Operation(summary = "Actualizar pedido", description = "Actualiza un pedido existente")
+    public ResponseEntity<OrderDto> update(@PathVariable Long id, @RequestBody OrderDto orderDto) {
+        OrderDto updated = orderService.update(id, orderDto);
+        return ResponseEntity.ok(updated);
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Eliminar pedido", description = "Elimina un pedido del sistema")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        orderService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

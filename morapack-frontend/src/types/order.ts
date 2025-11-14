@@ -3,14 +3,14 @@
  * Coincide con lo que envía el OrderDto.java del backend.
  */
 export interface Order {
-  id: number;
+  id: number; // Asegúrate de que sea number
   orderNumber: string;
-  orderDate: string;
-  orderTime: string;
+  clientCode: string;
   airportDestinationCode: string;
   quantity: number;
-  clientCode: string;
-  status: OrderState | string;
+  status: OrderState;
+  orderDate: string;
+  orderTime: string;
 }
 
 /**

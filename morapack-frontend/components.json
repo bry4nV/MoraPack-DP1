@@ -18,6 +18,5 @@
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
-  "registries": {},
-  "packageManager": "npm"
+  "registries": {}
 }

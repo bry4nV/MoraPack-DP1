@@ -9,24 +9,29 @@ export function useAirports() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    const fetchAirports = async () => {
-      try {
-        setIsLoading(true);
-        const data = await airportsApi.getAllAirports();
-        setAirports(data || []);
-        setError(null);
-      } catch (err) {
-        setError(err as Error);
-        console.error("Error fetching airports:", err);
-        setAirports([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const fetchAirports = async () => {
+    try {
+      setIsLoading(true);
+      const data = await airportsApi.getAllAirports();
+      setAirports(data || []);
+      setError(null);
+    } catch (err) {
+      setError(err as Error);
+      console.error("Error fetching airports:", err);
+      setAirports([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchAirports();
   }, []);
 
-  return { airports, isLoading, error };
+  return {
+    airports,
+    isLoading,
+    error,
+    refetch: fetchAirports, // Exponer función para recargar
+  };
 }

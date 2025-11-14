@@ -25,15 +25,59 @@ public class OrderService {
         return entities.stream().map(this::toDto).collect(Collectors.toList());
     }
 
+    public OrderDto getById(Long id) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Pedido no encontrado con id: " + id));
+        return toDto(order);
+    }
+
+    public OrderDto createOrder(CreateOrderDto dto) {
+        // Validar que el número de pedido no exista
+        if (orderRepository.existsByOrderNumber(dto.getOrderNumber())) {
+            throw new RuntimeException("Ya existe un pedido con el número: " + dto.getOrderNumber());
+        }
+
+        Order newOrder = new Order();
+        newOrder.setOrderNumber(dto.getOrderNumber());
+        newOrder.setAirportDestinationCode(dto.getAirportDestinationCode());
+        newOrder.setQuantity(dto.getQuantity());
+        newOrder.setClientCode(dto.getClientCode());
+        newOrder.setOrderDate(LocalDate.now());
+        newOrder.setPersistedOrderTime(LocalTime.now());
+
+        Order saved = orderRepository.save(newOrder);
+        return toDto(saved);
+    }
+
+    public OrderDto update(Long id, OrderDto dto) {
+        Order existing = orderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Pedido no encontrado con id: " + id));
+
+        // Validar número de pedido único si se está cambiando
+        if (!existing.getOrderNumber().equals(dto.getOrderNumber()) && 
+            orderRepository.existsByOrderNumber(dto.getOrderNumber())) {
+            throw new RuntimeException("Ya existe un pedido con el número: " + dto.getOrderNumber());
+        }
+
+        updateEntityFromDto(existing, dto);
+        Order updated = orderRepository.save(existing);
+        return toDto(updated);
+    }
+
+    public void delete(Long id) {
+        if (!orderRepository.existsById(id)) {
+            throw new RuntimeException("Pedido no encontrado con id: " + id);
+        }
+        orderRepository.deleteById(id);
+    }
+
+    // Convierte Entidad -> DTO
     private OrderDto toDto(Order e) {
         OrderDto d = new OrderDto();
         d.setId(e.getId());
         d.setOrderNumber(e.getOrderNumber());
         d.setOrderDate(e.getOrderDate() != null ? e.getOrderDate().toString() : null);
-        
-      
         d.setOrderTime(e.getPersistedOrderTime() != null ? e.getPersistedOrderTime().toString() : null);
-        
         d.setAirportDestinationCode(e.getAirportDestinationCode());
         d.setQuantity(e.getQuantity());
         d.setClientCode(e.getClientCode());
@@ -41,28 +85,22 @@ public class OrderService {
         return d;
     }
 
-    // ... (después de tus otros métodos) ...
-
-    public OrderDto createOrder(CreateOrderDto dto) {
-        // 1. Crea una nueva entidad Order
-        Order newOrder = new Order();
-
-        // 2. Setea los datos que vienen del formulario (DTO)
-        newOrder.setOrderNumber(dto.getOrderNumber());
-        newOrder.setAirportDestinationCode(dto.getAirportDestinationCode());
-        newOrder.setQuantity(dto.getQuantity());
-        newOrder.setClientCode(dto.getClientCode());
-
-        // 3. Setea los datos automáticos (¡tu requerimiento!)
-        newOrder.setOrderDate(LocalDate.now());
-        newOrder.setPersistedOrderTime(LocalTime.now());
-        // El status se setea a "UNASSIGNED" automáticamente
-        // gracias al valor por defecto que pusimos en Order.java
-
-        // 4. Guarda la nueva entidad en la base de datos
-        Order savedOrder = orderRepository.save(newOrder);
-
-        // 5. Devuelve el pedido recién creado (convertido a DTO)
-        return toDto(savedOrder);
+    // Actualiza entidad existente con datos del DTO
+    private void updateEntityFromDto(Order e, OrderDto dto) {
+        if (dto.getOrderNumber() != null) {
+            e.setOrderNumber(dto.getOrderNumber());
+        }
+        if (dto.getAirportDestinationCode() != null) {
+            e.setAirportDestinationCode(dto.getAirportDestinationCode());
+        }
+        if (dto.getQuantity() != null) {
+            e.setQuantity(dto.getQuantity());
+        }
+        if (dto.getClientCode() != null) {
+            e.setClientCode(dto.getClientCode());
+        }
+        if (dto.getStatus() != null) {
+            e.setStatus(dto.getStatus());
+        }
     }
 }

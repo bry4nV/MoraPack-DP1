@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DataTableToolbar } from "@/components/common/data-table/data-table-toolbar";
 import { DataTable } from "@/components/common/data-table/data-table";
 import { DataTablePagination } from "@/components/common/data-table/data-table-pagination";
+import { DeleteDialog } from "@/components/common/delete-dialog";
 import { orderColumns } from "@/components/orders/columns";
 import { ordersApi } from "@/api/orders/orders"; // <-- AÑADIDO: Para llamar a la API
 import { Order } from "@/types/order"; // <-- AÑADIDO: El tipo de dato
@@ -43,6 +44,39 @@ export default function PedidosPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // --- Función para eliminar pedido ---
+  const handleDelete = async (order: Order) => {
+    try {
+      console.log("Deleting order:", order); // DEBUG
+      console.log("Order ID:", order.id, "Type:", typeof order.id); // DEBUG
+      await ordersApi.deleteOrder(order.id);
+      fetchData(); // Recargar la lista
+    } catch (error) {
+      console.error("Error al eliminar pedido:", error);
+      throw error;
+    }
+  };
+
+  // --- Columnas con la función de eliminar ---
+  const columnsWithActions = useMemo(() => {
+    return orderColumns.map((col) => {
+      if (col.id === "actions") {
+        return {
+          ...col,
+          cell: (row: Order) => (
+            <DeleteDialog
+              title="¿Eliminar pedido?"
+              description="Esta acción eliminará permanentemente este pedido del sistema."
+              itemName={`Pedido #${row.orderNumber} - Cliente: ${row.clientCode}`}
+              onConfirm={() => handleDelete(row)}
+            />
+          ),
+        };
+      }
+      return col;
+    });
+  }, [orders]); // <-- Asegúrate de que esto se actualiza con los pedidos
 
   // --- Lógica de filtro (sin cambios) ---
   const filteredOrders = useMemo(() => {
@@ -90,7 +124,7 @@ export default function PedidosPage() {
           Gestión de pedidos
         </h1>
         <p className="text-sm text-muted-foreground mt-2">
-          
+          Administra todos los pedidos del sistema
         </p>
       </div>
 
@@ -114,7 +148,7 @@ export default function PedidosPage() {
           />
 
           <DataTable
-            columns={orderColumns}
+            columns={columnsWithActions}
             data={paginatedOrders}
             isLoading={isLoading}
             emptyMessage="No se encontraron pedidos"
