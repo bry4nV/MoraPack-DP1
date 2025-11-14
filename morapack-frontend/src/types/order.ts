@@ -46,3 +46,10 @@ export interface BulkCreateOrderPayload {
 export interface BulkDeleteOrderPayload {
   orders: number[]; // array of order IDs (ahora son numéricos)
 }
+
+export interface CreateOrderDto {
+  orderNumber: string;
+  airportDestinationCode: string;
+  quantity: number;
+  clientCode: string;
+}
