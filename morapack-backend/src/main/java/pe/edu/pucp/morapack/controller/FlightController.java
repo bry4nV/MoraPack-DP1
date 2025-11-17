@@ -29,8 +29,6 @@ public class FlightController {
         return flightService.listAll();
     }
 
-    // ... (después de tu método @GetMapping list()...)
-
     @PatchMapping("/{id}/cancel")
     public ResponseEntity<FlightDto> cancelFlight(@PathVariable Long id) {
         FlightDto updatedFlight = flightService.cancelFlight(id);

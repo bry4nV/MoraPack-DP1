@@ -1,7 +1,7 @@
 SET autocommit=0;
 START TRANSACTION;
 
-INSERT INTO `moraTravelDaily`.`flight` (`airport_origin_code`,`airport_destination_code`,`flight_date`,`departure_time`,`arrival_time`,`capacity`) VALUES
+INSERT INTO `moraTravelSimulation`.`flight` (`airport_origin_code`,`airport_destination_code`,`flight_date`,`departure_time`,`arrival_time`,`capacity`) VALUES
 ('SKBO','SEQM',CURRENT_DATE(),'03:34:00','05:21:00',300),
 ('SEQM','SKBO',CURRENT_DATE(),'04:29:00','06:16:00',340),
 ('SKBO','SEQM',CURRENT_DATE(),'14:22:00','16:09:00',320),
@@ -2003,7 +2003,7 @@ INSERT INTO `moraTravelDaily`.`flight` (`airport_origin_code`,`airport_destinati
 ('EBCI','LDZA',CURRENT_DATE(),'21:17:00','00:36:00',360),
 ('LDZA','EBCI',CURRENT_DATE(),'22:17:00','01:36:00',340);
 
-INSERT INTO `moraTravelDaily`.`flight` (`airport_origin_code`,`airport_destination_code`,`flight_date`,`departure_time`,`arrival_time`,`capacity`) VALUES
+INSERT INTO `moraTravelSimulation`.`flight` (`airport_origin_code`,`airport_destination_code`,`flight_date`,`departure_time`,`arrival_time`,`capacity`) VALUES
 ('EBCI','EKCH',CURRENT_DATE(),'03:00:00','05:58:00',300),
 ('EKCH','EBCI',CURRENT_DATE(),'04:22:00','06:20:00',340),
 ('EBCI','EKCH',CURRENT_DATE(),'10:47:00','12:45:00',340),
@@ -2873,27 +2873,41 @@ INSERT INTO `moraTravelDaily`.`flight` (`airport_origin_code`,`airport_destinati
 
 COMMIT;
 
-
-SET @base_date = CURRENT_DATE();
-
-INSERT IGNORE INTO moraTravelDaily.flight
-(airport_origin_code, airport_destination_code, flight_date, departure_time, arrival_time, capacity, status)
+INSERT IGNORE INTO moraTravelSimulation.flight
+  (airport_origin_code, airport_destination_code, flight_date,
+   departure_time, arrival_time, capacity, status)
+WITH RECURSIVE
+seed AS (
+  SELECT MIN(flight_date) AS base_date
+  FROM moraTravelSimulation.flight
+),
+bounds AS (
+  SELECT
+    STR_TO_DATE(CONCAT(YEAR(base_date), '-01-01'), '%Y-%m-%d') AS start_date,
+    STR_TO_DATE(CONCAT(YEAR(base_date), '-12-31'), '%Y-%m-%d') AS end_date,
+    base_date
+  FROM seed
+),
+dates AS (
+  SELECT b.start_date AS d, b.end_date, b.base_date
+  FROM bounds b
+  UNION ALL
+  SELECT DATE_ADD(d, INTERVAL 1 DAY), end_date, base_date
+  FROM dates
+  WHERE d < end_date
+)
 SELECT
   f.airport_origin_code,
   f.airport_destination_code,
-  DATE_ADD(@base_date, INTERVAL s.n DAY) AS flight_date,
+  d.d AS flight_date,
   f.departure_time,
   f.arrival_time,
   f.capacity,
   f.status
-FROM moraTravelDaily.flight AS f
-JOIN (
-  SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
-  UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
-  UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
-  UNION ALL SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19 UNION ALL SELECT 20
-  UNION ALL SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23 UNION ALL SELECT 24 UNION ALL SELECT 25
-  UNION ALL SELECT 26 UNION ALL SELECT 27 UNION ALL SELECT 28 UNION ALL SELECT 29 UNION ALL SELECT 30
-) AS s
+FROM moraTravelSimulation.flight f
+JOIN seed s
+  ON f.flight_date = s.base_date              -- solo vuelos del día semilla
+JOIN dates d
   ON 1=1
-WHERE f.flight_date = @base_date;
+WHERE d.d <> s.base_date;                     -- excluye la fecha semilla
+

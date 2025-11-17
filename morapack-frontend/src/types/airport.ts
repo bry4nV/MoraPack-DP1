@@ -10,7 +10,7 @@ export enum Continent {
 }
 
 export interface Airport {
-  id: string;
+  id: number; // Cambié de string a number
   continent: Continent;
   code: string;
   city: string;

@@ -1,8 +1,7 @@
 "use client";
 
 import { Order, OrderState } from "@/types/order";
-import { Button } from "@/components/ui/button";
-import { Trash2, Calendar, Clock } from "lucide-react";
+import { Calendar, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const statusColors: Record<string, string> = {
@@ -99,16 +98,6 @@ export const orderColumns: Column<Order>[] = [
     header: "Acciones",
     headerClassName: "text-right pr-6 w-24",
     className: "text-right pr-6 w-24",
-    cell: (row) => (
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => console.log("Eliminar orden:", row.id)}
-        className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8"
-        title="Eliminar orden"
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
-    ),
+    cell: () => null, // Será reemplazado dinámicamente
   },
 ];

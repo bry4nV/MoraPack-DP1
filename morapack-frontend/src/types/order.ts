@@ -19,16 +19,6 @@ export interface Order {
   status: OrderStatus | string;
 }
 
-/**
- * @deprecated Use OrderStatus from shared.ts instead
- * Kept for backward compatibility
- */
-export const OrderState = {
-  UNASSIGNED: 'UNASSIGNED' as OrderStatus,
-  PENDING: 'PENDING' as OrderStatus,
-  IN_TRANSIT: 'IN_TRANSIT' as OrderStatus,
-  COMPLETED: 'COMPLETED' as OrderStatus,
-} as const;
 
 // ═══════════════════════════════════════════════════════════════
 // API PAYLOADS
@@ -55,4 +45,11 @@ export interface BulkCreateOrderPayload {
 
 export interface BulkDeleteOrderPayload {
   orders: number[]; // array of order IDs (ahora son numéricos)
+}
+
+export interface CreateOrderDto {
+  orderNumber: string;
+  airportDestinationCode: string;
+  quantity: number;
+  clientCode: string;
 }
