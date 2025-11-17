@@ -1,5 +1,7 @@
 package pe.edu.pucp.morapack.dto.simulation;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,15 +10,29 @@ import java.util.List;
  * BEFORE it starts.
  */
 public class SimulationPreviewResponse {
-    public int totalPedidos;
-    public int totalProductos;
-    public int totalVuelos;
-    
+    @JsonProperty("totalOrders")
+    public int totalOrders;
+
+    @JsonProperty("totalProducts")
+    public int totalProducts;
+
+    @JsonProperty("totalFlights")
+    public int totalFlights;
+
+    @JsonProperty("dateRange")
     public DateRangeDTO dateRange;
-    public List<OrderSummaryDTO> pedidos = new ArrayList<>();
-    public List<String> aeropuertosInvolucrados = new ArrayList<>();
-    public AeropuertoDTO[] aeropuertos;  // ✅ Full airport data for map display
-    public EstadisticasDTO estadisticas;
+
+    @JsonProperty("orders")
+    public List<OrderSummaryDTO> orders = new ArrayList<>();
+
+    @JsonProperty("involvedAirports")
+    public List<String> involvedAirports = new ArrayList<>();
+
+    @JsonProperty("airports")
+    public AirportDTO[] airports;
+
+    @JsonProperty("statistics")
+    public StatisticsDTO statistics;
     
     public static class DateRangeDTO {
         public String start;  // ISO format
@@ -30,13 +46,20 @@ public class SimulationPreviewResponse {
         }
     }
     
-    public static class EstadisticasDTO {
-        public int[] pedidosPorDia;        // Array de 7 elementos (para WEEKLY)
-        public double productosPromedioPorPedido;
-        public int pedidoMaxProductos;
-        public int pedidoMinProductos;
-        
-        public EstadisticasDTO() {}
+    public static class StatisticsDTO {
+        @JsonProperty("ordersPerDay")
+        public int[] ordersPerDay;
+
+        @JsonProperty("avgProductsPerOrder")
+        public double avgProductsPerOrder;
+
+        @JsonProperty("maxProductsOrder")
+        public int maxProductsOrder;
+
+        @JsonProperty("minProductsOrder")
+        public int minProductsOrder;
+
+        public StatisticsDTO() {}
     }
 }
 

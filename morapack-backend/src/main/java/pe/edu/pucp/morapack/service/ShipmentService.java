@@ -3,7 +3,7 @@ package pe.edu.pucp.morapack.service;
 import org.springframework.stereotype.Service;
 import pe.edu.pucp.morapack.dto.ShipmentDto;
 import pe.edu.pucp.morapack.model.Shipment;
-import pe.edu.pucp.morapack.repository.ShipmentRepository;
+import pe.edu.pucp.morapack.repository.daily.ShipmentRepository;
 
 import java.util.List;
 import java.util.stream.Collectors;

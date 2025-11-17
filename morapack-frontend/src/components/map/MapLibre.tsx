@@ -38,7 +38,7 @@ export default function MapLibre({
       style: "https://demotiles.maplibre.org/style.json",
       center,
       zoom,
-      attributionControl: { compact: true },
+      attributionControl: false,
     });
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
@@ -89,5 +89,18 @@ export default function MapLibre({
     }
   }, [JSON.stringify(marcadores)]);
 
-  return <div ref={contRef} className={`w-full h-full ${className}`} />;
+  return (
+    <div ref={contRef} className={`w-full h-full ${className}`} style={{
+      // Ocultar elementos residuales de MapLibre (logo, atribución vacía)
+      '--maplibre-ctrl-attrib-bg': 'transparent',
+    } as React.CSSProperties}>
+      <style jsx>{`
+        :global(.maplibregl-ctrl-logo),
+        :global(.maplibregl-ctrl-attrib),
+        :global(.maplibregl-compact) {
+          display: none !important;
+        }
+      `}</style>
+    </div>
+  );
 }

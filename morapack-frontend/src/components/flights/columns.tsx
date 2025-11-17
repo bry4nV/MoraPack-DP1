@@ -57,7 +57,7 @@ export const flightColumns: ColumnDef<Flight>[] = [
     header: "Estado",
     cell: ({ row }) => { // <-- formato de 'cell'
       const statusKey = row.original.status as FlightStatus; // 'row.original'
-      const label = statusLabels[statusKey] || row.original.status;
+      const label = statusLabels[statusKey] || statusKey;
       const color = statusColors[statusKey] || "bg-gray-100 text-gray-800";
       return <Badge className={color}>{label}</Badge>;
     },

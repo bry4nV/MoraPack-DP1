@@ -11,8 +11,8 @@ export interface Aeropuerto {
   cityAcronym: string;
   gmt: number;
   capacity: number;
-  latitude: string;
-  longitude: string;
+  latitude: string | number;
+  longitude: string | number;
   status: string;
   isHub: boolean; // <-- ¡EL CAMPO CLAVE!
 

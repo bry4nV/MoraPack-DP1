@@ -3,11 +3,11 @@ package pe.edu.pucp.morapack.service;
 import org.springframework.stereotype.Service;
 import pe.edu.pucp.morapack.dto.OrderDto;
 import pe.edu.pucp.morapack.model.Order;
-import pe.edu.pucp.morapack.repository.OrderRepository;
+import pe.edu.pucp.morapack.repository.daily.OrderRepository;
 import pe.edu.pucp.morapack.dto.CreateOrderDto;
+
 import java.time.LocalDate;
 import java.time.LocalTime;
-
 import java.util.List;
 import java.util.stream.Collectors;
 

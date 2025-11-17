@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { Map, Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Itinerario } from "@/types/itinerario";
+import type { Itinerario } from "@/types/simulation/itinerary.types";
 import type { Aeropuerto } from "@/types";
 import { haversineDistanceMeters, interpolateGreatCircle } from "@/lib/geo";
 
@@ -16,11 +16,10 @@ function bearingDegrees(
   const toDeg = (r: number) => (r * 180) / Math.PI;
   const φ1 = toRad(lat1), φ2 = toRad(lat2);
   const λ1 = toRad(lon1), λ2 = toRad(lon2);
-  const y = Math.sin(λ2 - λ1) * cos(φ2);
+  const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
   const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
   return (toDeg(Math.atan2(y, x)) + 360) % 360; // 0..360 (0 = norte)
 }
-const cos = Math.cos;
 
 type Props = {
   itinerarios: Itinerario[];
@@ -76,12 +75,12 @@ export default function AnimatedFlights({
       itinerarios.map((it) =>
         it.segmentos.map((seg) =>
           haversineDistanceMeters(
-            [seg.vuelo.origen.longitud, seg.vuelo.origen.latitud],
-            [seg.vuelo.destino.longitud, seg.vuelo.destino.latitud]
+            [seg.vuelo.origen.longitude, seg.vuelo.origen.latitude],
+            [seg.vuelo.destino.longitude, seg.vuelo.destino.latitude]
           )
         )
       ),
-    [JSON.stringify(itinerarios)]
+    [itinerarios]
   );
   const totalLengths = useMemo(
     () => segLengths.map((arr) => arr.reduce((a, b) => a + b, 0)),
@@ -97,7 +96,7 @@ export default function AnimatedFlights({
       zoom,
       attributionControl: { compact: true },
     });
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-left");
     mapRef.current = map;
 
     return () => {
@@ -124,6 +123,21 @@ export default function AnimatedFlights({
     const map = mapRef.current;
     if (!map) return;
 
+    // 🔍 DEBUG: Ver qué datos llegan
+    console.log('🗺️ AnimatedFlights recibió:', {
+      aeropuertos: aeropuertos.length,
+      itinerarios: itinerarios.length,
+      primerosAeropuertos: aeropuertos.slice(0, 3).map(a => ({
+        code: a.code,
+        longitude: a.longitude,
+        latitude: a.latitude
+      })),
+      primerosItinerarios: itinerarios.slice(0, 2).map(it => ({
+        id: it.id,
+        segmentos: it.segmentos?.length || 0
+      }))
+    });
+
     whenStyleReady(map, () => {
       // limpiar
       planeRefs.current.forEach((p) => p.remove());
@@ -149,7 +163,7 @@ export default function AnimatedFlights({
               type: "geojson",
               data: {
                 type: "Feature",
-                geometry: { type: "LineString", coordinates: [[o.longitud, o.latitud], [d.longitud, d.latitud]] },
+                geometry: { type: "LineString", coordinates: [[o.longitude, o.latitude], [d.longitude, d.latitude]] },
                 properties: {},
               },
             });
@@ -173,8 +187,16 @@ export default function AnimatedFlights({
 
       // aeropuertos
       aeropuertos.forEach((a) => {
+        // ✅ VALIDACIÓN CRÍTICA: Saltar aeropuertos sin coordenadas
+        const lng = Number(a.longitude);
+        const lat = Number(a.latitude);
+        if (isNaN(lng) || isNaN(lat)) {
+          console.warn(`⚠️ Aeropuerto ${a.code} tiene coordenadas inválidas:`, { longitude: a.longitude, latitude: a.latitude });
+          return; // Saltar este aeropuerto
+        }
+
         // ✅ Build capacity info section
-        const capacidadTotal = a.capacidadTotal ?? a.capacidadAlmacen ?? 1000;
+        const capacidadTotal = a.capacidadTotal ?? a.capacity ?? 1000;
         const capacidadUsada = a.capacidadUsada ?? 0;
         const porcentajeUso = a.porcentajeUso ?? 0;
         
@@ -189,7 +211,7 @@ export default function AnimatedFlights({
         const capacityHtml = `
           <hr style="margin:6px 0; border:none; border-top:1px solid #ddd"/>
           <div style="font-size:11px; color:#333; margin-bottom:4px">
-            <strong>📦 Capacidad:</strong> ${capacidadUsada}/${capacidadTotal} productos
+            <strong>Capacidad:</strong> ${capacidadUsada}/${capacidadTotal} productos
           </div>
           <div style="width:100%; background:#e5e7eb; border-radius:4px; height:10px; overflow:hidden">
             <div style="width:${Math.min(100, porcentajeUso)}%; background:${getCapacityColor(porcentajeUso)}; height:100%; transition:width 0.3s"></div>
@@ -215,14 +237,14 @@ export default function AnimatedFlights({
           </div>
         ` : '';
         
-        const mk = new maplibregl.Marker({ color: a.esSede ? "#10b981" : "#2563eb" })
-          .setLngLat([a.longitud, a.latitud])
+        const mk = new maplibregl.Marker({ color: a.isHub ? "#10b981" : "#2563eb" })
+          .setLngLat([lng, lat])
           .setPopup(
             new maplibregl.Popup({ offset: 12 }).setHTML(
-              `<div style="font-weight:600">${a.nombre} (${a.codigo})</div>
-               <div style="font-size:12px">${a.ciudad}, ${a.pais.nombre} — ${a.pais.continente}</div>
+              `<div style="font-weight:600">${a.city} (${a.code})</div>
+               <div style="font-size:12px">${a.city}, ${a.country} — ${a.continent}</div>
                <div style="font-size:12px">GMT: ${a.gmt}</div>
-               ${a.esSede ? '<div style="font-size:12px;font-weight:600">SEDE / ORIGEN</div>' : ""}
+               ${a.isHub ? '<div style="font-size:12px;font-weight:600">HUB / ORIGEN</div>' : ""}
                ${capacityHtml}
                ${runtimeInfoHtml}`
             )
@@ -232,10 +254,38 @@ export default function AnimatedFlights({
 
       // aviones (contenedor + hijo rotado)
       itinerarios.forEach((it) => {
+        // ✅ VALIDACIÓN: Saltar itinerarios sin segmentos
+        if (!it.segmentos || it.segmentos.length === 0) {
+          console.warn(`⚠️ Itinerario ${it.id} no tiene segmentos`);
+          return;
+        }
+
         const firstSeg = it.segmentos[0];
+        if (!firstSeg || !firstSeg.vuelo) {
+          console.warn(`⚠️ Segmento inválido en itinerario ${it.id}`);
+          return;
+        }
+
         const A = firstSeg.vuelo.origen;
         const B = firstSeg.vuelo.destino;
-        const initBearing = bearingDegrees([A.longitud, A.latitud], [B.longitud, B.latitud]);
+
+        // ✅ VALIDACIÓN: Verificar coordenadas del origen/destino
+        if (!A || !B) {
+          console.warn(`⚠️ Itinerario ${it.id} tiene origen o destino undefined`);
+          return;
+        }
+
+        const aLng = Number(A.longitude);
+        const aLat = Number(A.latitude);
+        const bLng = Number(B.longitude);
+        const bLat = Number(B.latitude);
+
+        if (isNaN(aLng) || isNaN(aLat) || isNaN(bLng) || isNaN(bLat)) {
+          console.warn(`⚠️ Itinerario ${it.id} tiene coordenadas inválidas en primer segmento`);
+          return;
+        }
+
+        const initBearing = bearingDegrees([aLng, aLat], [bLng, bLat]);
 
         const container = document.createElement("div");
         container.style.pointerEvents = "none";
@@ -257,7 +307,7 @@ export default function AnimatedFlights({
         container.appendChild(icon);
 
         const mk = new maplibregl.Marker({ element: container, anchor: "center" })
-          .setLngLat([A.longitud, A.latitud])
+          .setLngLat([aLng, aLat])
           .addTo(map);
 
         planeRefs.current.push(mk);
@@ -266,11 +316,21 @@ export default function AnimatedFlights({
 
       // fit bounds
       const b = new maplibregl.LngLatBounds();
-      aeropuertos.forEach((a) => b.extend([a.longitud, a.latitud]));
+      aeropuertos.forEach((a) => {
+        const lng = Number(a.longitude);
+        const lat = Number(a.latitude);
+        if (!isNaN(lng) && !isNaN(lat)) {
+          b.extend([lng, lat]);
+        }
+      });
       itinerarios.forEach((it) =>
         it.segmentos.forEach((s) => {
-          b.extend([s.vuelo.origen.longitud, s.vuelo.origen.latitud]);
-          b.extend([s.vuelo.destino.longitud, s.vuelo.destino.latitud]);
+          const oLng = Number(s.vuelo.origen.longitude);
+          const oLat = Number(s.vuelo.origen.latitude);
+          const dLng = Number(s.vuelo.destino.longitude);
+          const dLat = Number(s.vuelo.destino.latitude);
+          if (!isNaN(oLng) && !isNaN(oLat)) b.extend([oLng, oLat]);
+          if (!isNaN(dLng) && !isNaN(dLat)) b.extend([dLng, dLat]);
         })
       );
       if (!b.isEmpty()) map.fitBounds(b, { padding: 40, maxZoom: 5.5 });
@@ -291,6 +351,11 @@ export default function AnimatedFlights({
         const speedMps = (speedKmh * 1000000) / 3600;
 
         itinerarios.forEach((it, idx) => {
+          // ✅ VALIDACIÓN CRÍTICA: Saltar itinerarios sin segmentos en animación
+          if (!it.segmentos || it.segmentos.length === 0) {
+            return;
+          }
+
           const total = totalLengths[idx] || 1;
 
           // Si ya terminó y NO es loop, mantenerlo en destino final
@@ -298,12 +363,12 @@ export default function AnimatedFlights({
             const lastSeg = it.segmentos[it.segmentos.length - 1];
             const dest = lastSeg.vuelo.destino;
             const finalBearing = bearingDegrees(
-              [lastSeg.vuelo.origen.longitud, lastSeg.vuelo.origen.latitud],
-              [dest.longitud, dest.latitud]
+              [lastSeg.vuelo.origen.longitude, lastSeg.vuelo.origen.latitude],
+              [dest.longitude, dest.latitude]
             );
             const icon = planeIconEls.current[idx];
             if (icon) icon.style.transform = `translate(-50%, -50%) rotate(${finalBearing}deg)`;
-            planeRefs.current[idx].setLngLat([dest.longitud, dest.latitud]);
+            planeRefs.current[idx].setLngLat([dest.longitude, dest.latitude]);
             return;
           }
 
@@ -314,29 +379,60 @@ export default function AnimatedFlights({
           let targetDistByFlights: number | null = null;
           let allFlightsCompleted = false;
           
-          // 🚀 MODO PRESENTACIÓN: Forzar movimiento visual ignorando horarios
-          const FORCE_VISUAL_MOVEMENT = true; // Cambia a false para modo normal
+          // ✅ SINCRONIZACIÓN CON TIEMPO SIMULADO: Los aviones se mueven según el reloj
+          const FORCE_VISUAL_MOVEMENT = false; // true = modo demo visual, false = modo simulación real
+          
+          // ✅ FIX: Helper para normalizar fechas (quitar Z si existe para interpretar como hora local)
+          const parseAsLocal = (isoString: string): number => {
+            // Si tiene Z, quitarla para que se interprete como hora local
+            const normalized = isoString.replace('Z', '').replace(/\.\d{3}$/, '');
+            return new Date(normalized).getTime();
+          };
           
           if (simulatedTime && it.segmentos.length > 0 && !FORCE_VISUAL_MOVEMENT) {
-            const currentTime = new Date(simulatedTime).getTime();
+            const currentTime = parseAsLocal(simulatedTime);
             let accumulatedDist = 0;
             let foundCurrentFlight = false;
             
-            // 🔍 DEBUG (solo para el primer itinerario)
-            if (idx === 0 && Math.random() < 0.01) { // Log 1% del tiempo
-              console.log(`[AnimatedFlights] Itinerario 0:`, {
-                simulatedTime,
-                currentTimeDate: new Date(currentTime).toISOString(),
-                totalSegments: it.segmentos.length,
-                firstFlightDep: it.segmentos[0]?.vuelo.salidaProgramadaISO,
-                firstFlightArr: it.segmentos[0]?.vuelo.llegadaProgramadaISO,
+            // 🔍 DEBUG CRÍTICO: Loguear el tiempo recibido
+            if (idx === 0 && Math.random() < 0.05) {
+              console.log(`[AnimatedFlights] 🔍 RECIBIDO:`, {
+                simulatedTimeRaw: simulatedTime,
+                currentTimestamp: currentTime,
+                parsedDate: new Date(currentTime).toISOString(),
               });
             }
             
             for (let s = 0; s < it.segmentos.length; s++) {
               const flight = it.segmentos[s].vuelo;
-              const depTime = new Date(flight.salidaProgramadaISO).getTime();
-              const arrTime = new Date(flight.llegadaProgramadaISO).getTime();
+              
+              // 🔍 DEBUG: Ver TODAS las propiedades del vuelo
+              if (!flight) {
+                console.error(`[AnimatedFlights] ❌ Vuelo ${s} es null/undefined`);
+                accumulatedDist += segLengths[idx][s];
+                continue;
+              }
+              
+              // (Debug logs removed for performance)
+              
+              // Verificar que las propiedades de fecha existan
+              if (!flight.salidaProgramadaISO || !flight.llegadaProgramadaISO) {
+                if (idx === 0) {
+                  console.error(`[AnimatedFlights] ❌ Vuelo ${s} SIN fechas - tratando como completado:`, {
+                    codigo: flight.codigo || flight.id,
+                    origen: flight.origen?.codigo,
+                    destino: flight.destino?.codigo,
+                    allKeys: Object.keys(flight),
+                  });
+                }
+                // Si no hay fechas, tratar como vuelo completado
+                accumulatedDist += segLengths[idx][s];
+                continue;
+              }
+              
+              // ✅ FIX: Usar parseAsLocal para interpretar fechas en la misma zona horaria
+              const depTime = parseAsLocal(flight.salidaProgramadaISO);
+              const arrTime = parseAsLocal(flight.llegadaProgramadaISO);
               const flightDuration = arrTime - depTime;
               const segmentLength = segLengths[idx][s];
               
@@ -345,10 +441,7 @@ export default function AnimatedFlights({
                 targetDistByFlights = accumulatedDist;
                 foundCurrentFlight = true;
                 
-                // 🔍 DEBUG
-                if (idx === 0 && s === 0 && Math.random() < 0.01) {
-                  console.log(`[AnimatedFlights] Vuelo no despegado aún`);
-                }
+                // Logs removed for performance
                 break;
               }
               
@@ -359,18 +452,17 @@ export default function AnimatedFlights({
                 targetDistByFlights = accumulatedDist + (progress * segmentLength);
                 foundCurrentFlight = true;
                 
-                // 🔍 DEBUG
-                if (idx === 0 && Math.random() < 0.01) {
-                  console.log(`[AnimatedFlights] Vuelo ${s} en progreso:`, {
-                    progress: (progress * 100).toFixed(1) + '%',
-                    elapsed: (elapsed / 1000 / 60).toFixed(0) + ' min',
-                    targetDist: targetDistByFlights.toFixed(0),
-                  });
-                }
+                // Logs removed for performance
                 break;
               }
               
               // Caso 3: Vuelo completado → acumular y continuar al siguiente
+              if (idx === 0) {
+                console.log(`[AnimatedFlights] ✅ Vuelo ${s} COMPLETADO, acumulando distancia:`, {
+                  segmentLength: segmentLength.toFixed(0),
+                  newAccumulated: (accumulatedDist + segmentLength).toFixed(0),
+                });
+              }
               accumulatedDist += segmentLength;
             }
             
@@ -378,6 +470,14 @@ export default function AnimatedFlights({
             if (!foundCurrentFlight) {
               targetDistByFlights = total;
               allFlightsCompleted = true;
+              
+              // 🔍 DEBUG INTENSIVO
+              if (idx === 0) {
+                console.log(`[AnimatedFlights] 🏁 TODOS LOS VUELOS COMPLETADOS:`, {
+                  targetDist: total.toFixed(0),
+                  totalSegments: it.segmentos.length,
+                });
+              }
             }
           }
           
@@ -388,36 +488,12 @@ export default function AnimatedFlights({
               finishedRef.current[idx] = true;
             }
           }
-          // Caso 2: Hay sincronización por vuelos → combinar con animación visual
+          // Caso 2: Hay sincronización por vuelos → usar DIRECTAMENTE targetDistByFlights
           else if (targetDistByFlights !== null) {
-            // Usar velocidad visual para movimiento suave
-            const traveled = elapsedSecRef.current * speedMps;
-            const visualDist = loop ? (traveled % total) : Math.min(traveled, total);
+            // ✅ MODO SIMULACIÓN: Usar SOLO el tiempo simulado, ignorar elapsedSecRef
+            dist = targetDistByFlights;
             
-            // 🔍 DEBUG
-            if (idx === 0 && Math.random() < 0.005) {
-              console.log(`[AnimatedFlights] Movimiento:`, {
-                elapsedSec: elapsedSecRef.current.toFixed(1),
-                speedMps: speedMps.toFixed(0),
-                traveled: traveled.toFixed(0),
-                visualDist: visualDist.toFixed(0),
-                targetDist: targetDistByFlights.toFixed(0),
-                total: total.toFixed(0),
-              });
-            }
-            
-            // Aplicar corrección según desviación
-            const deviation = Math.abs(visualDist - targetDistByFlights);
-            if (deviation > total * 0.15) {
-              // Desviación grande: corrección agresiva
-              dist = visualDist * 0.5 + targetDistByFlights * 0.5;
-            } else if (deviation > total * 0.05) {
-              // Desviación media: corrección suave
-              dist = visualDist * 0.8 + targetDistByFlights * 0.2;
-            } else {
-              // Bien sincronizado: solo visual
-              dist = visualDist;
-            }
+            // Logs removed for performance
           }
           // Caso 3: Sin tiempo simulado → velocidad visual pura
           else {
@@ -427,14 +503,14 @@ export default function AnimatedFlights({
 
           let rem = dist;
           let pos: [number, number] = [
-            it.segmentos[0].vuelo.origen.longitud,
-            it.segmentos[0].vuelo.origen.latitud,
+            Number(it.segmentos[0].vuelo.origen.longitude),
+            Number(it.segmentos[0].vuelo.origen.latitude),
           ];
           let rumboDeg = 0;
 
           for (let s = 0; s < it.segmentos.length; s++) {
-            const o: [number, number] = [it.segmentos[s].vuelo.origen.longitud, it.segmentos[s].vuelo.origen.latitud];
-            const d: [number, number] = [it.segmentos[s].vuelo.destino.longitud, it.segmentos[s].vuelo.destino.latitud];
+            const o: [number, number] = [it.segmentos[s].vuelo.origen.longitude, it.segmentos[s].vuelo.origen.latitude];
+            const d: [number, number] = [it.segmentos[s].vuelo.destino.longitude, it.segmentos[s].vuelo.destino.latitude];
             const L = segLengths[idx][s];
 
             if (rem <= L) {
@@ -452,12 +528,12 @@ export default function AnimatedFlights({
             const lastSeg = it.segmentos[it.segmentos.length - 1];
             const dest = lastSeg.vuelo.destino;
             const finalBearing = bearingDegrees(
-              [lastSeg.vuelo.origen.longitud, lastSeg.vuelo.origen.latitud],
-              [dest.longitud, dest.latitud]
+              [lastSeg.vuelo.origen.longitude, lastSeg.vuelo.origen.latitude],
+              [dest.longitude, dest.latitude]
             );
             const icon = planeIconEls.current[idx];
             if (icon) icon.style.transform = `translate(-50%, -50%) rotate(${finalBearing}deg)`;
-            planeRefs.current[idx].setLngLat([dest.longitud, dest.latitud]);
+            planeRefs.current[idx].setLngLat([dest.longitude, dest.latitude]);
             return;
           }
 
@@ -481,19 +557,11 @@ export default function AnimatedFlights({
     });
 
     return () => { if (reqRef.current) cancelAnimationFrame(reqRef.current); };
-  }, [JSON.stringify(itinerarios), JSON.stringify(aeropuertos), segLengths, totalLengths, playing, speedKmh, loop]);
+  }, [itinerarios, aeropuertos, segLengths, totalLengths, playing, speedKmh, loop]);
 
   return (
     <div className={`w-full h-full relative ${className}`}>
       <div ref={divRef} className="w-full h-full" />
-      <div className="absolute left-4 bottom-4 z-10 flex items-center gap-3 rounded-xl bg-white/90 p-3 shadow">
-        <button
-          className="px-3 py-1 rounded bg-gray-900 text-white text-sm"
-          onClick={() => setPlaying((p) => !p)}
-        >
-          {playing ? "Pausa" : "Play"}
-        </button>
-      </div>
     </div>
   );
 }

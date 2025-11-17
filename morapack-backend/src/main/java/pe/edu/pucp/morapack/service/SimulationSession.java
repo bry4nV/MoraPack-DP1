@@ -12,6 +12,9 @@ import pe.edu.pucp.morapack.algos.scheduler.ScenarioConfig;
 import pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse;
 import pe.edu.pucp.morapack.dto.websocket.SimulationState;
 import pe.edu.pucp.morapack.dto.websocket.SimulationStatusUpdate;
+import pe.edu.pucp.morapack.model.FlightCancellation;
+import pe.edu.pucp.morapack.model.ReplanificationTask;
+import pe.edu.pucp.morapack.model.DynamicOrder;
 import pe.edu.pucp.morapack.utils.TabuSolutionToDtoConverter;
 
 import java.time.LocalDateTime;
@@ -34,6 +37,13 @@ public class SimulationSession implements Runnable {
     private final LocalDateTime startTime;
     private final LocalDateTime endTime;
     private final SimpMessagingTemplate messagingTemplate;
+    
+    // 🆕 Dynamic event services
+    private final CancellationService cancellationService;
+    private final DynamicOrderService dynamicOrderService;
+    private final OrderInjectionService orderInjectionService;
+    private final ReplanificationService replanificationService;
+    private final FlightStatusTracker flightStatusTracker;
     
     // State management
     private final AtomicReference<SimulationState> state = new AtomicReference<>(SimulationState.IDLE);
@@ -60,13 +70,27 @@ public class SimulationSession implements Runnable {
     private final java.util.Map<Integer, PlannerOrder> allProcessedOrdersMap = new java.util.HashMap<>();
     private int totalShipmentsCreated = 0;
     
+    // 🆕 Tracking for replanification and rendering
+    private TabuSolution lastSolution = null;
+    
+    // 🆕 Accumulated shipments from ALL iterations (for continuous plane rendering)
+    private java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment> allShipments = new java.util.ArrayList<>();
+    
+    // 🆕 Track completed orders (once completed, they stay completed)
+    private java.util.Set<Integer> completedOrderIds = new java.util.HashSet<>();
+    
     public SimulationSession(
             String userId,
             DataProvider dataProvider,
             ScenarioConfig scenario,
             LocalDateTime startTime,
             LocalDateTime endTime,
-            SimpMessagingTemplate messagingTemplate) {
+            SimpMessagingTemplate messagingTemplate,
+            CancellationService cancellationService,
+            DynamicOrderService dynamicOrderService,
+            OrderInjectionService orderInjectionService,
+            ReplanificationService replanificationService,
+            FlightStatusTracker flightStatusTracker) {
         
         this.sessionId = UUID.randomUUID().toString();
         this.userId = userId;
@@ -78,6 +102,13 @@ public class SimulationSession implements Runnable {
         this.messagingTemplate = messagingTemplate;
         this.planner = new TabuSearchPlanner();
         
+        // 🆕 Assign dynamic services
+        this.cancellationService = cancellationService;
+        this.dynamicOrderService = dynamicOrderService;
+        this.orderInjectionService = orderInjectionService;
+        this.replanificationService = replanificationService;
+        this.flightStatusTracker = flightStatusTracker;
+        
         // Calculate expected iterations
         long totalMinutes = java.time.Duration.between(startTime, endTime).toMinutes();
         this.totalExpectedIterations = (int) Math.ceil((double) totalMinutes / scenario.getScMinutes());
@@ -85,6 +116,41 @@ public class SimulationSession implements Runnable {
         System.out.println("[SimulationSession] Created: " + sessionId + " for user: " + userId);
         System.out.println("   Scenario: " + scenario.getType() + " (K=" + scenario.getK() + ", Sc=" + scenario.getScMinutes() + ")");
         System.out.println("   Expected iterations: " + totalExpectedIterations);
+        
+        // 🆕 Load scheduled cancellations and dynamic orders
+        initializeDynamicEvents();
+    }
+    
+    /**
+     * Initialize dynamic events (cancellations and orders) from files.
+     */
+    private void initializeDynamicEvents() {
+        try {
+            // Load scheduled cancellations
+            String cancellationFile = "data/cancellations/cancellations_2025_01.txt";
+            int loadedCancellations = cancellationService.loadScheduledCancellations(
+                cancellationFile,
+                startTime.toLocalDate()
+            );
+            System.out.println("   📄 Loaded " + loadedCancellations + " scheduled cancellations");
+            
+            // Load scheduled dynamic orders
+            String ordersFile = "data/dynamic_orders/dynamic_orders_2025_01.txt";
+            int loadedOrders = dynamicOrderService.loadScheduledOrders(
+                ordersFile,
+                startTime.toLocalDate()
+            );
+            System.out.println("   📄 Loaded " + loadedOrders + " scheduled dynamic orders");
+            
+            // Configure airports in OrderInjectionService
+            List<PlannerAirport> airports = new ArrayList<>(dataProvider.getAirports());
+            orderInjectionService.setAirports(airports);
+            System.out.println("   📄 Configured " + airports.size() + " airports for order injection");
+            
+        } catch (Exception e) {
+            System.err.println("   ⚠️ Warning: Could not load dynamic events: " + e.getMessage());
+            System.err.println("   Continuing simulation without scheduled events...");
+        }
     }
     
     @Override
@@ -169,36 +235,91 @@ public class SimulationSession implements Runnable {
             windowEnd = endTime;
         }
         
-        System.out.println("\n[SimulationSession] " + sessionId + " - Iteration #" + iterationCount);
-        System.out.println("   Window: " + windowStart + " → " + windowEnd);
+        System.out.println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        System.out.println("[SimulationSession] " + sessionId + " - Iteration #" + iterationCount);
+        System.out.println("   Window: " + windowStart + " → " + windowEnd + " (+" + scMinutes + " min)");
+        System.out.println("   Current time will advance from " + currentTime + " to " + windowEnd);
+        System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        
+        // 🆕 STEP 1: Process cancellations at current time
+        List<FlightCancellation> newCancellations = cancellationService.processCancellationsAt(currentTime);
+        if (!newCancellations.isEmpty()) {
+            System.out.println("   🚫 " + newCancellations.size() + " flight(s) cancelled:");
+            for (FlightCancellation c : newCancellations) {
+                System.out.println("      • " + c.getFlightOrigin() + " → " + c.getFlightDestination() + 
+                                 " @ " + c.getScheduledDepartureTime());
+            }
+        }
+        
+        // 🆕 STEP 2: Process dynamic order injection
+        List<DynamicOrder> newDynamicOrders = dynamicOrderService.getOrdersToInjectAt(currentTime);
+        if (!newDynamicOrders.isEmpty()) {
+            System.out.println("   📦 " + newDynamicOrders.size() + " dynamic order(s) injected:");
+            for (DynamicOrder o : newDynamicOrders) {
+                System.out.println("      • " + o.getOrigin() + " → " + o.getDestination() + 
+                                 " (" + o.getQuantity() + " units)");
+            }
+        }
+        
+        // 🆕 STEP 3: Convert dynamic orders to PlannerOrders
+        List<PlannerOrder> injectedOrders = orderInjectionService.processOrderInjections(currentTime);
+        if (!injectedOrders.isEmpty()) {
+            System.out.println("   ✅ " + injectedOrders.size() + " order(s) converted to planner format");
+        }
         
         // Get data for this window
         List<PlannerFlight> flights = dataProvider.getFlights(windowStart, windowEnd);
         List<PlannerOrder> newOrders = dataProvider.getOrders(windowStart, windowEnd);
         
-            // Add new orders to pending queue
-            pendingOrders.addAll(newOrders);
-            
-            // Track all orders for metrics
-            for (PlannerOrder order : newOrders) {
-                allProcessedOrdersMap.put(order.getId(), order);
-            }
-            
-            // Process ALL pending orders (not just new ones)
-            List<PlannerOrder> allOrders = new ArrayList<>(pendingOrders);
+        // 🆕 STEP 4: Filter out cancelled flights
+        List<PlannerFlight> activeFlights = filterActiveFlight(flights, newCancellations);
+        if (flights.size() != activeFlights.size()) {
+            System.out.println("   ⚠️ " + (flights.size() - activeFlights.size()) + 
+                             " cancelled flight(s) filtered out");
+        }
         
-        System.out.println("   Flights: " + flights.size() + ", Orders: " + allOrders.size() + 
-                         " (new: " + newOrders.size() + ", pending: " + (allOrders.size() - newOrders.size()) + ")");
+        // Add new orders to pending queue (including injected ones)
+        pendingOrders.addAll(newOrders);
+        pendingOrders.addAll(injectedOrders);
+        
+        // Track all orders for metrics
+        for (PlannerOrder order : newOrders) {
+            allProcessedOrdersMap.put(order.getId(), order);
+        }
+        for (PlannerOrder order : injectedOrders) {
+            allProcessedOrdersMap.put(order.getId(), order);
+        }
+        
+        // Process ALL pending orders (not just new ones)
+        List<PlannerOrder> allOrders = new ArrayList<>(pendingOrders);
+        
+        System.out.println("   Flights: " + activeFlights.size() + ", Orders: " + allOrders.size() + 
+                         " (new: " + newOrders.size() + ", injected: " + injectedOrders.size() + 
+                         ", pending: " + (allOrders.size() - newOrders.size() - injectedOrders.size()) + ")");
+        
+        // 🆕 STEP 5: Handle replanification if there are new cancellations
+        if (!newCancellations.isEmpty() && lastSolution != null) {
+            handleReplanification(newCancellations, allOrders, activeFlights);
+        }
         
         // Run Tabu Search
-        if (!allOrders.isEmpty() && !flights.isEmpty()) {
+        if (!allOrders.isEmpty() && !activeFlights.isEmpty()) {
             // Get airports from data provider
             List<PlannerAirport> airports = new ArrayList<>(dataProvider.getAirports());
             
-            Solution solution = planner.optimize(allOrders, flights, airports);
+            Solution solution = planner.optimize(allOrders, activeFlights, airports);
             
                 // Cast to TabuSolution and convert to DTO
                 if (solution instanceof TabuSolution tabuSolution) {
+                    // 🆕 Save solution for potential replanification
+                    lastSolution = tabuSolution;
+                    
+                    // 🆕 Accumulate shipments for continuous rendering (don't lose old shipments)
+                    if (tabuSolution.getPlannerShipments() != null) {
+                        allShipments.addAll(tabuSolution.getPlannerShipments());
+                        System.out.println("   📦 Accumulated " + tabuSolution.getPlannerShipments().size() + " new shipments (total: " + allShipments.size() + ")");
+                    }
+                    
                     // ✅ FIX: Actualizar solo los pedidos de esta iteración
                     // TabuSearch devuelve una solución para los pedidos pendientes actuales,
                     // no para todos los históricos, así que solo actualizamos esos.
@@ -232,20 +353,59 @@ public class SimulationSession implements Runnable {
                 
                 // Build response manually (similar to TabuSimulationService)
                 TabuSimulationResponse response = new TabuSimulationResponse();
-                response.aeropuertos = TabuSolutionToDtoConverter.toAirportDtos(airports);
-                
+                response.airports = TabuSolutionToDtoConverter.toAirportDtos(airports);
+
                 // Enrich airports with dynamic runtime data
-                enrichAirportData(response.aeropuertos, tabuSolution);
+                enrichAirportData(response.airports, tabuSolution);
                 
                 // Convert simulated time to Instant for animation interpolation
                 java.time.Instant simulatedInstant = currentTime
                     .atZone(java.time.ZoneId.systemDefault())
                     .toInstant();
-                response.itinerarios = TabuSolutionToDtoConverter.toItinerarioDtos(tabuSolution, simulatedInstant);
+                
+                // ✅ FIX: Generate itineraries from ALL accumulated shipments (not just new ones)
+                // Filter to show only active flights (not yet arrived)
+                java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment> activeShipments = new java.util.ArrayList<>();
+                for (pe.edu.pucp.morapack.algos.entities.PlannerShipment shipment : allShipments) {
+                    if (shipment.getFlights() != null && !shipment.getFlights().isEmpty()) {
+                        PlannerFlight lastFlight = shipment.getFlights().get(shipment.getFlights().size() - 1);
+                        if (lastFlight.getArrivalTime().isAfter(currentTime)) {
+                            activeShipments.add(shipment);
+                        }
+                    }
+                }
+                
+                TabuSolution accumulatedSolution = new TabuSolution();
+                accumulatedSolution.addAllPlannerShipments(activeShipments);
+                response.itineraries = TabuSolutionToDtoConverter.toItineraryDtos(accumulatedSolution, simulatedInstant);
+                System.out.println("   ✈️  Itinerarios generated: " + activeShipments.size() + " planes in flight (from " + allShipments.size() + " total shipments)");
+                
+                // 🔍 DEBUG: Ver estructura del primer itinerario
+                if (response.itineraries != null && response.itineraries.length > 0) {
+                    var firstItin = response.itineraries[0];
+                    System.out.println("   🔍 DEBUG Primer itinerario:");
+                    System.out.println("      ID: " + firstItin.id);
+                    System.out.println("      OrderID: " + firstItin.orderId);
+                    System.out.println("      Segmentos: " + (firstItin.segments != null ? firstItin.segments.length : 0));
+                    if (firstItin.segments != null && firstItin.segments.length > 0) {
+                        var firstSeg = firstItin.segments[0];
+                        System.out.println("      Primer segmento vuelo:");
+                        System.out.println("         codigo: " + firstSeg.flight.code);
+                        System.out.println("         salidaProgramadaISO: " + firstSeg.flight.scheduledDepartureISO);
+                        System.out.println("         llegadaProgramadaISO: " + firstSeg.flight.scheduledArrivalISO);
+                        System.out.println("         capacidad: " + firstSeg.flight.capacity);
+                    }
+                }
                 
                 // Add order tracking data
-                response.pedidos = buildOrderSummaries();
-                response.metricas = calculateOrderMetrics();
+                response.orders = buildOrderSummaries();
+                response.metrics = calculateOrderMetrics();
+                
+                // 🆕 Update flight status tracker
+                flightStatusTracker.updateFlightStatuses(
+                    java.util.Arrays.asList(response.itineraries), 
+                    currentTime
+                );
                 
                 // NOTE: response.meta not populated (algorithm doesn't expose costs)
                 // All relevant metrics already included in pedidos/metricas
@@ -265,7 +425,66 @@ public class SimulationSession implements Runnable {
         } else {
             System.out.println("   Skipping iteration (no orders or flights)");
             
-            // Send update anyway (for progress tracking)
+            // IMPORTANT: Even without new data, we must:
+            // 1. Update order statuses (IN_TRANSIT -> COMPLETED when flight arrives)
+            // 2. Regenerate itinerarios with current simulated time (for plane positions)
+            TabuSimulationResponse response = new TabuSimulationResponse();
+            response.orders = buildOrderSummaries();
+            response.metrics = calculateOrderMetrics();
+            
+            // ✅ Regenerate itinerarios with CURRENT simulated time for proper plane positions
+            // Filter to show ONLY active shipments (flights still in transit, not arrived yet)
+            if (!allShipments.isEmpty()) {
+                java.time.Instant simulatedInstant = currentTime
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toInstant();
+                
+                // Filter: only shipments whose last flight hasn't arrived yet
+                java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment> activeShipments = new java.util.ArrayList<>();
+                for (pe.edu.pucp.morapack.algos.entities.PlannerShipment shipment : allShipments) {
+                    if (shipment.getFlights() != null && !shipment.getFlights().isEmpty()) {
+                        PlannerFlight lastFlight = shipment.getFlights().get(shipment.getFlights().size() - 1);
+                        // Keep if flight hasn't arrived yet
+                        if (lastFlight.getArrivalTime().isAfter(currentTime)) {
+                            activeShipments.add(shipment);
+                        }
+                    }
+                }
+                
+                System.out.println("   ℹ️  Active shipments: " + activeShipments.size() + " / " + allShipments.size() + " (filtered out arrived flights)");
+                
+                // Create solution with only active shipments
+                TabuSolution accumulatedSolution = new TabuSolution();
+                accumulatedSolution.addAllPlannerShipments(activeShipments);
+                
+                response.itineraries = TabuSolutionToDtoConverter.toItineraryDtos(accumulatedSolution, simulatedInstant);
+                System.out.println("   ✈️  Itinerarios generated: " + response.itineraries.length + " planes in flight");
+                
+                // 🔍 DEBUG: Ver estructura del primer itinerario
+                if (response.itineraries != null && response.itineraries.length > 0) {
+                    var firstItin = response.itineraries[0];
+                    System.out.println("   🔍 DEBUG Primer itinerario (no-data path):");
+                    System.out.println("      ID: " + firstItin.id);
+                    System.out.println("      OrderID: " + firstItin.orderId);
+                    System.out.println("      Segmentos: " + (firstItin.segments != null ? firstItin.segments.length : 0));
+                    if (firstItin.segments != null && firstItin.segments.length > 0) {
+                        var firstSeg = firstItin.segments[0];
+                        System.out.println("      Primer segmento vuelo:");
+                        System.out.println("         codigo: " + firstSeg.flight.code);
+                        System.out.println("         salidaProgramadaISO: " + firstSeg.flight.scheduledDepartureISO);
+                        System.out.println("         llegadaProgramadaISO: " + firstSeg.flight.scheduledArrivalISO);
+                        System.out.println("         capacidad: " + firstSeg.flight.capacity);
+                    }
+                }
+                
+                System.out.println("   📊 Sending to frontend: " + response.itineraries.length + " itinerarios, " + 
+                                 (response.orders != null ? response.orders.length : 0) + " orders");
+            } else {
+                response.itineraries = new pe.edu.pucp.morapack.dto.simulation.ItineraryDTO[0];
+                System.out.println("   ⚠️  No accumulated shipments, no itinerarios to show");
+            }
+            
+            // Send update with current state
             SimulationStatusUpdate update = SimulationStatusUpdate.running(
                 iterationCount,
                 totalExpectedIterations,
@@ -273,12 +492,15 @@ public class SimulationSession implements Runnable {
             );
             update.setCurrentSpeed(speedMultiplier);
             update.setMessage("Iteration " + iterationCount + " (no data to process)");
+            update.setLatestResult(response);
             sendStatusUpdate(update);
         }
         
         // Advance simulation time
+        LocalDateTime previousTime = currentTime;
         currentTime = windowEnd;
         
+        System.out.println("   ⏰ Time advanced: " + previousTime + " → " + currentTime);
         System.out.println("   ✅ Iteration completed, sending update to frontend");
     }
     
@@ -369,19 +591,19 @@ public class SimulationSession implements Runnable {
      * @param solution The current TabuSolution (can be null if no solution yet)
      */
     private void enrichAirportData(
-            pe.edu.pucp.morapack.dto.simulation.AeropuertoDTO[] airportDtos, 
+            pe.edu.pucp.morapack.dto.simulation.AirportDTO[] airportDtos,
             TabuSolution solution) {
         
         if (airportDtos == null) return;
         
         // Create a map for quick lookup
-        java.util.Map<String, pe.edu.pucp.morapack.dto.simulation.AeropuertoDTO> airportMap = new java.util.HashMap<>();
+        java.util.Map<String, pe.edu.pucp.morapack.dto.simulation.AirportDTO> airportMap = new java.util.HashMap<>();
         for (var dto : airportDtos) {
-            airportMap.put(dto.codigo, dto);
+            airportMap.put(dto.code, dto);
             // Initialize capacity as available
-            dto.capacidadUsada = 0;
-            dto.capacidadDisponible = dto.capacidadTotal;
-            dto.porcentajeUso = 0.0;
+            dto.usedCapacity = 0;
+            dto.availableCapacity = dto.totalCapacity;
+            dto.usagePercentage = 0.0;
         }
         
         // 1. Calculate pending orders per airport (origin) - these are ON GROUND
@@ -389,17 +611,17 @@ public class SimulationSession implements Runnable {
             String originCode = order.getOrigin().getCode();
             var dto = airportMap.get(originCode);
             if (dto != null) {
-                dto.pedidosEnEspera++;
-                dto.productosEnEspera += order.getTotalQuantity();
+                dto.waitingOrders++;
+                dto.waitingProducts += order.getTotalQuantity();
                 // Add to capacity usage (products waiting at origin)
-                dto.capacidadUsada += order.getTotalQuantity();
+                dto.usedCapacity += order.getTotalQuantity();
             }
-            
+
             // Count destination orders
             String destCode = order.getDestination().getCode();
             var destDto = airportMap.get(destCode);
             if (destDto != null) {
-                destDto.pedidosDestino++;
+                destDto.destinationOrders++;
             }
         }
         
@@ -407,54 +629,167 @@ public class SimulationSession implements Runnable {
         if (solution != null) {
             // Track products in transit to each airport
             java.util.Map<String, Integer> productsInTransit = new java.util.HashMap<>();
-            
+            // Track products that arrived at destination and are waiting pickup
+            java.util.Map<String, Integer> productsArrived = new java.util.HashMap<>();
+
             for (var shipment : solution.getPlannerShipments()) {
+                boolean shipmentCompleted = false;
+
                 for (int i = 0; i < shipment.getFlights().size(); i++) {
                     var flight = shipment.getFlights().get(i);
                     String originCode = flight.getOrigin().getCode();
                     String destCode = flight.getDestination().getCode();
-                    
+
                     var originDto = airportMap.get(originCode);
                     if (originDto != null) {
-                        originDto.vuelosActivosDesde++;
+                        originDto.activeFlightsFrom++;
                     }
-                    
+
                     var destDto = airportMap.get(destCode);
                     if (destDto != null) {
-                        destDto.vuelosActivosHacia++;
-                        
+                        destDto.activeFlightsTo++;
+
                         // Products are IN TRANSIT if flight hasn't arrived yet
                         if (currentTime.isBefore(flight.getArrivalTime())) {
-                            productsInTransit.put(destCode, 
+                            productsInTransit.put(destCode,
                                 productsInTransit.getOrDefault(destCode, 0) + shipment.getQuantity());
                         }
+
+                        // If this is the last flight and it has arrived, products are at destination
+                        if (i == shipment.getFlights().size() - 1 &&
+                            currentTime.isAfter(flight.getArrivalTime()) &&
+                            !completedOrderIds.contains(shipment.getOrder().getId())) {
+                            productsArrived.put(destCode,
+                                productsArrived.getOrDefault(destCode, 0) + shipment.getQuantity());
+                            shipmentCompleted = true;
+                        }
                     }
-                    
+
                     // Track flight at origin airport (before departure)
                     if (currentTime.isBefore(flight.getDepartureTime())) {
-                        if (originDto != null && !originDto.vuelosEnTierra.contains(flight.getCode())) {
-                            originDto.vuelosEnTierra.add(flight.getCode());
+                        if (originDto != null && !originDto.groundedFlights.contains(flight.getCode())) {
+                            originDto.groundedFlights.add(flight.getCode());
                         }
                     }
                 }
+
+                // Mark order as completed once shipment arrives at final destination
+                if (shipmentCompleted) {
+                    completedOrderIds.add(shipment.getOrder().getId());
+                }
             }
-            
+
             // Add in-transit products to capacity usage
             for (var entry : productsInTransit.entrySet()) {
                 var dto = airportMap.get(entry.getKey());
                 if (dto != null) {
-                    dto.capacidadUsada += entry.getValue();
+                    dto.usedCapacity += entry.getValue();
+                }
+            }
+
+            // Add arrived products (waiting pickup at destination) to capacity usage
+            for (var entry : productsArrived.entrySet()) {
+                var dto = airportMap.get(entry.getKey());
+                if (dto != null) {
+                    dto.usedCapacity += entry.getValue();
                 }
             }
         }
-        
+
         // 3. Calculate final capacity metrics
         for (var dto : airportDtos) {
-            dto.capacidadDisponible = Math.max(0, dto.capacidadTotal - dto.capacidadUsada);
-            dto.porcentajeUso = dto.capacidadTotal > 0 ? 
-                (dto.capacidadUsada * 100.0) / dto.capacidadTotal : 0.0;
+            dto.availableCapacity = Math.max(0, dto.totalCapacity - dto.usedCapacity);
+            dto.usagePercentage = dto.totalCapacity > 0 ?
+                (dto.usedCapacity * 100.0) / dto.totalCapacity : 0.0;
         }
     }
+    
+    // ========== DYNAMIC EVENTS METHODS ==========
+    
+    /**
+     * Filter out cancelled flights from the available flights list.
+     * 
+     * @param flights All flights in the current window
+     * @param cancellations List of newly cancelled flights
+     * @return Filtered list of active (non-cancelled) flights
+     */
+    private List<PlannerFlight> filterActiveFlight(
+            List<PlannerFlight> flights, 
+            List<FlightCancellation> cancellations) {
+        
+        if (cancellations.isEmpty()) {
+            return flights;
+        }
+        
+        // Filter flights by checking if they are cancelled
+        return flights.stream()
+            .filter(flight -> {
+                // Check if this flight is cancelled
+                String origin = flight.getOrigin().getCode();
+                String destination = flight.getDestination().getCode();
+                String scheduledTime = flight.getDepartureTime().toString();
+                
+                return !cancellationService.isFlightCancelled(origin, destination, scheduledTime);
+            })
+            .collect(java.util.stream.Collectors.toList());
+    }
+    
+    /**
+     * Handle replanification when flights are cancelled.
+     * Triggers the ReplanificationService to reassign affected orders.
+     * 
+     * @param cancellations Newly cancelled flights
+     * @param allOrders All pending orders
+     * @param availableFlights All active (non-cancelled) flights
+     */
+    private void handleReplanification(
+            List<FlightCancellation> cancellations,
+            List<PlannerOrder> allOrders,
+            List<PlannerFlight> availableFlights) {
+        
+        System.out.println("   🔄 REPLANIFICATION triggered for " + cancellations.size() + " cancellation(s)");
+        
+        // Get airports
+        List<PlannerAirport> airports = new ArrayList<>(dataProvider.getAirports());
+        
+        // Trigger replanification for each cancellation
+        for (FlightCancellation cancellation : cancellations) {
+            try {
+                ReplanificationTask task = replanificationService.triggerReplanification(
+                    cancellation,
+                    lastSolution,
+                    allOrders,
+                    availableFlights,
+                    airports,
+                    currentTime
+                );
+                
+                if (task != null) {
+                    int affectedCount = task.getAffectedOrderIds() != null ? 
+                        task.getAffectedOrderIds().size() : 0;
+                    System.out.println("      ✅ Replanification task " + task.getId() + " - " + 
+                                     task.getStatus() + " (" + affectedCount + " affected orders)");
+                } else {
+                    System.out.println("      ⚠️ No replanification needed (no affected orders)");
+                }
+            } catch (Exception e) {
+                System.err.println("      ❌ Replanification failed: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+    
+    /**
+     * Get the current simulation time.
+     * Used by external services to synchronize with simulation progress.
+     * 
+     * @return Current simulation time
+     */
+    public LocalDateTime getCurrentSimulationTime() {
+        return currentTime;
+    }
+    
+    // ========== METRICS METHODS ==========
     
     /**
      * Print comprehensive final metrics at the end of the simulation.
@@ -678,28 +1013,28 @@ public class SimulationSession implements Runnable {
                 new pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO();
             
             dto.id = order.getId();
-            dto.codigo = "PED-" + order.getId();
-            
-            // Origen/Destino
-            dto.origenCodigo = order.getOrigin().getCode();
-            dto.origenNombre = order.getOrigin().getName();
-            dto.destinoCodigo = order.getDestination().getCode();
-            dto.destinoNombre = order.getDestination().getName();
-            
-            // Cantidades
-            dto.cantidadTotal = order.getTotalQuantity();
-            dto.cantidadAsignada = totalAssignedPerOrder.getOrDefault(order.getId(), 0);
-            dto.progresoPercent = (dto.cantidadAsignada * 100.0) / dto.cantidadTotal;
-            
-            // Estado
-            dto.estado = calculateOrderStatus(order, dto.cantidadAsignada);
-            
-            // Tiempos
-            dto.fechaSolicitudISO = order.getOrderTime().toString();
-            dto.fechaETA_ISO = null; // Could estimate based on assigned flights
-            
-            // Vuelos asignados (buscar en los últimos resultados)
-            dto.vuelosAsignados = findAssignedFlights(order.getId());
+            dto.code = "PED-" + order.getId();
+
+            // Origin/Destination
+            dto.originCode = order.getOrigin().getCode();
+            dto.originName = order.getOrigin().getName();
+            dto.destinationCode = order.getDestination().getCode();
+            dto.destinationName = order.getDestination().getName();
+
+            // Quantities
+            dto.totalQuantity = order.getTotalQuantity();
+            dto.assignedQuantity = totalAssignedPerOrder.getOrDefault(order.getId(), 0);
+            dto.progressPercent = (dto.assignedQuantity * 100.0) / dto.totalQuantity;
+
+            // Status
+            dto.status = calculateOrderStatus(order, dto.assignedQuantity);
+
+            // Times
+            dto.requestDateISO = order.getOrderTime().toString();
+            dto.etaISO = null; // Could estimate based on assigned flights
+
+            // Assigned flights (search in latest results)
+            dto.assignedFlights = findAssignedFlights(order.getId());
             
             summaries.add(dto);
         }
@@ -708,54 +1043,127 @@ public class SimulationSession implements Runnable {
     }
     
     /**
-     * Calculate order status based on assignment.
+     * Calculate order status based on assignment and delivery time.
+     * COMPLETED only when the flight has actually arrived at destination.
+     * Once COMPLETED, the status is permanent (doesn't revert).
      */
     private pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO.OrderStatus calculateOrderStatus(
             PlannerOrder order, int assigned) {
+        
+        // 🔒 Once completed, always completed (immutable state)
+        if (completedOrderIds.contains(order.getId())) {
+            return pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO.OrderStatus.COMPLETED;
+        }
+        
         if (assigned == 0) {
             // Check if still pending or truly unassigned
             return pendingOrders.contains(order) ? 
                 pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO.OrderStatus.PENDING :
                 pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO.OrderStatus.UNASSIGNED;
         }
+        
+        // Check if fully assigned
         if (assigned >= order.getTotalQuantity()) {
-            return pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO.OrderStatus.COMPLETED;
+            // Verify if all shipments for this order have been delivered
+            // by checking if their last flight has arrived
+            java.time.LocalDateTime lastArrivalTime = getOrderLastArrivalTime(order.getId());
+            
+            // DEBUG: Log status determination
+            if (lastArrivalTime != null) {
+                boolean hasArrived = !currentTime.isBefore(lastArrivalTime);
+                if (hasArrived) {
+                    System.out.println("  ✅ Order " + order.getId() + " marked as COMPLETED (arrived at " + lastArrivalTime + ")");
+                    completedOrderIds.add(order.getId()); // 🔒 Lock in completed state
+                    return pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO.OrderStatus.COMPLETED;
+                } else {
+                    return pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO.OrderStatus.IN_TRANSIT;
+                }
+            } else {
+                // ⚠️ Fully assigned but no arrival time found - itinerary missing in results
+                System.out.println("  ⚠️ Order " + order.getId() + " fully assigned but no arrival time found (itinerary missing?)");
+                return pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO.OrderStatus.IN_TRANSIT;
+            }
         }
+        
         return pe.edu.pucp.morapack.dto.simulation.OrderSummaryDTO.OrderStatus.IN_TRANSIT;
     }
     
     /**
-     * Find flight codes assigned to a specific order.
-     * Searches through the most recent iteration results.
+     * Get the arrival time of the last flight for an order.
+     * Searches through ALL previous iteration results (not just the last one).
+     * Returns null if the order has no assigned flights.
      */
-    private java.util.List<String> findAssignedFlights(int orderId) {
-        java.util.List<String> flightCodes = new java.util.ArrayList<>();
+    private java.time.LocalDateTime getOrderLastArrivalTime(int orderId) {
+        if (allResults.isEmpty()) return null;
         
+        java.time.LocalDateTime maxArrival = null;
+        
+        // 🔍 Search through ALL results (orders may be in older iterations)
+        for (pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse result : allResults) {
+            if (result.itineraries == null) continue;
+            
+            // Find itineraries for this order
+            for (var itinerario : result.itineraries) {
+                // ✅ Use orderId field directly (no parsing needed)
+                if (itinerario.orderId == orderId && itinerario.segments != null && itinerario.segments.length > 0) {
+                    try {
+                        // Get the last segment's arrival time
+                        var lastSegment = itinerario.segments[itinerario.segments.length - 1];
+                        
+                        if (lastSegment != null && lastSegment.flight != null && lastSegment.flight.scheduledArrivalISO != null) {
+                            java.time.LocalDateTime arrival = java.time.LocalDateTime.parse(lastSegment.flight.scheduledArrivalISO);
+                            if (maxArrival == null || arrival.isAfter(maxArrival)) {
+                                maxArrival = arrival;
+                            }
+                        }
+                    } catch (Exception e) {
+                        // Skip parsing errors
+                    }
+                }
+            }
+        }
+        
+        return maxArrival;
+    }
+    
+    /**
+     * Find flight segments assigned to a specific order.
+     * Searches through the most recent iteration results.
+     * Returns minimal flight info (code, origin, destination) to show route without storing full itinerary.
+     */
+    private java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> findAssignedFlights(int orderId) {
+        java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> segments = new java.util.ArrayList<>();
+
         // Search in the last result (most recent iteration)
         if (!allResults.isEmpty()) {
-            pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse lastResult = 
+            pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse lastResult =
                 allResults.get(allResults.size() - 1);
-            
-            if (lastResult.itinerarios != null) {
-                for (var itinerario : lastResult.itinerarios) {
-                    // Check if this itinerary belongs to our order
-                    // Itinerary ID format is "sh-{orderId}" from TabuSolutionToDtoConverter
-                    String itinId = itinerario.id;
-                    if (itinId != null && itinId.startsWith("sh-")) {
-                        // Extract segments and get flight codes
-                        if (itinerario.segmentos != null) {
-                            for (var segmento : itinerario.segmentos) {
-                                if (segmento.vuelo != null && segmento.vuelo.codigo != null) {
-                                    flightCodes.add(segmento.vuelo.codigo);
-                                }
+
+            if (lastResult.itineraries != null) {
+                for (var itinerario : lastResult.itineraries) {
+                    // ✅ Check if this itinerary belongs to our order using orderId field
+                    if (itinerario.orderId == orderId && itinerario.segments != null) {
+                        // Extract segments with origin/destination info
+                        for (var segmento : itinerario.segments) {
+                            if (segmento.flight != null && segmento.flight.code != null) {
+                                String originCode = (segmento.flight.origin != null) ? segmento.flight.origin.code : "???";
+                                String destCode = (segmento.flight.destination != null) ? segmento.flight.destination.code : "???";
+
+                                pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segmentInfo =
+                                    new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
+                                        segmento.flight.code,
+                                        originCode,
+                                        destCode
+                                    );
+                                segments.add(segmentInfo);
                             }
                         }
                     }
                 }
             }
         }
-        
-        return flightCodes;
+
+        return segments;
     }
     
     /**

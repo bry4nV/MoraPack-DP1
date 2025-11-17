@@ -167,6 +167,7 @@ public class DataLoader {
     public static List<PlannerFlight> loadFlights(String filePath, Map<String, PlannerAirport> airportMap, int year, int month, int daysToGenerate) throws IOException {
         System.out.println("   📋 Loading flights from: " + filePath);
         System.out.println("   📅 Generating flights for: " + year + "-" + String.format("%02d", month) + " (" + daysToGenerate + " days)");
+        System.out.println("   ⚠️  WARNING: This method generates flights from day 1 of the month. Use loadFlights(filePath, airportMap, startDate, daysToGenerate) instead.");
         
         // Load flight templates
         List<pe.edu.pucp.morapack.algos.scheduler.FlightTemplate> templates = loadFlightTemplates(filePath, airportMap);
@@ -177,6 +178,42 @@ public class DataLoader {
         
         List<PlannerFlight> flights = new ArrayList<>();
         LocalDate startDate = LocalDate.of(year, month, 1);
+        
+        for (int day = 0; day < daysToGenerate; day++) {
+            LocalDate currentDate = startDate.plusDays(day);
+            
+            for (pe.edu.pucp.morapack.algos.scheduler.FlightTemplate template : templates) {
+                PlannerFlight flight = expander.expandForDate(template, currentDate);
+                flights.add(flight);
+            }
+        }
+        
+        System.out.println("   ✅ Generated " + flights.size() + " flights (" + templates.size() + " templates × " + daysToGenerate + " days)");
+        return flights;
+    }
+    
+    /**
+     * Load flights for a specific date range using flight templates.
+     * Generates actual flights with specific dates from templates.
+     * 
+     * @param filePath Path to flights CSV
+     * @param airportMap Map of airport codes to PlannerAirport objects
+     * @param startDate Start date for flight generation
+     * @param daysToGenerate Number of days to generate flights for
+     * @return List of PlannerFlight objects with specific dates
+     */
+    public static List<PlannerFlight> loadFlights(String filePath, Map<String, PlannerAirport> airportMap, LocalDate startDate, int daysToGenerate) throws IOException {
+        System.out.println("   📋 Loading flights from: " + filePath);
+        System.out.println("   📅 Generating flights for: " + startDate + " to " + startDate.plusDays(daysToGenerate - 1) + " (" + daysToGenerate + " days)");
+        
+        // Load flight templates
+        List<pe.edu.pucp.morapack.algos.scheduler.FlightTemplate> templates = loadFlightTemplates(filePath, airportMap);
+        
+        // Use FlightExpander to generate actual flights
+        pe.edu.pucp.morapack.algos.scheduler.FlightExpander expander = 
+            new pe.edu.pucp.morapack.algos.scheduler.FlightExpander();
+        
+        List<PlannerFlight> flights = new ArrayList<>();
         
         for (int day = 0; day < daysToGenerate; day++) {
             LocalDate currentDate = startDate.plusDays(day);
@@ -275,15 +312,15 @@ public class DataLoader {
     }
 
     /**
-     * Load orders from CSV with relative dates (dd-hh-mm format).
+     * Load orders from TXT file with new format.
      * 
-     * CSV format: dd,hh,mm,dest,###,IdClien
-     * Example: 04,16,22,EDDI,344,6084676
+     * Format: id_pedido-aaaammdd-hh-mm-dest-###-IdClien
+     * Example: 000000001-20250102-01-38-SUAA-004-0018981
      * 
-     * @param filePath Path to orders CSV file
+     * @param filePath Path to orders file
      * @param airportMap Map of airport codes to PlannerAirport objects
-     * @param year Year for simulation (e.g., 2025)
-     * @param month Month for simulation (1-12)
+     * @param year Year for simulation (e.g., 2025) - IGNORED, uses date from file
+     * @param month Month for simulation (1-12) - IGNORED, uses date from file
      * @return List of PlannerOrder objects
      */
     public static List<PlannerOrder> loadOrders(String filePath, Map<String, PlannerAirport> airportMap, int year, int month) throws IOException {
@@ -296,28 +333,43 @@ public class DataLoader {
         Set<String> mainHubs = Set.of("SPIM", "EBCI", "UBBB");
         
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
-            // Skip header
-            String header = br.readLine();
             System.out.println("   📋 Loading orders from: " + filePath);
-            System.out.println("   📅 Reference period: " + year + "-" + String.format("%02d", month));
+            System.out.println("   📅 New format: id_pedido-aaaammdd-hh-mm-dest-###-IdClien");
             
             String line;
-            int lineNumber = 1;
+            int lineNumber = 0;
             while ((line = br.readLine()) != null) {
                 lineNumber++;
-                String[] parts = line.split(",");
-                if (parts.length < 6) {
+                line = line.trim();
+                
+                // Skip empty lines
+                if (line.isEmpty()) {
+                    continue;
+                }
+                
+                String[] parts = line.split("-");
+                if (parts.length < 7) {
                     skippedInvalid++;
                     continue;
                 }
                 
                 try {
-                    int day = Integer.parseInt(parts[0].trim());
-                    int hour = Integer.parseInt(parts[1].trim());
-                    int minute = Integer.parseInt(parts[2].trim());
-                    String destCode = parts[3].trim();
-                    int quantity = Integer.parseInt(parts[4].trim());
-                    String clientId = parts[5].trim();
+                    // Parse new format: id_pedido-aaaammdd-hh-mm-dest-###-IdClien
+                    String orderIdStr = parts[0].trim();        // 000000001 (ignored)
+                    String dateStr = parts[1].trim();           // 20250102
+                    String hourStr = parts[2].trim();           // 01
+                    String minuteStr = parts[3].trim();         // 38
+                    String destCode = parts[4].trim();          // SUAA
+                    String quantityStr = parts[5].trim();       // 004
+                    String clientId = parts[6].trim();          // 0018981
+                    
+                    // Parse date components from aaaammdd
+                    int orderYear = Integer.parseInt(dateStr.substring(0, 4));    // 2025
+                    int orderMonth = Integer.parseInt(dateStr.substring(4, 6));   // 01
+                    int day = Integer.parseInt(dateStr.substring(6, 8));          // 02
+                    int hour = Integer.parseInt(hourStr);                         // 01
+                    int minute = Integer.parseInt(minuteStr);                     // 38
+                    int quantity = Integer.parseInt(quantityStr);                 // 4
                     
                     // ⬇️ FILTER: Exclude orders to main hubs (local delivery, no air transport needed)
                     if (mainHubs.contains(destCode)) {
@@ -341,8 +393,8 @@ public class DataLoader {
                         continue;
                     }
                     
-                    // Convert relative date (dd-hh-mm) to absolute timestamp
-                    LocalDateTime orderTime = LocalDateTime.of(year, month, day, hour, minute);
+                    // Use date from file (absolute timestamp)
+                    LocalDateTime orderTime = LocalDateTime.of(orderYear, orderMonth, day, hour, minute);
                     
                     // Create order
                     PlannerOrder order = new PlannerOrder(orderId++, quantity, origin, destination);

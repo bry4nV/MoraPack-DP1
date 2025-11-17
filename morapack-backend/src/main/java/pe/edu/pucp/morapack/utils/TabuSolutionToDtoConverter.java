@@ -12,43 +12,49 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.time.format.DateTimeFormatter;
 
 public class TabuSolutionToDtoConverter {
+    // ✅ FIX: Usar ISO_LOCAL_DATE_TIME (sin conversión de zona horaria)
+    // El backend y frontend trabajan en la MISMA zona horaria (hora local)
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
-    public static AeropuertoDTO[] toAirportDtos(List<PlannerAirport> airports) {
-        List<AeropuertoDTO> out = new ArrayList<>();
+    public static AirportDTO[] toAirportDtos(List<PlannerAirport> airports) {
+        List<AirportDTO> out = new ArrayList<>();
         AtomicInteger id = new AtomicInteger(1);
         for (PlannerAirport a : airports) {
-            AeropuertoDTO dto = new AeropuertoDTO();
+            AirportDTO dto = new AirportDTO();
             dto.id = id.getAndIncrement();
-            dto.nombre = a.getName();
-            dto.codigo = a.getCode();
-            dto.ciudad = a.getCity();
-            dto.latitud = a.getLatitude();
-            dto.longitud = a.getLongitude();
+            dto.name = a.getName();
+            dto.code = a.getCode();
+            dto.city = a.getCity();
+            // ✅ FIX: Include country and continent information
+            dto.country = a.getCountry() != null ? a.getCountry().getName() : "Unknown";
+            dto.continent = a.getContinent() != null ? a.getContinent().name() : "AMERICA";
+            dto.latitude = a.getLatitude();
+            dto.longitude = a.getLongitude();
             dto.gmt = a.getGmt();
-            dto.esSede = "SPIM".equals(a.getCode());
-            
-            // ✅ Add capacity information (will be enriched later with dynamic data)
-            dto.capacidadTotal = a.getStorageCapacity();
-            dto.capacidadUsada = 0;  // Will be calculated by enrichAirportData
-            dto.capacidadDisponible = a.getStorageCapacity();
-            dto.porcentajeUso = 0.0;
-            
+            dto.isHub = "SPIM".equals(a.getCode());
+
+            // Add capacity information (will be enriched later with dynamic data)
+            dto.totalCapacity = a.getStorageCapacity();
+            dto.usedCapacity = 0;  // Will be calculated by enrichAirportData
+            dto.availableCapacity = a.getStorageCapacity();
+            dto.usagePercentage = 0.0;
+
             out.add(dto);
         }
-        return out.toArray(new AeropuertoDTO[0]);
+        return out.toArray(new AirportDTO[0]);
     }
 
-    public static ItinerarioDTO[] toItinerarioDtos(TabuSolution solution) {
-        return toItinerarioDtos(solution, java.time.Instant.now());
+    public static ItineraryDTO[] toItineraryDtos(TabuSolution solution) {
+        return toItineraryDtos(solution, java.time.Instant.now());
     }
 
-    public static ItinerarioDTO[] toItinerarioDtos(TabuSolution solution, java.time.Instant snapshotTime) {
-        List<ItinerarioDTO> out = new ArrayList<>();
+    public static ItineraryDTO[] toItineraryDtos(TabuSolution solution, java.time.Instant snapshotTime) {
+        List<ItineraryDTO> out = new ArrayList<>();
         for (PlannerShipment ps : solution.getPlannerShipments()) {
-            ItinerarioDTO it = new ItinerarioDTO();
+            ItineraryDTO it = new ItineraryDTO();
             it.id = "sh-" + ps.getId();
-            List<SegmentoDTO> segs = new ArrayList<>();
+            it.orderId = ps.getOrder().getId();
+            List<RouteSegmentDTO> segs = new ArrayList<>();
 
             // Build segmentos and compute distances/times
             List<PlannerFlight> flights = ps.getFlights();
@@ -59,18 +65,20 @@ public class TabuSolutionToDtoConverter {
 
             for (int i = 0; i < flights.size(); i++) {
                 PlannerFlight f = flights.get(i);
-                SegmentoDTO s = new SegmentoDTO();
-                s.orden = i + 1;
-                VueloDTO v = new VueloDTO();
-                v.codigo = f.getCode();
-                v.origen = airportToDto(f.getOrigin());
-                v.destino = airportToDto(f.getDestination());
-                v.salidaProgramadaISO = f.getDepartureTime().format(ISO);
-                v.llegadaProgramadaISO = f.getArrivalTime().format(ISO);
-                v.capacidad = f.getCapacity();
-                v.preplanificado = f.isPreplanned();
-                v.estado = f.getStatus().name();
-                s.vuelo = v;
+                RouteSegmentDTO s = new RouteSegmentDTO();
+                s.order = i + 1;
+                FlightDTO v = new FlightDTO();
+                v.code = f.getCode();
+                v.origin = airportToDto(f.getOrigin());
+                v.destination = airportToDto(f.getDestination());
+                // Format directly as local time (no timezone conversion)
+                // Backend and frontend use the SAME time reference (local time)
+                v.scheduledDepartureISO = f.getDepartureTime().format(ISO);
+                v.scheduledArrivalISO = f.getArrivalTime().format(ISO);
+                v.capacity = f.getCapacity();
+                v.preplanned = f.isPreplanned();
+                v.status = f.getStatus().name();
+                s.flight = v;
                 segs.add(s);
 
                 // compute distance and instants
@@ -81,7 +89,7 @@ public class TabuSolutionToDtoConverter {
                 arrInst[i] = f.getArrivalTime().atZone(java.time.ZoneId.systemDefault()).toInstant();
             }
 
-            it.segmentos = segs.toArray(new SegmentoDTO[0]);
+            it.segments = segs.toArray(new RouteSegmentDTO[0]);
 
             // Determine current segment by snapshotTime
             double accumulatedMetersBefore = 0.0;
@@ -130,20 +138,23 @@ public class TabuSolutionToDtoConverter {
 
             out.add(it);
         }
-        return out.toArray(new ItinerarioDTO[0]);
+        return out.toArray(new ItineraryDTO[0]);
     }
 
-    private static AeropuertoDTO airportToDto(PlannerAirport a) {
-        AeropuertoDTO dto = new AeropuertoDTO();
+    private static AirportDTO airportToDto(PlannerAirport a) {
+        AirportDTO dto = new AirportDTO();
         // id left as 0 when used inside flight objects; frontend can map by code
         dto.id = 0;
-        dto.nombre = a.getName();
-        dto.codigo = a.getCode();
-        dto.ciudad = a.getCity();
-        dto.latitud = a.getLatitude();
-        dto.longitud = a.getLongitude();
+        dto.name = a.getName();
+        dto.code = a.getCode();
+        dto.city = a.getCity();
+        // ✅ FIX: Include country and continent information
+        dto.country = a.getCountry() != null ? a.getCountry().getName() : "Unknown";
+        dto.continent = a.getContinent() != null ? a.getContinent().name() : "AMERICA";
+        dto.latitude = a.getLatitude();
+        dto.longitude = a.getLongitude();
         dto.gmt = a.getGmt();
-        dto.esSede = "SPIM".equals(a.getCode());
+        dto.isHub = "SPIM".equals(a.getCode());
         return dto;
     }
 

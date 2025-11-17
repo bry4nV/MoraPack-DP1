@@ -1,28 +1,28 @@
-/**
- * Esta es la interfaz principal para un Pedido (Order).
- * Coincide con lo que envía el OrderDto.java del backend.
- */
-export interface Order {
-  id: number; // Asegúrate de que sea number
-  orderNumber: string;
-  clientCode: string;
-  airportDestinationCode: string;
-  quantity: number;
-  status: OrderState;
-  orderDate: string;
-  orderTime: string;
-}
+import { OrderStatus } from './shared';
+
+// ═══════════════════════════════════════════════════════════════
+// ORDER (CRUD)
+// ═══════════════════════════════════════════════════════════════
 
 /**
- * Estados posibles de un Pedido.
- * Sincronizado con la nueva base de datos.
+ * Main Order interface for CRUD operations in /pedidos.
+ * Matches backend OrderDto.java
  */
-export enum OrderState {
-  UNASSIGNED = 'UNASSIGNED',
-  PENDING = 'PENDING',
-  IN_TRANSIT = 'IN_TRANSIT',
-  COMPLETED = 'COMPLETED',
+export interface Order {
+  id: number;
+  orderNumber: string;
+  orderDate: string;
+  orderTime: string;
+  airportDestinationCode: string;
+  quantity: number;
+  clientCode: string;
+  status: OrderStatus | string;
 }
+
+
+// ═══════════════════════════════════════════════════════════════
+// API PAYLOADS
+// ═══════════════════════════════════════════════════════════════
 
 // --- Payloads para API (Actualizados) ---
 // (Estos definen qué datos se necesitan para CREAR o ACTUALIZAR un pedido)
@@ -34,7 +34,7 @@ export interface CreateOrderPayload {
   airportDestinationCode: string;
   quantity: number;
   clientCode: string;
-  status: OrderState;
+  status: OrderStatus;
 }
 
 export type UpdateOrderPayload = Partial<CreateOrderPayload>;

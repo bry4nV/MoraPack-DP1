@@ -9,7 +9,8 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import pe.edu.pucp.morapack.repository.UserRepository;
+
+import pe.edu.pucp.morapack.repository.daily.UserRepository;
 
 @Configuration
 public class ApplicationConfig {
