@@ -10,10 +10,10 @@ export const API_CONFIG = {
 export const API_ENDPOINTS = {
   // Order endpoints
   ORDERS: {
-    BASE: '/api/orders',  // ✅ Cambiado de '/orders/' a '/api/orders'
-    BY_ID: (id: string) => `/api/orders/${id}`,  // ✅ Sin barra al final
-    BULK_CREATE: '/api/orders/bulk-create',  // ✅ Sin barra al final
-    BULK_DELETE: '/api/orders/bulk-delete',  // ✅ Sin barra al final
+    BASE: '/api/orders',  
+    BY_ID: (id: string) => `/api/orders/${id}`,  
+    BULK_CREATE: '/api/orders/bulk-create',  
+    BULK_DELETE: '/api/orders/bulk-delete',  
   },
   AIRPORTS: {
     BASE: '/api/airports',
@@ -33,9 +33,9 @@ export const API_ENDPOINTS = {
   },
 
   FLIGHTS: {
-    BASE: '/api/flights', // <-- Este es el endpoint que creamos en el backend
-    BY_ID: (id: string) => `/api/flights/${id}`,
-    // (Puedes añadir bulk_create/delete si los necesitas)
+BASE: '/api/flights',
+  BY_ID: (id: string) => `/api/flights/${id}`,
+  CANCEL: (id: string) => `/api/flights/${id}/cancel`,
   },
 
 } as const;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback, memo } from "react";
 import AnimatedFlights from "@/components/map/AnimatedFlights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { PedidosPanel } from "./PedidosPanel";
 import { EventosPanel } from "./EventosPanel";
 import { getCancellations, getDynamicOrders } from "@/lib/dynamic-events-api";
 import type { FlightCancellation, DynamicOrder } from "@/types/simulation/events.types";
+import { dmsToDecimal } from "@/lib/geo";
 
 type SimulationState = 'IDLE' | 'STARTING' | 'RUNNING' | 'PAUSED' | 'STOPPED' | 'COMPLETED' | 'ERROR';
 type ScenarioType = 'WEEKLY' | 'DAILY' | 'COLLAPSE';
@@ -36,7 +37,7 @@ export default function SimulacionClient() {
   const [simulationState, setSimulationState] = useState<SimulationState>('IDLE');
   const [scenarioType, setScenarioType] = useState<ScenarioType>('WEEKLY');
   const [speed, setSpeed] = useState<number>(1);
-  const [startDate, setStartDate] = useState<string>("2025-01-02"); // Default start date (primera fecha con datos)
+  const [startDate, setStartDate] = useState<string>("2025-01-02"); // Default start date
   const [startTime, setStartTime] = useState<string>("00:00"); // Default start time
 
   // UI state
@@ -133,15 +134,37 @@ export default function SimulacionClient() {
                   if (update.latestResult) {
                     const result = update.latestResult;
 
+                    // 🔍 DEBUG: Log what data arrives from WebSocket
+                    console.log('📡 WebSocket latestResult:', {
+                      airports: result.airports?.length || 0,
+                      orders: result.orders?.length || 0,
+                      itineraries: result.itineraries?.length || 0,
+                      firstItinerary: result.itineraries?.[0],
+                      firstAirport: result.airports?.[0]
+                    });
+
                     // Update airports
                     if (result.airports && result.airports.length > 0) {
                       const mappedAeropuertos = result.airports.map((a: any) => ({
                         id: a.id,
+                        // ✅ FIX CRÍTICO: Campos en inglés requeridos por Aeropuerto interface
+                        continent: a.continent || "AMERICA",
+                        code: a.code,
+                        city: a.city || a.code,
+                        country: a.country || "Unknown",
+                        cityAcronym: a.cityAcronym || a.code,
+                        // ✅ CRÍTICO: Convertir coordenadas DMS a decimal
+                        latitude: dmsToDecimal(a.latitude),
+                        longitude: dmsToDecimal(a.longitude),
+                        capacity: a.totalCapacity || 1000,
+                        status: "ACTIVE",
+                        isHub: a.isHub || false,
+                        // Campos en español para compatibilidad
                         nombre: a.name || a.code,
                         codigo: a.code,
                         ciudad: a.city || a.code,
-                        latitud: a.latitude,
-                        longitud: a.longitude,
+                        latitud: dmsToDecimal(a.latitude),
+                        longitud: dmsToDecimal(a.longitude),
                         gmt: a.gmt,
                         esSede: a.isHub || false,
                         capacidadAlmacen: a.totalCapacity || 1000,
@@ -172,42 +195,54 @@ export default function SimulacionClient() {
                     if (result.itineraries) {
                       const mappedItinerarios = result.itineraries.map((itin: any) => ({
                         id: itin.id,
-                        segmentos: (itin.segmentos || []).map((seg: any) => ({
-                          id: `${itin.id}-${seg.orden}`,
-                          orden: seg.orden,
+                        // ✅ FIX: Backend envía 'segments' (inglés), no 'segmentos' (español)
+                        segmentos: (itin.segments || []).map((seg: any) => ({
+                          id: `${itin.id}-${seg.order}`,
+                          orden: seg.order,
                           vuelo: {
-                            id: seg.vuelo.codigo,
-                            codigo: seg.vuelo.codigo,
+                            // Backend envía 'flight.code' (inglés)
+                            id: seg.flight.code,
+                            codigo: seg.flight.code,
                             origen: {
                               id: 0,
-                              nombre: seg.vuelo.origen.nombre || seg.vuelo.origen.codigo,
-                              codigo: seg.vuelo.origen.codigo,
-                              ciudad: seg.vuelo.origen.ciudad || seg.vuelo.origen.codigo,
-                              latitud: seg.vuelo.origen.latitud,
-                              longitud: seg.vuelo.origen.longitud,
-                              gmt: seg.vuelo.origen.gmt,
-                              esSede: seg.vuelo.origen.esSede,
-                              capacidadAlmacen: 1000,
+                              // Backend envía 'origin' (inglés)
+                              nombre: seg.flight.origin.name || seg.flight.origin.code,
+                              codigo: seg.flight.origin.code,
+                              ciudad: seg.flight.origin.city || seg.flight.origin.code,
+                              // ✅ CRÍTICO: Backend ya envía decimal, no DMS
+                              latitude: seg.flight.origin.latitude,
+                              longitude: seg.flight.origin.longitude,
+                              // Campos en español para compatibilidad
+                              latitud: seg.flight.origin.latitude,
+                              longitud: seg.flight.origin.longitude,
+                              gmt: seg.flight.origin.gmt,
+                              esSede: seg.flight.origin.isHub || false,
+                              capacidadAlmacen: seg.flight.origin.totalCapacity || 1000,
                               pais: { id: 0, nombre: "Unknown", continente: "Unknown" },
                             },
                             destino: {
                               id: 0,
-                              nombre: seg.vuelo.destino.nombre || seg.vuelo.destino.codigo,
-                              codigo: seg.vuelo.destino.codigo,
-                              ciudad: seg.vuelo.destino.ciudad || seg.vuelo.destino.codigo,
-                              latitud: seg.vuelo.destino.latitud,
-                              longitud: seg.vuelo.destino.longitud,
-                              gmt: seg.vuelo.destino.gmt,
-                              esSede: seg.vuelo.destino.esSede,
-                              capacidadAlmacen: 1000,
+                              // Backend envía 'destination' (inglés)
+                              nombre: seg.flight.destination.name || seg.flight.destination.code,
+                              codigo: seg.flight.destination.code,
+                              ciudad: seg.flight.destination.city || seg.flight.destination.code,
+                              // ✅ CRÍTICO: Backend ya envía decimal, no DMS
+                              latitude: seg.flight.destination.latitude,
+                              longitude: seg.flight.destination.longitude,
+                              // Campos en español para compatibilidad
+                              latitud: seg.flight.destination.latitude,
+                              longitud: seg.flight.destination.longitude,
+                              gmt: seg.flight.destination.gmt,
+                              esSede: seg.flight.destination.isHub || false,
+                              capacidadAlmacen: seg.flight.destination.totalCapacity || 1000,
                               pais: { id: 0, nombre: "Unknown", continente: "Unknown" },
                             },
-                            // ✅ FIX: Agregar las fechas que estaban faltando
-                            salidaProgramadaISO: seg.vuelo.salidaProgramadaISO,
-                            llegadaProgramadaISO: seg.vuelo.llegadaProgramadaISO,
-                            capacidad: seg.vuelo.capacidad,
-                            preplanificado: seg.vuelo.preplanificado,
-                            estado: seg.vuelo.estado,
+                            // ✅ FIX: Backend envía scheduledDepartureISO/scheduledArrivalISO (inglés)
+                            salidaProgramadaISO: seg.flight.scheduledDepartureISO,
+                            llegadaProgramadaISO: seg.flight.scheduledArrivalISO,
+                            capacidad: seg.flight.capacity,
+                            preplanificado: seg.flight.preplanned,
+                            estado: seg.flight.status,
                           },
                         })),
                       }));
@@ -363,14 +398,8 @@ export default function SimulacionClient() {
     return () => clearInterval(intervalId);
   }, [interpolatedTime, simulatedTime]);
 
-  // Load dynamic events when connected
-  useEffect(() => {
-    if (connected) {
-      loadDynamicEvents();
-    }
-  }, [connected]);
-
-  const loadDynamicEvents = async () => {
+  // Memoized event handlers for EventosPanel
+  const loadDynamicEvents = useCallback(async () => {
     try {
       const [cancellationsData, ordersData] = await Promise.all([
         getCancellations(),
@@ -381,7 +410,22 @@ export default function SimulacionClient() {
     } catch (error) {
       console.error('Error loading dynamic events:', error);
     }
-  };
+  }, []);
+
+  const handleCancellationCreated = useCallback((c: FlightCancellation) => {
+    setCancellations(prev => [...prev, c]);
+  }, []);
+
+  const handleOrderCreated = useCallback((o: DynamicOrder) => {
+    setDynamicOrders(prev => [...prev, o]);
+  }, []);
+
+  // Load dynamic events when connected
+  useEffect(() => {
+    if (connected) {
+      loadDynamicEvents();
+    }
+  }, [connected, loadDynamicEvents]);
 
   // Fetch preview data when date or scenario changes
   useEffect(() => {
@@ -407,30 +451,29 @@ export default function SimulacionClient() {
           // Update airports from preview
           if (preview.airports && preview.airports.length > 0) {
             const mappedAeropuertos = preview.airports.map((a: any) => ({
+              // Backend fields (English)
               id: a.id,
-              nombre: a.name || a.code,
-              codigo: a.code,
-              ciudad: a.city || a.code,
-              latitud: a.latitude,
-              longitud: a.longitude,
-              gmt: a.gmt,
-              esSede: a.isHub || false,
-              capacidadAlmacen: a.totalCapacity || 1000,
-              // ✅ Capacity information
-              capacidadTotal: a.totalCapacity || 1000,
+              continent: a.continent || "AMERICA",
+              code: a.code,
+              city: a.city || a.code,
+              country: a.country || "Unknown",
+              cityAcronym: a.cityAcronym || a.code,
+              gmt: a.gmt || 0,
+              capacity: a.capacity || 1000,
+              // ✅ CRÍTICO: Convertir coordenadas DMS a decimal
+              latitude: dmsToDecimal(a.latitude || "0"),
+              longitude: dmsToDecimal(a.longitude || "0"),
+              status: a.status || "ACTIVE",
+              isHub: a.isHub || false,
+              // UI tracking fields (Spanish - optional)
+              capacidadTotal: a.totalCapacity || a.capacity || 1000,
               capacidadUsada: a.usedCapacity || 0,
-              capacidadDisponible: a.availableCapacity || (a.totalCapacity || 1000),
+              capacidadDisponible: a.availableCapacity || (a.capacity || 1000),
               porcentajeUso: a.usagePercentage || 0,
-              // Dynamic info
               pedidosEnEspera: a.pendingOrders || 0,
               productosEnEspera: a.pendingProducts || 0,
               vuelosActivosDesde: a.activeFlightsFrom || 0,
               vuelosActivosHacia: a.activeFlightsTo || 0,
-              pais: {
-                id: a.id,
-                nombre: "Unknown",
-                continente: "AMERICA" as const
-              },
             }));
             setAeropuertos(mappedAeropuertos);
             console.log(`✅ Loaded ${mappedAeropuertos.length} airports from backend`);
@@ -448,12 +491,9 @@ export default function SimulacionClient() {
             assignmentRatePercent: 0
           };
           setMetricasPedidos(metrics);
-
-          // Update message
-          setMessage(`Vista previa: ${preview.totalOrders} pedidos, ${preview.totalProducts} productos`);
         })
         .catch(err => {
-          console.error("❌ Error fetching preview:", err);
+          console.error("Error fetching preview:", err);
           const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
           console.warn(`Asegúrate de que el backend esté corriendo en ${apiUrl}`);
           
@@ -461,22 +501,22 @@ export default function SimulacionClient() {
           setPedidos([]);
           setAeropuertos([]); // Clear airports on error
           setMetricasPedidos({
-            totalPedidos: 0,
-            pendientes: 0,
-            enTransito: 0,
-            completados: 0,
-            sinAsignar: 0,
-            totalProductos: 0,
-            productosAsignados: 0,
-            tasaAsignacionPercent: 0
+            totalOrders: 0,
+            pending: 0,
+            inTransit: 0,
+            completed: 0,
+            unassigned: 0,
+            totalProducts: 0,
+            assignedProducts: 0,
+            assignmentRatePercent: 0
           });
           setMessage(`❌ Error: No se pudo conectar con el backend`);
         });
     }
   }, [startDate, scenarioType, simulationState]);
 
-  // Control handlers
-  const sendControlMessage = (action: string, extras = {}) => {
+  // Control handlers - Memoized for performance
+  const sendControlMessage = useCallback((action: string, extras = {}) => {
     if (client && connected) {
       // Combine date and time for START action
       const startDateTime = action === 'START'
@@ -496,17 +536,18 @@ export default function SimulacionClient() {
       });
       console.log(`Sent control: ${action}`, { startDateTime, ...extras });
     }
-  };
+  }, [client, connected, startDate, startTime, scenarioType, speed]);
 
-  const handleStart = () => sendControlMessage("START");
-  const handlePause = () => sendControlMessage("PAUSE");
-  const handleResume = () => sendControlMessage("RESUME");
-  const handleStop = () => {
+  const handleStart = useCallback(() => sendControlMessage("START"), [sendControlMessage]);
+  const handlePause = useCallback(() => sendControlMessage("PAUSE"), [sendControlMessage]);
+  const handleResume = useCallback(() => sendControlMessage("RESUME"), [sendControlMessage]);
+  const handleStop = useCallback(() => {
     sendControlMessage("STOP");
     setFinalMetrics(null);
     setItinerarios([]);
-  };
-  const handleReset = () => {
+  }, [sendControlMessage]);
+
+  const handleReset = useCallback(() => {
     sendControlMessage("RESET");
     setFinalMetrics(null);
     setItinerarios([]);
@@ -529,24 +570,42 @@ export default function SimulacionClient() {
     setDisplayTime("");
     lastBackendTimeRef.current = "";
     lastUpdateTimestampRef.current = 0;
-  };
-  const handleSpeedChange = (newSpeed: string) => {
+  }, [sendControlMessage, previewData]);
+
+  const handleSpeedChange = useCallback((newSpeed: string) => {
     const speedValue = parseFloat(newSpeed);
     setSpeed(speedValue);
     sendControlMessage("SPEED", { speed: speedValue });
-  };
+  }, [sendControlMessage]);
+
+  // Memoize map props to prevent unnecessary re-renders
+  const mapProps = useMemo(() => ({
+    itinerarios,
+    aeropuertos,
+    speedKmh: 800 * speed,
+    simulatedTime: interpolatedTime || simulatedTime,
+    center: [-60, -15] as [number, number],
+    zoom: 3,
+    loop: false,
+  }), [itinerarios, aeropuertos, speed, interpolatedTime, simulatedTime]);
 
   return (
-    <div className="space-y-2">
-      {/* Header mínimo - SIEMPRE VISIBLE */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">Simulación</h1>
+    <div className="relative w-full h-screen overflow-hidden">
+      {/* CAPA 0: Mapa - Ocupa 100% del espacio disponible */}
+      <div className="absolute inset-0 z-0">
+        <AnimatedFlights {...mapProps} />
+      </div>
+
+      {/* CAPA 1: Barra superior - Flotante sobre el mapa, con margen derecho para evitar solapamiento */}
+      <div className="absolute top-0 left-0 right-[400px] z-10 p-3 pointer-events-none">
+        {/* Header mínimo con toggle */}
+        <div className="flex items-center gap-2 mb-2 pointer-events-auto">
+          <h1 className="text-2xl font-bold text-white drop-shadow-lg">Simulación</h1>
           <Button
-            variant="ghost"
+            variant="secondary"
             size="sm"
             onClick={() => setIsHeaderOpen(!isHeaderOpen)}
-            className="h-7 gap-1.5"
+            className="h-7 gap-1.5 shadow-lg"
           >
             <Menu className="h-3.5 w-3.5" />
             <span className="text-xs">Controles</span>
@@ -554,287 +613,281 @@ export default function SimulacionClient() {
           </Button>
         </div>
 
-        {/* Badges siempre visibles (info crítica) */}
-        <div className="flex items-center gap-2">
+        {/* Panel de controles - COLAPSABLE Y MUY COMPACTO */}
+        {/* Aplicando patrón del sidebar: siempre montado con transición suave */}
+        <Card className={`shadow-xl backdrop-blur-sm bg-white/95 transition-all duration-300 pointer-events-auto ${
+          isHeaderOpen ? 'opacity-100 scale-100 max-h-[500px]' : 'opacity-0 scale-95 max-h-0 overflow-hidden pointer-events-none'
+        }`}>
+          <CardContent className="py-3 px-4">
+                {/* Fila 1: Configuración de la simulación */}
+                <div className="flex items-center gap-6 mb-3">
+                  {/* Escenario */}
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-xs text-muted-foreground font-semibold uppercase">Escenario</Label>
+                    <RadioGroup
+                      value={scenarioType}
+                      onValueChange={(value: ScenarioType) => setScenarioType(value)}
+                      disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
+                      className="flex items-center gap-3"
+                    >
+                      <div className="flex items-center space-x-1.5">
+                        <RadioGroupItem value="WEEKLY" id="weekly" className="h-4 w-4" />
+                        <Label htmlFor="weekly" className="text-sm font-normal cursor-pointer">
+                          Semanal
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-1.5">
+                        <RadioGroupItem value="COLLAPSE" id="collapse" className="h-4 w-4" />
+                        <Label htmlFor="collapse" className="text-sm font-normal cursor-pointer">
+                          Colapso
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  {/* Fecha y hora de inicio */}
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-xs text-muted-foreground font-semibold uppercase">Fecha y Hora de Inicio</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        min="2025-01-02"
+                        max="2025-12-31"
+                        disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
+                        className="w-[130px] h-8 text-sm px-2"
+                      />
+                      <Input
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
+                        className="w-[90px] h-8 text-sm px-2"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Velocidad de simulación */}
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-xs text-muted-foreground font-semibold uppercase">Velocidad</Label>
+                    <Select
+                      value={speed.toString()}
+                      onValueChange={handleSpeedChange}
+                      disabled={simulationState !== 'RUNNING'}
+                    >
+                      <SelectTrigger className="w-20 h-8 text-sm px-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0.5">0.5x</SelectItem>
+                        <SelectItem value="1">1x</SelectItem>
+                        <SelectItem value="2">2x</SelectItem>
+                        <SelectItem value="5">5x</SelectItem>
+                        <SelectItem value="10">10x</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Progreso y Timer */}
+                  <div className="flex flex-col gap-1 ml-auto">
+                    <Label className="text-xs text-muted-foreground font-semibold uppercase">Progreso</Label>
+                    <div className="flex items-center gap-3">
+                      <div className="text-sm">
+                        <span className="font-medium">{currentIteration}/{totalIterations}</span>
+                        <span className="text-muted-foreground ml-1.5">({Math.round(progress * 100)}%)</span>
+                      </div>
+                      {simulationState === 'RUNNING' && (
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground border-l pl-3">
+                          <Timer className="h-4 w-4" />
+                          <span>{formatElapsedTime(elapsedSeconds)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fila 2: Controles de ejecución */}
+                <div className="flex items-center gap-2 pt-3 border-t">
+                  <Label className="text-xs text-muted-foreground font-semibold uppercase mr-2">Controles</Label>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReset}
+                    disabled={!connected || simulationState === 'STARTING'}
+                    className="h-8 px-3 gap-2"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="text-sm">Reiniciar</span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleStop}
+                    disabled={!connected || simulationState === 'IDLE' || simulationState === 'STOPPED'}
+                    className="h-8 px-3 gap-2"
+                  >
+                    <Square className="h-4 w-4" />
+                    <span className="text-sm">Detener</span>
+                  </Button>
+
+                  {simulationState === 'PAUSED' ? (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleResume}
+                      disabled={!connected}
+                      className="h-8 px-3 gap-2"
+                    >
+                      <Play className="h-4 w-4" />
+                      <span className="text-sm">Reanudar</span>
+                    </Button>
+                  ) : simulationState === 'RUNNING' ? (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handlePause}
+                      disabled={!connected}
+                      className="h-8 px-3 gap-2"
+                    >
+                      <Pause className="h-4 w-4" />
+                      <span className="text-sm">Pausar</span>
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleStart}
+                      disabled={!connected || simulationState === 'STARTING'}
+                      className="h-8 px-3 gap-2"
+                    >
+                      <Play className="h-4 w-4" />
+                      <span className="text-sm">Iniciar</span>
+                    </Button>
+                  )}
+                </div>
+          </CardContent>
+        </Card>
+
+        {/* Badges de estado debajo del panel de control - SIEMPRE VISIBLES CON POSICIÓN FIJA */}
+        <div className="mt-2 flex items-center gap-2 min-h-[32px]">
+          {/* Estado */}
           <Badge variant={
             simulationState === 'RUNNING' ? 'default' :
             simulationState === 'COMPLETED' ? 'outline' :
             simulationState === 'ERROR' ? 'destructive' : 'secondary'
-          } className="text-[10px] px-2 py-0.5">
+          } className="text-xs px-2.5 py-1 shadow-lg bg-white/95 backdrop-blur">
             {simulationState}
           </Badge>
-          <Badge variant="outline" className="text-[10px] px-2 py-0.5">
+
+          {/* Iteraciones */}
+          <Badge variant="outline" className="text-xs px-2.5 py-1 shadow-lg bg-white/95 backdrop-blur">
             {currentIteration}/{totalIterations}
+          </Badge>
+
+          {/* Vuelos activos */}
+          <Badge variant="outline" className="text-xs px-2.5 py-1 shadow-lg bg-white/95 backdrop-blur">
+            <Plane className="h-3.5 w-3.5 mr-1" />
+            {itinerarios.length} vuelos
+          </Badge>
+
+          {/* Tiempo simulado o Esperando */}
+          <Badge variant={displayTime === "Esperando..." ? "secondary" : "outline"}
+                 className={`text-xs px-2.5 py-1 shadow-lg backdrop-blur ${
+                   displayTime === "Esperando..."
+                     ? "bg-amber-100/95 border-amber-300"
+                     : "bg-white/95"
+                 }`}>
+            {displayTime === "Esperando..." ? (
+              <>
+                <Clock className="h-3.5 w-3.5 mr-1" />
+                Esperando...
+              </>
+            ) : displayTime && displayTime !== "Cargando..." ? (
+              <>
+                <Calendar className="h-3.5 w-3.5 mr-1" />
+                {displayTime}
+              </>
+            ) : (
+              <>
+                <Clock className="h-3.5 w-3.5 mr-1" />
+                --:--
+              </>
+            )}
           </Badge>
         </div>
       </div>
 
-      {/* Panel de controles - COLAPSABLE */}
-      {isHeaderOpen && (
-        <Card>
-        <CardContent className="pt-4 pb-4">
-          <div className="flex items-center justify-between gap-3">
-            {/* Configuración izquierda - MÁS COMPACTA */}
-            <div className="flex items-center gap-3">
-              {/* Escenario - Radio buttons */}
-              <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground">Tipo:</Label>
-                <RadioGroup
-                  value={scenarioType}
-                  onValueChange={(value: ScenarioType) => setScenarioType(value)}
-                  disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
-                  className="flex items-center gap-3"
-                >
-                  <div className="flex items-center space-x-1.5">
-                    <RadioGroupItem value="WEEKLY" id="weekly" className="h-3.5 w-3.5" />
-                    <Label htmlFor="weekly" className="text-xs font-normal cursor-pointer">
-                      Semanal
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-1.5">
-                    <RadioGroupItem value="COLLAPSE" id="collapse" className="h-3.5 w-3.5" />
-                    <Label htmlFor="collapse" className="text-xs font-normal cursor-pointer">
-                      Colapso
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-
-              {/* Fecha y hora de inicio */}
-              <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Calendar className="h-3.5 w-3.5" />
-                  Inicio:
-                </Label>
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    min="2025-01-02"
-                    max="2025-01-31"
-                    disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
-                    className="w-32 h-8 text-xs"
-                  />
-                  <Input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
-                    className="w-24 h-8 text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Velocidad */}
-              <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Gauge className="h-3.5 w-3.5" />
-                  Vel:
-                </Label>
-                <Select
-                  value={speed.toString()}
-                  onValueChange={handleSpeedChange}
-                  disabled={simulationState !== 'RUNNING'}
-                >
-                  <SelectTrigger className="w-16 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0.5">0.5x</SelectItem>
-                    <SelectItem value="1">1x</SelectItem>
-                    <SelectItem value="2">2x</SelectItem>
-                    <SelectItem value="5">5x</SelectItem>
-                    <SelectItem value="10">10x</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Controles derecha - MÁS COMPACTO */}
-            <div className="flex items-center gap-2">
-              {/* Progreso */}
-              <div className="flex flex-col items-end min-w-[100px]">
-                <span className="text-xs font-medium">
-                  {currentIteration}/{totalIterations}
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  {Math.round(progress * 100)}%
-                </span>
-              </div>
-
-              {/* Botones de control - MÁS PEQUEÑOS */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReset}
-                disabled={!connected || simulationState === 'STARTING'}
-                title="Reset"
-                className="h-8 w-8 p-0"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleStop}
-                disabled={!connected || simulationState === 'IDLE' || simulationState === 'STOPPED'}
-                title="Stop"
-                className="h-8 w-8 p-0"
-              >
-                <Square className="h-3.5 w-3.5" />
-              </Button>
-
-              {simulationState === 'PAUSED' ? (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleResume}
-                  disabled={!connected}
-                  title="Resume"
-                  className="h-8 w-8 p-0"
-                >
-                  <Play className="h-3.5 w-3.5" />
-                </Button>
-              ) : simulationState === 'RUNNING' ? (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handlePause}
-                  disabled={!connected}
-                  title="Pause"
-                  className="h-8 w-8 p-0"
-                >
-                  <Pause className="h-3.5 w-3.5" />
-                </Button>
-              ) : (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleStart}
-                  disabled={!connected || simulationState === 'STARTING'}
-                  title="Start"
-                  className="h-8 w-8 p-0"
-                >
-                  <Play className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Mensaje de estado */}
-          {message && (
-            <div className="mt-2 text-xs text-muted-foreground text-center">
-              {message}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      )}
-
-      {/* Layout: Mapa + Panel de Pedidos/Eventos COLAPSABLE */}
-      <div className="relative flex gap-2">
-        {/* Mapa (principal) - OCUPA CASI TODA LA PANTALLA */}
-        <div className={`transition-all duration-300 ${isPanelOpen ? 'flex-1' : 'w-full'}`}>
-          <Card className="overflow-hidden h-[calc(100vh-8rem)]">
-            <CardContent className="p-0 h-full relative">
-              <AnimatedFlights
-                itinerarios={itinerarios}
-                aeropuertos={aeropuertos}
-                speedKmh={800 * speed}
-                simulatedTime={interpolatedTime || simulatedTime}
-                center={[-60, -15]}
-                zoom={3}
-                loop={false}
-              />
-
-              {/* INFO FLOTANTE SOBRE EL MAPA - SIEMPRE VISIBLE */}
-              <div className="absolute top-3 left-3 z-10 flex flex-col gap-2">
-                {/* Tiempo simulado - GRANDE Y VISIBLE */}
-                <Badge variant="secondary" className="text-sm px-3 py-1.5 shadow-lg bg-white/95 backdrop-blur">
-                  <Calendar className="h-4 w-4 mr-1.5" />
-                  {displayTime || "Cargando..."}
-                </Badge>
-
-                {/* Tiempo transcurrido (real) */}
-                {simulationState === 'RUNNING' && (
-                  <Badge variant="secondary" className="text-xs px-2.5 py-1 shadow-lg bg-white/95 backdrop-blur">
-                    <Timer className="h-3.5 w-3.5 mr-1" />
-                    {formatElapsedTime(elapsedSeconds)}
-                  </Badge>
-                )}
-
-                {/* Itinerarios activos */}
-                {itinerarios.length > 0 && (
-                  <Badge variant="outline" className="text-xs px-2.5 py-1 shadow-lg bg-white/95 backdrop-blur">
-                    <Plane className="h-3.5 w-3.5 mr-1" />
-                    {itinerarios.length} vuelos
-                  </Badge>
-                )}
-              </div>
-
-              {/* Botón para toggle panel lateral - DERECHA */}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setIsPanelOpen(!isPanelOpen)}
-                className="absolute top-3 right-3 z-10 h-8 w-8 p-0 shadow-lg"
-                title={isPanelOpen ? "Ocultar panel" : "Mostrar panel"}
-              >
-                {isPanelOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-              </Button>
-            </CardContent>
-          </Card>
+      {/* CAPA 2: Panel lateral derecho - Flotante sobre el mapa - MÁS ALTO Y ANGOSTO */}
+      {/* Aplicando patrón del sidebar: transición suave + contenido siempre montado */}
+      <div className={`absolute right-4 bottom-4 z-10 transition-all duration-300 ${isPanelOpen ? 'w-[380px]' : 'w-[60px]'} top-3`}>
+        {/* Botón toggle panel - Ahora en la esquina superior derecha del panel */}
+        <div className="flex justify-end mb-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsPanelOpen(!isPanelOpen)}
+            className="h-9 px-3 shadow-lg gap-2"
+            title={isPanelOpen ? "Ocultar panel" : "Mostrar panel"}
+          >
+            {isPanelOpen ? (
+              <>
+                <span className="text-xs">Ocultar</span>
+                <ChevronRight className="h-4 w-4" />
+              </>
+            ) : (
+              <>
+                <span className="text-xs">Panel</span>
+                <ChevronLeft className="h-4 w-4" />
+              </>
+            )}
+          </Button>
         </div>
 
-        {/* Panel lateral con tabs (Pedidos + Eventos) - COLAPSABLE */}
-        {isPanelOpen && (
-          <div className="w-80 transition-all duration-300">
-            <Card className="overflow-hidden h-[calc(100vh-8rem)]">
-              <Tabs defaultValue="pedidos" className="h-full flex flex-col">
-                <TabsList className="grid grid-cols-2 m-2 mb-0">
-                  <TabsTrigger value="pedidos" className="text-xs">
-                    Pedidos
-                  </TabsTrigger>
-                  <TabsTrigger value="eventos" className="text-xs">
-                    Eventos
-                  </TabsTrigger>
-                </TabsList>
+        {/* Panel de contenido - SIEMPRE MONTADO, solo cambia visibilidad */}
+        <Card className={`h-[calc(100%-3rem)] shadow-xl backdrop-blur-sm bg-white/95 transition-all duration-300 ${
+          isPanelOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
+        }`}>
+          <Tabs defaultValue="pedidos" className="h-full flex flex-col">
+            <TabsList className="grid grid-cols-2 m-2 mb-0">
+              <TabsTrigger value="pedidos" className="text-xs">
+                Pedidos
+              </TabsTrigger>
+              <TabsTrigger value="eventos" className="text-xs">
+                Eventos
+              </TabsTrigger>
+            </TabsList>
 
-              <TabsContent value="pedidos" className="flex-1 m-0 overflow-hidden">
-                <PedidosPanel
-                  pedidos={pedidos.filter(p => {
-                    // En preview mode, mostrar todos
-                    if (simulationState === 'IDLE') return true;
-                    
-                    // En modo realtime, solo mostrar pedidos que ya "llegaron" según el reloj
-                    const currentSimTime = new Date(simulatedTime || interpolatedTime);
-                    const orderTime = new Date(p.requestDateISO);
-                    return orderTime <= currentSimTime;
-                  })}
-                  metricas={metricasPedidos}
-                  mode={simulationState === 'IDLE' ? 'preview' : 'realtime'}
-                  onSelectPedido={(id) => {
-                    console.log("Selected pedido:", id);
-                  }}
-                />
-              </TabsContent>
+            <TabsContent value="pedidos" className="flex-1 m-0 overflow-hidden">
+              <PedidosPanel
+                pedidos={pedidos.filter(p => {
+                  if (simulationState === 'IDLE') return true;
+                  const currentSimTime = new Date(simulatedTime || interpolatedTime);
+                  const orderTime = new Date(p.requestDateISO);
+                  return orderTime <= currentSimTime;
+                })}
+                metricas={metricasPedidos}
+                mode={simulationState === 'IDLE' ? 'preview' : 'realtime'}
+                onSelectPedido={(id) => {
+                  console.log("Selected pedido:", id);
+                }}
+              />
+            </TabsContent>
 
-                <TabsContent value="eventos" className="flex-1 m-0 overflow-hidden">
-                  <EventosPanel
-                    aeropuertos={aeropuertos}
-                    cancellations={cancellations}
-                    dynamicOrders={dynamicOrders}
-                    onCancellationCreated={(c) => setCancellations([...cancellations, c])}
-                    onOrderCreated={(o) => setDynamicOrders([...dynamicOrders, o])}
-                    onRefresh={loadDynamicEvents}
-                  />
-                </TabsContent>
-              </Tabs>
-            </Card>
-          </div>
-        )}
+            <TabsContent value="eventos" className="flex-1 m-0 overflow-hidden">
+              <EventosPanel
+                aeropuertos={aeropuertos}
+                cancellations={cancellations}
+                dynamicOrders={dynamicOrders}
+                onCancellationCreated={handleCancellationCreated}
+                onOrderCreated={handleOrderCreated}
+                onRefresh={loadDynamicEvents}
+              />
+            </TabsContent>
+          </Tabs>
+        </Card>
       </div>
     </div>
   );

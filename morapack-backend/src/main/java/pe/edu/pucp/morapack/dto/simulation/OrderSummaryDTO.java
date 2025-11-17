@@ -52,7 +52,7 @@ public class OrderSummaryDTO {
 
     // Assigned flights (empty in preview mode)
     @JsonProperty("assignedFlights")
-    public List<String> assignedFlights = new ArrayList<>(); // ["VU81-001", "VU81-002"]
+    public List<FlightSegmentInfo> assignedFlights = new ArrayList<>();
 
     // Priority (optional, for future use)
     @JsonProperty("priority")

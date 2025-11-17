@@ -22,6 +22,12 @@ public class AirportDTO {
     @JsonProperty("city")
     public String city;
 
+    @JsonProperty("country")
+    public String country;
+
+    @JsonProperty("continent")
+    public String continent;
+
     @JsonProperty("latitude")
     public double latitude;
 

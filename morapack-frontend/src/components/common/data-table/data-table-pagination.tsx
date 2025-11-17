@@ -30,32 +30,27 @@ export function DataTablePagination({
   const startItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endItem = Math.min(currentPage * pageSize, totalItems);
 
-  // Generar array de páginas a mostrar
+  // ... (toda tu lógica de getPageNumbers() está perfecta) ...
   const getPageNumbers = () => {
     const pages: (number | "ellipsis")[] = [];
     const maxVisible = 5;
 
     if (totalPages <= maxVisible + 2) {
-      // Mostrar todas las páginas
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
     } else {
-      // Lógica con elipsis
       if (currentPage <= 3) {
-        // Inicio: 1 2 3 4 ... last
         for (let i = 1; i <= Math.min(4, totalPages); i++) pages.push(i);
         if (totalPages > 4) {
           pages.push("ellipsis");
           pages.push(totalPages);
         }
       } else if (currentPage >= totalPages - 2) {
-        // Final: 1 ... n-3 n-2 n-1 n
         pages.push(1);
         pages.push("ellipsis");
         for (let i = Math.max(totalPages - 3, 2); i <= totalPages; i++) pages.push(i);
       } else {
-        // Medio: 1 ... current-1 current current+1 ... last
         pages.push(1);
         pages.push("ellipsis");
         pages.push(currentPage - 1);
@@ -102,7 +97,10 @@ export function DataTablePagination({
               }}
             >
               <SelectTrigger className="h-8 w-[70px]">
-                <SelectValue />
+                {/* --- ¡AQUÍ ESTÁ EL ARREGLO! --- */}
+                {/* Le pasamos el pageSize como placeholder para forzar
+                    a que se muestre el valor '30' por defecto. */}
+                <SelectValue placeholder={pageSize.toString()} />
               </SelectTrigger>
               <SelectContent side="top">
                 {[5, 10, 20, 30, 50, 100].map((size) => (
@@ -119,7 +117,7 @@ export function DataTablePagination({
       {/* Lado derecho: Controles de paginación */}
       {totalPages > 1 && (
         <div className="flex items-center gap-2">
-          {/* Primera página */}
+          {/* ... (Todo tu código de botones de paginación está perfecto) ... */}
           <Button
             variant="outline"
             size="icon"
@@ -130,8 +128,6 @@ export function DataTablePagination({
           >
             <ChevronsLeft className="h-4 w-4" />
           </Button>
-
-          {/* Página anterior */}
           <Button
             variant="outline"
             size="icon"
@@ -159,7 +155,7 @@ export function DataTablePagination({
                   variant={page === currentPage ? "default" : "outline"}
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => onPageChange(page)}
+                  onClick={() => onPageChange(page as number)}
                   aria-label={`Página ${page}`}
                   aria-current={page === currentPage ? "page" : undefined}
                 >
@@ -169,7 +165,6 @@ export function DataTablePagination({
             )}
           </div>
 
-          {/* Página siguiente */}
           <Button
             variant="outline"
             size="icon"
@@ -180,8 +175,6 @@ export function DataTablePagination({
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
-
-          {/* Última página */}
           <Button
             variant="outline"
             size="icon"

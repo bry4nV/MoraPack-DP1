@@ -53,7 +53,10 @@ public class DailyDataSourceConfig {
 
         return builder
                 .dataSource(dataSource)
-                .packages("pe.edu.pucp.morapack.model")
+                .packages(
+                    "pe.edu.pucp.morapack.model"
+                    // Excludes model.simulation package - it's handled by simulationEntityManagerFactory
+                )
                 .persistenceUnit("daily")
                 .properties(hibernateProperties())
                 .build();

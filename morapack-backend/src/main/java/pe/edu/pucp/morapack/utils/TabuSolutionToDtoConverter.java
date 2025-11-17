@@ -25,6 +25,9 @@ public class TabuSolutionToDtoConverter {
             dto.name = a.getName();
             dto.code = a.getCode();
             dto.city = a.getCity();
+            // ✅ FIX: Include country and continent information
+            dto.country = a.getCountry() != null ? a.getCountry().getName() : "Unknown";
+            dto.continent = a.getContinent() != null ? a.getContinent().name() : "AMERICA";
             dto.latitude = a.getLatitude();
             dto.longitude = a.getLongitude();
             dto.gmt = a.getGmt();
@@ -145,6 +148,9 @@ public class TabuSolutionToDtoConverter {
         dto.name = a.getName();
         dto.code = a.getCode();
         dto.city = a.getCity();
+        // ✅ FIX: Include country and continent information
+        dto.country = a.getCountry() != null ? a.getCountry().getName() : "Unknown";
+        dto.continent = a.getContinent() != null ? a.getContinent().name() : "AMERICA";
         dto.latitude = a.getLatitude();
         dto.longitude = a.getLongitude();
         dto.gmt = a.getGmt();

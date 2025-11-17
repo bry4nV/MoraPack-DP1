@@ -42,6 +42,9 @@ public class SimulationDataService {
     @Autowired(required = false)
     private SimAirportRepository simAirportRepository;
 
+    @Autowired(required = false)
+    private pe.edu.pucp.morapack.repository.daily.AirportRepository dailyAirportRepository;
+
     // Switch for data source: "database" or "files"
     @Value("${simulation.data.source:database}")
     private String dataSource;
@@ -196,19 +199,175 @@ public class SimulationDataService {
     
     /**
      * Get all airports (cached).
+     * Loads from DATABASE or FILES depending on configuration.
      */
     public List<PlannerAirport> getAirports() {
         if (airportsCache == null) {
-            try {
-                System.out.println("[SimulationDataService] Loading airports from file");
-                airportsCache = DataLoader.loadAirports(AIRPORTS_FILE);
-                System.out.println("[SimulationDataService] Loaded " + airportsCache.size() + " airports");
-            } catch (IOException e) {
-                System.err.println("[SimulationDataService] Error loading airports: " + e.getMessage());
-                throw new RuntimeException("Failed to load airports", e);
+            if ("database".equalsIgnoreCase(dataSource)) {
+                airportsCache = loadAirportsFromDatabase();
+            } else {
+                airportsCache = loadAirportsFromFiles();
             }
         }
         return airportsCache;
+    }
+
+    /**
+     * Load airports from DATABASE (moraTravelDaily schema).
+     */
+    private List<PlannerAirport> loadAirportsFromDatabase() {
+        System.out.println("[SimulationDataService] Loading airports from DATABASE");
+
+        // Load all airports from the database
+        List<pe.edu.pucp.morapack.model.Airport> dbAirports = dailyAirportRepository.findAll();
+        System.out.println("[SimulationDataService] Found " + dbAirports.size() + " airports in DB");
+
+        // Convert to PlannerAirport
+        List<PlannerAirport> plannerAirports = new ArrayList<>();
+        int idCounter = 1;
+        int skippedCount = 0;
+
+        for (pe.edu.pucp.morapack.model.Airport dbAirport : dbAirports) {
+            String code = dbAirport.getCode();
+            String city = dbAirport.getCity();
+            // ✅ FIX: Create descriptive name from city + code
+            String name = (city != null && !city.isEmpty()) ? city : code;
+            int gmt = dbAirport.getGmt() != null ? dbAirport.getGmt() : 0;
+            int capacity = dbAirport.getCapacity() != null ? dbAirport.getCapacity() : 1000;
+
+            // ✅ CRITICAL FIX: Convert DMS coordinates to decimal
+            double lat = parseDMSToDecimal(dbAirport.getLatitude());
+            double lon = parseDMSToDecimal(dbAirport.getLongitude());
+
+            // ✅ FILTER: Skip airports with invalid coordinates (0,0) or missing data
+            if (lat == 0.0 && lon == 0.0) {
+                System.err.println("⚠️ Skipping airport " + code + " (" + name + ") - invalid coordinates (0,0)");
+                skippedCount++;
+                continue;
+            }
+
+            // Validate latitude/longitude ranges
+            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                System.err.println("⚠️ Skipping airport " + code + " - coordinates out of range: (" + lat + ", " + lon + ")");
+                skippedCount++;
+                continue;
+            }
+
+            // Create Country object (simplified - we don't have country data in Airport table)
+            pe.edu.pucp.morapack.model.Continent continent = mapContinent(dbAirport.getContinent());
+            pe.edu.pucp.morapack.model.Country country = new pe.edu.pucp.morapack.model.Country(
+                1,
+                dbAirport.getCountry() != null ? dbAirport.getCountry() : "Unknown",
+                continent
+            );
+
+            // Use constructor with coordinates
+            PlannerAirport pa = new PlannerAirport(idCounter++, code, name, city, country, capacity, gmt, lat, lon);
+            plannerAirports.add(pa);
+        }
+
+        System.out.println("[SimulationDataService] ✅ Converted " + plannerAirports.size() + " valid airports");
+        if (skippedCount > 0) {
+            System.out.println("[SimulationDataService] ⚠️ Skipped " + skippedCount + " airports with invalid data");
+        }
+        return plannerAirports;
+    }
+
+    /**
+     * Map continent string from database to Continent enum.
+     * Handles various formats like "America del Sur.", "Europa", etc.
+     */
+    private pe.edu.pucp.morapack.model.Continent mapContinent(String continentStr) {
+        if (continentStr == null) {
+            return pe.edu.pucp.morapack.model.Continent.AMERICA;
+        }
+
+        switch (continentStr.toLowerCase().trim()) {
+            case "america del sur.":
+            case "america del sur":
+            case "america":
+                return pe.edu.pucp.morapack.model.Continent.AMERICA;
+            case "europa":
+            case "europe":
+                return pe.edu.pucp.morapack.model.Continent.EUROPE;
+            case "asia":
+                return pe.edu.pucp.morapack.model.Continent.ASIA;
+            case "africa":
+            case "áfrica":
+                return pe.edu.pucp.morapack.model.Continent.AFRICA;
+            case "oceania":
+            case "oceanía":
+                return pe.edu.pucp.morapack.model.Continent.OCEANIA;
+            default:
+                System.err.println("⚠️ Unknown continent '" + continentStr + "', defaulting to AMERICA");
+                return pe.edu.pucp.morapack.model.Continent.AMERICA;
+        }
+    }
+
+    /**
+     * Load airports from FILES (legacy).
+     */
+    private List<PlannerAirport> loadAirportsFromFiles() {
+        try {
+            System.out.println("[SimulationDataService] Loading airports from file");
+            List<PlannerAirport> airports = DataLoader.loadAirports(AIRPORTS_FILE);
+            System.out.println("[SimulationDataService] Loaded " + airports.size() + " airports");
+            return airports;
+        } catch (IOException e) {
+            System.err.println("[SimulationDataService] Error loading airports: " + e.getMessage());
+            throw new RuntimeException("Failed to load airports", e);
+        }
+    }
+
+    /**
+     * Convert DMS (Degrees Minutes Seconds) to decimal format.
+     * Examples:
+     *   "04 42 05 N" -> 4.701389
+     *   "74 08 49 W" -> -74.146944
+     *   "12 01 19 S" -> -12.021944
+     */
+    private double parseDMSToDecimal(String dms) {
+        if (dms == null || dms.trim().isEmpty()) {
+            System.err.println("⚠️ Invalid DMS coordinate: null or empty");
+            return 0.0;
+        }
+
+        // If already decimal (no direction letters), parse directly
+        if (!dms.matches(".*[NSEW].*")) {
+            try {
+                return Double.parseDouble(dms.trim());
+            } catch (NumberFormatException e) {
+                System.err.println("⚠️ Invalid decimal coordinate: " + dms);
+                return 0.0;
+            }
+        }
+
+        // Parse DMS format: "04 42 05 N" or "74 08 49 W"
+        String[] parts = dms.trim().split("\\s+");
+        if (parts.length < 4) {
+            System.err.println("⚠️ Invalid DMS format: " + dms);
+            return 0.0;
+        }
+
+        try {
+            int degrees = Integer.parseInt(parts[0]);
+            int minutes = Integer.parseInt(parts[1]);
+            int seconds = Integer.parseInt(parts[2]);
+            String direction = parts[3].toUpperCase();
+
+            // Convert to decimal
+            double decimal = degrees + (minutes / 60.0) + (seconds / 3600.0);
+
+            // South and West are negative
+            if ("S".equals(direction) || "W".equals(direction)) {
+                decimal = -decimal;
+            }
+
+            return decimal;
+        } catch (NumberFormatException e) {
+            System.err.println("⚠️ Error parsing DMS coordinate: " + dms);
+            return 0.0;
+        }
     }
     
     /**

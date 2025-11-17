@@ -36,10 +36,20 @@ export interface OrderSummary {
   status: OrderStatus;
 
   // Assigned flights
-  assignedFlights: string[];
+  assignedFlights: FlightSegmentInfo[];
 
   // Priority (optional)
   priority?: number;
+}
+
+/**
+ * Minimal flight segment information for order tracking.
+ * Contains just enough data to show the route.
+ */
+export interface FlightSegmentInfo {
+  flightCode: string;
+  originCode: string;
+  destinationCode: string;
 }
 
 // ═══════════════════════════════════════════════════════════════

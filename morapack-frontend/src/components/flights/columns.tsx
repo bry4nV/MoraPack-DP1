@@ -1,9 +1,11 @@
 "use client";
 
-import { Flight, FlightStatus } from "@/types/flight"; // Asegúrate que la ruta sea correcta
+import { Flight, FlightStatus } from "@/types/flight";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ColumnDef } from "@tanstack/react-table"; // <-- ¡CAMBIO IMPORTANTE!
 
-// Mapas de colores y etiquetas para los estados de VUELO
+// Mapas de colores y etiquetas (estos están bien)
 const statusColors: Record<string, string> = {
   [FlightStatus.SCHEDULED]: "bg-blue-100 text-blue-800 hover:bg-blue-100",
   [FlightStatus.DELAYED]: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
@@ -18,66 +20,54 @@ const statusLabels: Record<string, string> = {
   [FlightStatus.CANCELLED]: "Cancelado",
 };
 
-export interface Column<T> {
-  id: string;
-  header: string;
-  accessor?: keyof T;
-  cell?: (row: T) => React.ReactNode;
-}
+// Ya no necesitamos la interfaz 'Column<T>' personalizada
 
-export const flightColumns: Column<Flight>[] = [
+// ¡CAMBIO IMPORTANTE! Usamos ColumnDef y el formato de tanstack-table
+export const flightColumns: ColumnDef<Flight>[] = [
   {
-    id: "id",
-    header: "ID",
-    accessor: "id",
-    cell: (row) => <div className="font-mono text-xs font-medium">{row.id}</div>,
+    accessorKey: "id", // <-- 'accessorKey' en lugar de 'id' y 'accessor'
+    header: "ID",     // <-- 'header'
   },
   {
-    id: "flightDate",
+    accessorKey: "flightDate",
     header: "Fecha",
-    accessor: "flightDate",
-    cell: (row) => <div>{row.flightDate}</div>,
   },
   {
-    id: "airportOriginCode",
+    accessorKey: "airportOriginCode",
     header: "Origen",
-    accessor: "airportOriginCode",
-    cell: (row) => <div className="font-mono text-xs">{row.airportOriginCode}</div>,
   },
   {
-    id: "airportDestinationCode",
+    accessorKey: "airportDestinationCode",
     header: "Destino",
-    accessor: "airportDestinationCode",
-    cell: (row) => <div className="font-mono text-xs">{row.airportDestinationCode}</div>,
   },
   {
-    id: "departureTime",
+    accessorKey: "departureTime",
     header: "Salida",
-    accessor: "departureTime",
-    cell: (row) => <div className="font-mono text-xs">{row.departureTime}</div>,
   },
   {
-    id: "arrivalTime",
+    accessorKey: "arrivalTime",
     header: "Llegada",
-    accessor: "arrivalTime",
-    cell: (row) => <div className="font-mono text-xs">{row.arrivalTime}</div>,
   },
   {
-    id: "capacity",
+    accessorKey: "capacity",
     header: "Capacidad",
-    accessor: "capacity",
-    cell: (row) => <div className="text-center">{row.capacity}</div>,
   },
   {
-    id: "status",
+    accessorKey: "status", // <-- 'accessorKey'
     header: "Estado",
-    accessor: "status",
-    cell: (row) => {
-      const statusKey = row.status as FlightStatus;
-      const label = statusLabels[statusKey] || row.status;
+    cell: ({ row }) => { // <-- formato de 'cell'
+      const statusKey = row.original.status as FlightStatus; // 'row.original'
+      const label = statusLabels[statusKey] || statusKey;
       const color = statusColors[statusKey] || "bg-gray-100 text-gray-800";
       return <Badge className={color}>{label}</Badge>;
     },
   },
-  // (Puedes añadir una columna de "Acciones" aquí si la necesitas)
+  // --- ¡COLUMNA DE ACCIONES AÑADIDA! ---
+  {
+    id: "actions",
+    header: "Acciones",
+    // Esta celda es un 'placeholder'. 
+    // La lógica real del botón la inyecta tu 'page.tsx' (como te envié antes).
+    cell: () => <div className="text-center">...</div>,
+  },
 ];

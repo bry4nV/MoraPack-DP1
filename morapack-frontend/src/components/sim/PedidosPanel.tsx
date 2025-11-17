@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MapPin, Target, Plane, Package } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { MapPin, Target, Plane, Package, Calendar, ArrowRight } from "lucide-react";
 import type { OrderSummary, OrderMetrics } from "@/types/simulation/order-summary.types";
 import type { OrderStatus } from "@/types/shared";
 
@@ -19,7 +20,7 @@ interface PedidosPanelProps {
   onSelectPedido?: (pedidoId: number) => void;
 }
 
-export function PedidosPanel({
+export const PedidosPanel = memo(function PedidosPanel({
   pedidos,
   metricas,
   mode = "realtime",
@@ -27,6 +28,7 @@ export function PedidosPanel({
 }: PedidosPanelProps) {
   const [filtro, setFiltro] = useState<"todos" | OrderStatus>("todos");
   const [busqueda, setBusqueda] = useState("");
+  const [selectedPedido, setSelectedPedido] = useState<OrderSummary | null>(null);
 
   const pedidosFiltrados = useMemo(() => {
     let filtered = pedidos;
@@ -97,7 +99,7 @@ export function PedidosPanel({
             <MetricBadge
               label="Total"
               value={metricasAjustadas.totalOrders}
-              color="blue"
+              color="slate"
             />
             <MetricBadge
               label="Pendientes"
@@ -107,7 +109,7 @@ export function PedidosPanel({
             <MetricBadge
               label="En tránsito"
               value={metricasAjustadas.inTransit}
-              color="orange"
+              color="blue"
             />
             <MetricBadge
               label="Completados"
@@ -164,17 +166,14 @@ export function PedidosPanel({
               Trán.
             </TabsTrigger>
             <TabsTrigger value="COMPLETED" className="text-xs">
-              OK
-            </TabsTrigger>
-            <TabsTrigger value="UNASSIGNED" className="text-xs">
-              Sin
+              Comp.
             </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
       {/* Lista de pedidos (scrolleable) */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {pedidosFiltrados.length === 0 && (
           <div className="text-center text-gray-400 py-8 text-sm">
             {busqueda
@@ -188,13 +187,22 @@ export function PedidosPanel({
             key={pedido.id}
             pedido={pedido}
             mode={mode}
-            onClick={() => onSelectPedido?.(pedido.id)}
+            onClick={() => {
+              setSelectedPedido(pedido);
+              onSelectPedido?.(pedido.id);
+            }}
           />
         ))}
       </div>
+
+      {/* Modal de detalles del pedido */}
+      <PedidoDetailsModal
+        pedido={selectedPedido}
+        onClose={() => setSelectedPedido(null)}
+      />
     </div>
   );
-}
+});
 
 // Metric badge component
 function MetricBadge({
@@ -204,12 +212,12 @@ function MetricBadge({
 }: {
   label: string;
   value: number;
-  color: "blue" | "yellow" | "orange" | "green";
+  color: "slate" | "yellow" | "blue" | "green";
 }) {
   const bgColors = {
-    blue: "bg-blue-100 text-blue-800",
+    slate: "bg-slate-100 text-slate-800",
     yellow: "bg-yellow-100 text-yellow-800",
-    orange: "bg-orange-100 text-orange-800",
+    blue: "bg-blue-100 text-blue-800",
     green: "bg-green-100 text-green-800",
   };
 
@@ -257,76 +265,179 @@ function PedidoCard({
       className="cursor-pointer hover:shadow-md transition-shadow border"
       onClick={onClick}
     >
-      <CardContent className="p-4 space-y-3">
-        {/* Header */}
+      <CardContent className="p-3 space-y-2">
+        {/* Header: Código y Estado */}
         <div className="flex items-center justify-between">
-          <span className="font-bold text-base">{pedido.code}</span>
-          <Badge className={`text-xs px-2.5 py-0.5 ${config.color}`}>{config.label}</Badge>
+          <span className="font-bold text-sm">{pedido.code}</span>
+          <Badge className={`text-xs px-2 py-0.5 ${config.color}`}>{config.label}</Badge>
         </div>
 
-        {/* Ruta */}
-        <div className="text-sm space-y-1.5">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-blue-500 flex-shrink-0" />
-            <span className="truncate">
-              {pedido.originName} ({pedido.originCode})
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Target className="h-4 w-4 text-green-500 flex-shrink-0" />
-            <span className="truncate">
-              {pedido.destinationName} ({pedido.destinationCode})
-            </span>
-          </div>
-        </div>
-
-        {/* Fecha de solicitud */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="font-medium">Solicitado:</span>
-          <span>
-            {new Date(pedido.requestDateISO).toLocaleDateString('es-PE', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
+        {/* Destino */}
+        <div className="flex items-center gap-2 text-sm">
+          <Target className="h-4 w-4 text-green-500 flex-shrink-0" />
+          <span className="truncate">
+            {pedido.destinationName} ({pedido.destinationCode})
           </span>
         </div>
 
-        {/* Productos */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        {/* Cantidad de productos */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground pt-1 border-t">
           <Package className="h-4 w-4" />
           <span className="font-medium">
             {pedido.totalQuantity} producto{pedido.totalQuantity !== 1 && "s"}
           </span>
         </div>
-
-        {/* Progreso (solo en modo realtime) */}
-        {mode === "realtime" && (
-          <div>
-            <div className="flex justify-between text-sm mb-1.5">
-              <span className="text-muted-foreground">Asignado</span>
-              <span className="font-bold">
-                {pedido.assignedQuantity}/{pedido.totalQuantity}
-              </span>
-            </div>
-            <Progress value={pedido.progressPercent} className="h-2.5" />
-          </div>
-        )}
-
-        {/* Vuelos asignados (solo en modo realtime si hay) */}
-        {mode === "realtime" && pedido.assignedFlights.length > 0 && (
-          <div className="text-sm text-muted-foreground flex items-center gap-2">
-            <Plane className="h-4 w-4" />
-            <span className="font-medium">
-              {pedido.assignedFlights.length} vuelo
-              {pedido.assignedFlights.length !== 1 && "s"}
-            </span>
-          </div>
-        )}
       </CardContent>
     </Card>
+  );
+}
+
+// Modal de detalles del pedido
+function PedidoDetailsModal({
+  pedido,
+  onClose,
+}: {
+  pedido: OrderSummary | null;
+  onClose: () => void;
+}) {
+  if (!pedido) return null;
+
+  const estadoConfig = {
+    PENDING: {
+      color: "bg-yellow-100 text-yellow-800 border-yellow-300",
+      label: "Pendiente",
+    },
+    IN_TRANSIT: {
+      color: "bg-blue-100 text-blue-800 border-blue-300",
+      label: "En tránsito",
+    },
+    COMPLETED: {
+      color: "bg-green-100 text-green-800 border-green-300",
+      label: "Completado",
+    },
+    UNASSIGNED: {
+      color: "bg-red-100 text-red-800 border-red-300",
+      label: "Sin asignar",
+    },
+  };
+
+  const config = estadoConfig[pedido.status];
+
+  return (
+    <Dialog open={!!pedido} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center justify-between">
+            <span>{pedido.code}</span>
+            <Badge className={`text-xs px-2.5 py-1 ${config.color}`}>{config.label}</Badge>
+          </DialogTitle>
+          <DialogDescription>
+            Detalles completos del pedido
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-4">
+          {/* Información básica */}
+          <div className="space-y-3">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase">Información del Pedido</h3>
+
+            {/* Ruta */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Origen</Label>
+                <div className="flex items-center gap-2 text-sm">
+                  <MapPin className="h-4 w-4 text-blue-500" />
+                  <span>{pedido.originName} ({pedido.originCode})</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Destino</Label>
+                <div className="flex items-center gap-2 text-sm">
+                  <Target className="h-4 w-4 text-green-500" />
+                  <span>{pedido.destinationName} ({pedido.destinationCode})</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Productos y fecha */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Cantidad de Productos</Label>
+                <div className="flex items-center gap-2 text-sm">
+                  <Package className="h-4 w-4" />
+                  <span className="font-medium">{pedido.totalQuantity} producto{pedido.totalQuantity !== 1 && "s"}</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Fecha de Solicitud</Label>
+                <div className="flex items-center gap-2 text-sm">
+                  <Calendar className="h-4 w-4" />
+                  <span>
+                    {new Date(pedido.requestDateISO).toLocaleDateString('es-PE', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Progreso */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Progreso de Asignación</Label>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Productos asignados</span>
+                  <span className="font-bold">{pedido.assignedQuantity} / {pedido.totalQuantity}</span>
+                </div>
+                <Progress value={pedido.progressPercent} className="h-2" />
+                <div className="text-right text-xs text-muted-foreground">
+                  {pedido.progressPercent.toFixed(1)}%
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Vuelos asignados */}
+          {pedido.assignedFlights.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm text-muted-foreground uppercase flex items-center gap-2">
+                <Plane className="h-4 w-4" />
+                Ruta Asignada ({pedido.assignedFlights.length} vuelo{pedido.assignedFlights.length !== 1 && "s"})
+              </h3>
+
+              <div className="space-y-2">
+                {pedido.assignedFlights.map((segment, index) => (
+                  <div key={index} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="font-medium text-sm">{segment.originCode}</span>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium text-sm">{segment.destinationCode}</span>
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="text-xs font-mono text-muted-foreground">{segment.flightCode}</span>
+                      <span className="text-[10px] text-muted-foreground">Vuelo #{index + 1}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Sin vuelos asignados */}
+          {pedido.assignedFlights.length === 0 && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-sm text-amber-800">
+                Este pedido aún no tiene vuelos asignados.
+              </p>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

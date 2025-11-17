@@ -1,15 +1,15 @@
 package pe.edu.pucp.morapack.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import pe.edu.pucp.morapack.algos.data.providers.DataProvider;
-import pe.edu.pucp.morapack.algos.data.providers.FileDataProvider;
+import pe.edu.pucp.morapack.algos.data.providers.DatabaseDataProvider;
 import pe.edu.pucp.morapack.algos.scheduler.ScenarioConfig;
 import pe.edu.pucp.morapack.dto.websocket.SimulationState;
 import pe.edu.pucp.morapack.dto.websocket.SimulationStatusUpdate;
 
-import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -19,59 +19,58 @@ import java.util.concurrent.Executors;
 
 /**
  * Manages multiple concurrent simulation sessions (one per user).
- * 
+ *
  * Each user can have their own simulation running independently.
  * This service creates, controls, and cleans up SimulationSession instances.
  */
 @Service
 public class SimulationManager {
-    
+
     private final SimpMessagingTemplate messagingTemplate;
-    
+
     // 🆕 Dynamic event services (injected by Spring)
     private final CancellationService cancellationService;
     private final DynamicOrderService dynamicOrderService;
     private final OrderInjectionService orderInjectionService;
     private final ReplanificationService replanificationService;
     private final FlightStatusTracker flightStatusTracker;
+
+    // ✅ DatabaseDataProvider for loading ALL orders from database
+    private final DatabaseDataProvider databaseDataProvider;
     
     // Map of userId -> SimulationSession
     private final Map<String, SimulationSession> activeSessions = new ConcurrentHashMap<>();
-    
+
     // Thread pool for running simulations
     private final ExecutorService executorService = Executors.newCachedThreadPool();
-    
-    // Data paths (configurable)
-    private final String airportsFile = "data/airports_real.txt";
-    private final String flightsFile = "data/flights.csv";
-    private final String ordersFile = "data/_pedidos_SUAA_.txt";  // Nuevo formato
-    private final String cancellationsFile = "data/cancellations.csv";  // Future use
-    
+
     // Default simulation parameters
-    private final int simulationYear = 2025;
-    private final int simulationMonth = 1;  // January
     private final int simulationDays = 7;    // 1 week
-    
+
     // Valid date range for simulation data
     private final LocalDate FIRST_DATA_DATE = LocalDate.of(2025, 1, 2);  // Primera fecha con datos
     private final LocalDate LAST_DATA_DATE = LocalDate.of(2025, 1, 31);
-    
+
+    @Autowired
     public SimulationManager(
             SimpMessagingTemplate messagingTemplate,
             CancellationService cancellationService,
             DynamicOrderService dynamicOrderService,
             OrderInjectionService orderInjectionService,
             ReplanificationService replanificationService,
-            FlightStatusTracker flightStatusTracker) {
-        
+            FlightStatusTracker flightStatusTracker,
+            DatabaseDataProvider databaseDataProvider) {
+
         this.messagingTemplate = messagingTemplate;
         this.cancellationService = cancellationService;
         this.dynamicOrderService = dynamicOrderService;
         this.orderInjectionService = orderInjectionService;
         this.replanificationService = replanificationService;
         this.flightStatusTracker = flightStatusTracker;
-        
-        System.out.println("[SimulationManager] Initialized with dynamic events support");
+        this.databaseDataProvider = databaseDataProvider;
+
+        System.out.println("[SimulationManager] ✅ Initialized with DatabaseDataProvider");
+        System.out.println("[SimulationManager] ✅ Loading ALL orders from database (not files)");
     }
     
     /**
@@ -115,20 +114,15 @@ public class SimulationManager {
                 return;
             }
             
-            // Create DataProvider (from CSV files)
-            DataProvider dataProvider = new FileDataProvider(
-                airportsFile,
-                flightsFile,
-                ordersFile,
-                cancellationsFile,
-                simulationYear,
-                simulationMonth,
-                simulationDays
-            );
-            
+            // ✅ Use DatabaseDataProvider to load ALL orders from database
+            DataProvider dataProvider = databaseDataProvider;
+
             // Calculate simulation time range
             LocalDateTime startTime = startDate.atStartOfDay();
             LocalDateTime endTime = startTime.plusDays(simulationDays);
+
+            System.out.println("[SimulationManager] ✅ Starting simulation with DatabaseDataProvider");
+            System.out.println("[SimulationManager] ✅ This will load ALL orders from ALL destinations (not just SUAA)");
             
             // Create new session (with dynamic events support)
             SimulationSession session = new SimulationSession(
@@ -159,10 +153,11 @@ public class SimulationManager {
             System.out.println("   Session ID: " + session.getSessionId());
             System.out.println("   Start Date: " + startDate);
             System.out.println("   End Date: " + endDate);
-            
-        } catch (IOException e) {
+
+        } catch (Exception e) {
             String errorMsg = "Failed to initialize simulation: " + e.getMessage();
             System.err.println("[SimulationManager] " + errorMsg);
+            e.printStackTrace();
             sendError(userId, errorMsg);
         }
     }

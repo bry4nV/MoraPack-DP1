@@ -13,6 +13,7 @@ import pe.edu.pucp.morapack.model.simulation.SimOrder;
 import pe.edu.pucp.morapack.repository.simulation.SimAirportRepository;
 import pe.edu.pucp.morapack.repository.simulation.SimFlightRepository;
 import pe.edu.pucp.morapack.repository.simulation.SimOrderRepository;
+import pe.edu.pucp.morapack.util.CoordinateUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -24,11 +25,6 @@ import java.util.stream.Collectors;
 
 /**
  * DatabaseDataProvider: Provides data from moraTravelSimulation schema for simulations.
- *
- * This implementation queries the simulation database (moraTravelSimulation) which contains
- * historical data (~2 years) specifically for running simulations.
- *
- * It replaces the file-based data loading with database queries.
  */
 @Component
 public class DatabaseDataProvider implements DataProvider {
@@ -78,8 +74,9 @@ public class DatabaseDataProvider implements DataProvider {
     public List<PlannerFlight> getFlights(LocalDateTime startTime, LocalDateTime endTime) {
         System.out.println("[DatabaseDataProvider] Loading flights between " + startTime + " and " + endTime);
 
+        // Calculate date range (inclusive of end date to capture all flights in time window)
         LocalDate startDate = startTime.toLocalDate();
-        LocalDate endDate = endTime.toLocalDate();
+        LocalDate endDate = endTime.toLocalDate().plusDays(1); // +1 to make query inclusive
 
         List<SimFlight> dbFlights = flightRepository.findFlightsBetweenDates(startDate, endDate);
 
@@ -90,7 +87,7 @@ public class DatabaseDataProvider implements DataProvider {
 
         List<PlannerFlight> plannerFlights = new ArrayList<>();
         for (SimFlight dbFlight : dbFlights) {
-            // Filtrar por tiempo si es necesario
+            // Filtrar por tiempo exacto
             LocalDateTime departureDT = LocalDateTime.of(dbFlight.getFlightDate(), dbFlight.getDepartureTime());
 
             if (!departureDT.isBefore(startTime) && departureDT.isBefore(endTime)) {
@@ -109,8 +106,9 @@ public class DatabaseDataProvider implements DataProvider {
     public List<PlannerOrder> getOrders(LocalDateTime startTime, LocalDateTime endTime) {
         System.out.println("[DatabaseDataProvider] Loading orders between " + startTime + " and " + endTime);
 
+        // Calculate date range (inclusive of end date to capture all orders in time window)
         LocalDate startDate = startTime.toLocalDate();
-        LocalDate endDate = endTime.toLocalDate();
+        LocalDate endDate = endTime.toLocalDate().plusDays(1); // +1 to make query inclusive
 
         List<SimOrder> dbOrders = orderRepository.findOrdersBetweenDates(startDate, endDate);
 
@@ -120,19 +118,33 @@ public class DatabaseDataProvider implements DataProvider {
         }
 
         List<PlannerOrder> plannerOrders = new ArrayList<>();
+        int filteredSameOriginDest = 0;
+
         for (SimOrder dbOrder : dbOrders) {
-            // Filtrar por tiempo si es necesario
+            // Filtrar por tiempo exacto
             LocalDateTime orderDT = LocalDateTime.of(dbOrder.getOrderDate(), dbOrder.getOrderTime());
 
             if (!orderDT.isBefore(startTime) && orderDT.isBefore(endTime)) {
                 PlannerOrder plannerOrder = convertOrderToPlanner(dbOrder);
                 if (plannerOrder != null) {
+                    // ✅ FILTRAR pedidos donde origen == destino (ej: Lima→Lima, Baku→Baku, Bruselas→Bruselas)
+                    String originCode = plannerOrder.getOrigin().getCode();
+                    String destCode = plannerOrder.getDestination().getCode();
+
+                    if (originCode.equals(destCode)) {
+                        filteredSameOriginDest++;
+                        continue; // Saltar este pedido inválido
+                    }
+
                     plannerOrders.add(plannerOrder);
                 }
             }
         }
 
-        System.out.println("   ✓ Loaded " + plannerOrders.size() + " orders");
+        if (filteredSameOriginDest > 0) {
+            System.out.println("   ⚠️  Filtered " + filteredSameOriginDest + " orders with same origin/destination");
+        }
+        System.out.println("   ✓ Loaded " + plannerOrders.size() + " valid orders");
         return plannerOrders;
     }
 
@@ -148,14 +160,28 @@ public class DatabaseDataProvider implements DataProvider {
         }
 
         List<PlannerOrder> plannerOrders = new ArrayList<>();
+        int filteredSameOriginDest = 0;
+
         for (SimOrder dbOrder : dbOrders) {
             PlannerOrder plannerOrder = convertOrderToPlanner(dbOrder);
             if (plannerOrder != null) {
+                // ✅ FILTRAR pedidos donde origen == destino
+                String originCode = plannerOrder.getOrigin().getCode();
+                String destCode = plannerOrder.getDestination().getCode();
+
+                if (originCode.equals(destCode)) {
+                    filteredSameOriginDest++;
+                    continue; // Saltar este pedido inválido
+                }
+
                 plannerOrders.add(plannerOrder);
             }
         }
 
-        System.out.println("   ✓ Loaded " + plannerOrders.size() + " pending orders");
+        if (filteredSameOriginDest > 0) {
+            System.out.println("   ⚠️  Filtered " + filteredSameOriginDest + " pending orders with same origin/destination");
+        }
+        System.out.println("   ✓ Loaded " + plannerOrders.size() + " valid pending orders");
         return plannerOrders;
     }
 
@@ -194,15 +220,18 @@ public class DatabaseDataProvider implements DataProvider {
             continent
         );
 
-        // Parsear latitude y longitude
-        double latitude = 0.0;
-        double longitude = 0.0;
-        try {
-            latitude = Double.parseDouble(dbAirport.getLatitude());
-            longitude = Double.parseDouble(dbAirport.getLongitude());
-        } catch (NumberFormatException e) {
-            System.err.println("Warning: Could not parse coordinates for airport " + dbAirport.getCode());
-        }
+        // Parsear latitude y longitude usando CoordinateUtils
+        // Soporte para formato DMS (04°42'08"S) o decimal (-4.702222)
+        double latitude = CoordinateUtils.dmsToDecimalSafe(
+            dbAirport.getLatitude(),
+            dbAirport.getCode(),
+            "latitude"
+        );
+        double longitude = CoordinateUtils.dmsToDecimalSafe(
+            dbAirport.getLongitude(),
+            dbAirport.getCode(),
+            "longitude"
+        );
 
         return new PlannerAirport(
             dbAirport.getId().intValue(),

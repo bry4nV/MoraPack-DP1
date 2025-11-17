@@ -629,13 +629,17 @@ public class SimulationSession implements Runnable {
         if (solution != null) {
             // Track products in transit to each airport
             java.util.Map<String, Integer> productsInTransit = new java.util.HashMap<>();
-            
+            // Track products that arrived at destination and are waiting pickup
+            java.util.Map<String, Integer> productsArrived = new java.util.HashMap<>();
+
             for (var shipment : solution.getPlannerShipments()) {
+                boolean shipmentCompleted = false;
+
                 for (int i = 0; i < shipment.getFlights().size(); i++) {
                     var flight = shipment.getFlights().get(i);
                     String originCode = flight.getOrigin().getCode();
                     String destCode = flight.getDestination().getCode();
-                    
+
                     var originDto = airportMap.get(originCode);
                     if (originDto != null) {
                         originDto.activeFlightsFrom++;
@@ -650,6 +654,15 @@ public class SimulationSession implements Runnable {
                             productsInTransit.put(destCode,
                                 productsInTransit.getOrDefault(destCode, 0) + shipment.getQuantity());
                         }
+
+                        // If this is the last flight and it has arrived, products are at destination
+                        if (i == shipment.getFlights().size() - 1 &&
+                            currentTime.isAfter(flight.getArrivalTime()) &&
+                            !completedOrderIds.contains(shipment.getOrder().getId())) {
+                            productsArrived.put(destCode,
+                                productsArrived.getOrDefault(destCode, 0) + shipment.getQuantity());
+                            shipmentCompleted = true;
+                        }
                     }
 
                     // Track flight at origin airport (before departure)
@@ -659,10 +672,23 @@ public class SimulationSession implements Runnable {
                         }
                     }
                 }
+
+                // Mark order as completed once shipment arrives at final destination
+                if (shipmentCompleted) {
+                    completedOrderIds.add(shipment.getOrder().getId());
+                }
             }
-            
+
             // Add in-transit products to capacity usage
             for (var entry : productsInTransit.entrySet()) {
+                var dto = airportMap.get(entry.getKey());
+                if (dto != null) {
+                    dto.usedCapacity += entry.getValue();
+                }
+            }
+
+            // Add arrived products (waiting pickup at destination) to capacity usage
+            for (var entry : productsArrived.entrySet()) {
                 var dto = airportMap.get(entry.getKey());
                 if (dto != null) {
                     dto.usedCapacity += entry.getValue();
@@ -1101,33 +1127,43 @@ public class SimulationSession implements Runnable {
     }
     
     /**
-     * Find flight codes assigned to a specific order.
+     * Find flight segments assigned to a specific order.
      * Searches through the most recent iteration results.
+     * Returns minimal flight info (code, origin, destination) to show route without storing full itinerary.
      */
-    private java.util.List<String> findAssignedFlights(int orderId) {
-        java.util.List<String> flightCodes = new java.util.ArrayList<>();
-        
+    private java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> findAssignedFlights(int orderId) {
+        java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> segments = new java.util.ArrayList<>();
+
         // Search in the last result (most recent iteration)
         if (!allResults.isEmpty()) {
-            pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse lastResult = 
+            pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse lastResult =
                 allResults.get(allResults.size() - 1);
-            
+
             if (lastResult.itineraries != null) {
                 for (var itinerario : lastResult.itineraries) {
                     // ✅ Check if this itinerary belongs to our order using orderId field
                     if (itinerario.orderId == orderId && itinerario.segments != null) {
-                        // Extract segments and get flight codes
+                        // Extract segments with origin/destination info
                         for (var segmento : itinerario.segments) {
                             if (segmento.flight != null && segmento.flight.code != null) {
-                                flightCodes.add(segmento.flight.code);
+                                String originCode = (segmento.flight.origin != null) ? segmento.flight.origin.code : "???";
+                                String destCode = (segmento.flight.destination != null) ? segmento.flight.destination.code : "???";
+
+                                pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segmentInfo =
+                                    new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
+                                        segmento.flight.code,
+                                        originCode,
+                                        destCode
+                                    );
+                                segments.add(segmentInfo);
                             }
                         }
                     }
                 }
             }
         }
-        
-        return flightCodes;
+
+        return segments;
     }
     
     /**

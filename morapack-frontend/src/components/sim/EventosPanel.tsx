@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plane, Package, History } from "lucide-react";
 import CancellationsTab from "@/components/events/CancellationsTab";
@@ -18,7 +18,7 @@ interface EventosPanelProps {
   onRefresh: () => void;
 }
 
-export function EventosPanel({
+export const EventosPanel = memo(function EventosPanel({
   aeropuertos,
   cancellations,
   dynamicOrders,
@@ -83,6 +83,6 @@ export function EventosPanel({
       </Tabs>
     </div>
   );
-}
+});
 
 

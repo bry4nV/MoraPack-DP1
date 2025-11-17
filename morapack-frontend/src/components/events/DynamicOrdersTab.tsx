@@ -78,8 +78,8 @@ export default function DynamicOrdersTab({
               </SelectTrigger>
               <SelectContent>
                 {aeropuertos.map((a) => (
-                  <SelectItem key={a.codigo} value={a.codigo}>
-                    {a.codigo} - {a.nombre}
+                  <SelectItem key={a.code} value={a.code}>
+                    {a.code} - {a.city}
                   </SelectItem>
                 ))}
               </SelectContent>
