@@ -295,15 +295,15 @@ export default function BulkCancellationUpload({
         </span>
       </div>
 
-      {/* Drag & Drop Zone */}
-      <div className="space-y-1.5">
+      {/* Drag & Drop Zone - Compacto */}
+      <div className="space-y-1">
         <Label className="text-xs">Cargar Archivo CSV</Label>
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={`
-            relative border-2 border-dashed rounded-lg p-4 transition-all cursor-pointer
+            relative border-2 border-dashed rounded-lg p-2.5 transition-all cursor-pointer
             ${isDragging
               ? 'border-blue-500 bg-blue-50 dark:bg-blue-950'
               : selectedFile
@@ -323,15 +323,15 @@ export default function BulkCancellationUpload({
             disabled={loading}
           />
 
-          <div className="flex flex-col items-center gap-2 text-center">
+          <div className="flex items-center gap-2">
             {selectedFile ? (
               <>
-                <File className="h-8 w-8 text-green-600" />
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                <File className="h-5 w-5 text-green-600 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-green-700 dark:text-green-400 truncate">
                     {selectedFile.name}
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[10px] text-muted-foreground">
                     {(selectedFile.size / 1024).toFixed(2)} KB
                   </p>
                 </div>
@@ -339,62 +339,60 @@ export default function BulkCancellationUpload({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="mt-1 h-7 text-xs"
+                  className="h-6 px-2 text-[10px] flex-shrink-0"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleClear();
                   }}
                   disabled={loading}
                 >
-                  <X className="h-3 w-3 mr-1" />
-                  Quitar archivo
+                  <X className="h-3 w-3" />
                 </Button>
               </>
             ) : (
               <>
-                <Upload className="h-8 w-8 text-gray-400" />
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {isDragging ? '¡Suelta el archivo aquí!' : 'Arrastra un archivo CSV aquí'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    o haz clic para seleccionar
+                <Upload className="h-5 w-5 text-gray-400 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {isDragging ? '¡Suelta aquí!' : 'Arrastra CSV o haz clic'}
                   </p>
                 </div>
-                <Badge variant="outline" className="mt-1 text-[10px]">
-                  .csv o .txt
+                <Badge variant="outline" className="text-[9px] flex-shrink-0">
+                  .csv/.txt
                 </Badge>
               </>
             )}
           </div>
         </div>
-        <div className="text-[10px] text-muted-foreground space-y-0.5">
-          <p><strong>Formato:</strong> dia,origen,destino,hora_salida</p>
-          <pre className="text-[9px] bg-slate-100 p-1 rounded">01,SPIM,SCEL,0800
-05,SKBO,SEQM,1430</pre>
-          <p className="text-[9px] italic">Con o sin encabezado. Hora: HHmm o HH:mm</p>
+        <div className="text-[9px] text-muted-foreground pl-1">
+          <strong>Formato:</strong> dia,origen,destino,hora | Ej: 01,SPIM,SCEL,0800
         </div>
       </div>
 
-      {/* Preview */}
+      {/* Preview - Solo primeras 5 filas */}
       {preview.length > 0 && (
         <Card className="border">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between mb-2">
+          <CardContent className="p-2">
+            <div className="flex items-center justify-between mb-1.5">
               <Label className="text-xs font-semibold">Vista Previa</Label>
               <Badge variant="outline" className="text-[10px]">
                 {preview.length} cancelación{preview.length !== 1 && 'es'}
               </Badge>
             </div>
-            <div className="max-h-28 overflow-y-auto space-y-1">
-              {preview.map((c, idx) => (
-                <div key={idx} className="text-xs flex items-center gap-2 p-1 bg-slate-50 rounded">
+            <div className="space-y-1">
+              {preview.slice(0, 5).map((c, idx) => (
+                <div key={idx} className="text-xs flex items-center gap-1.5 p-1 bg-slate-50 rounded">
                   <FileText className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="font-mono text-[11px] flex-1">
-                    Día {c.day}: {c.origin} → {c.destination} a las {c.time.slice(0, 2)}:{c.time.slice(2)}
+                  <span className="font-mono text-[10px] flex-1 truncate">
+                    Día {c.day}: {c.origin}→{c.destination} {c.time.slice(0, 2)}:{c.time.slice(2)}
                   </span>
                 </div>
               ))}
+              {preview.length > 5 && (
+                <div className="text-[10px] text-muted-foreground text-center py-0.5">
+                  ... y {preview.length - 5} más
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

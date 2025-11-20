@@ -9,6 +9,7 @@ import pe.edu.pucp.morapack.algos.data.providers.DatabaseDataProvider;
 import pe.edu.pucp.morapack.algos.scheduler.ScenarioConfig;
 import pe.edu.pucp.morapack.dto.websocket.SimulationState;
 import pe.edu.pucp.morapack.dto.websocket.SimulationStatusUpdate;
+import pe.edu.pucp.morapack.repository.simulation.SimOrderRepository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -37,7 +38,10 @@ public class SimulationManager {
 
     // ✅ DatabaseDataProvider for loading ALL orders from database
     private final DatabaseDataProvider databaseDataProvider;
-    
+
+    // Repository to query data availability
+    private final SimOrderRepository simOrderRepository;
+
     // Map of userId -> SimulationSession
     private final Map<String, SimulationSession> activeSessions = new ConcurrentHashMap<>();
 
@@ -49,7 +53,7 @@ public class SimulationManager {
 
     // Valid date range for simulation data
     private final LocalDate FIRST_DATA_DATE = LocalDate.of(2025, 1, 2);  // Primera fecha con datos
-    private final LocalDate LAST_DATA_DATE = LocalDate.of(2025, 1, 31);
+    private LocalDate lastDataDate;  // Dynamically loaded from database
 
     @Autowired
     public SimulationManager(
@@ -59,7 +63,8 @@ public class SimulationManager {
             OrderInjectionService orderInjectionService,
             ReplanificationService replanificationService,
             FlightStatusTracker flightStatusTracker,
-            DatabaseDataProvider databaseDataProvider) {
+            DatabaseDataProvider databaseDataProvider,
+            SimOrderRepository simOrderRepository) {
 
         this.messagingTemplate = messagingTemplate;
         this.cancellationService = cancellationService;
@@ -68,9 +73,24 @@ public class SimulationManager {
         this.replanificationService = replanificationService;
         this.flightStatusTracker = flightStatusTracker;
         this.databaseDataProvider = databaseDataProvider;
+        this.simOrderRepository = simOrderRepository;
 
-        System.out.println("[SimulationManager] ✅ Initialized with DatabaseDataProvider");
-        System.out.println("[SimulationManager] ✅ Loading ALL orders from database (not files)");
+        // Query the database to find the actual last order date
+        try {
+            this.lastDataDate = simOrderRepository.findMaxOrderDate();
+            if (this.lastDataDate == null) {
+                this.lastDataDate = LocalDate.of(2025, 1, 31); // Fallback
+                System.out.println("[SimulationManager] ⚠️  No orders found in database, using fallback date: " + this.lastDataDate);
+            } else {
+                System.out.println("[SimulationManager] ✅ Initialized with DatabaseDataProvider");
+                System.out.println("[SimulationManager] ✅ Loading ALL orders from database (not files)");
+                System.out.println("[SimulationManager] 📅 Data available from " + FIRST_DATA_DATE + " to " + this.lastDataDate);
+            }
+        } catch (Exception e) {
+            this.lastDataDate = LocalDate.of(2025, 1, 31); // Fallback
+            System.err.println("[SimulationManager] ⚠️  Error querying max order date: " + e.getMessage());
+            System.err.println("[SimulationManager] ⚠️  Using fallback date: " + this.lastDataDate);
+        }
     }
     
     /**
@@ -116,7 +136,7 @@ public class SimulationManager {
             if (scenario.getType() == ScenarioConfig.ScenarioType.COLLAPSE ||
                 scenario.getType() == ScenarioConfig.ScenarioType.DAILY) {
                 // Use max available data range
-                endTime = LAST_DATA_DATE.atTime(23, 59, 59);
+                endTime = lastDataDate.atTime(23, 59, 59);
                 System.out.println("[SimulationManager] " + scenario.getType() + " scenario: running until " +
                                  (scenario.getType() == ScenarioConfig.ScenarioType.COLLAPSE ? "collapse detected" : "stopped"));
             } else {
@@ -126,10 +146,10 @@ public class SimulationManager {
 
                 // Validate end date doesn't exceed available data
                 LocalDate endDate = endTime.toLocalDate();
-                if (endDate.isAfter(LAST_DATA_DATE)) {
+                if (endDate.isAfter(lastDataDate)) {
                     sendError(userId, String.format(
                         "Simulation would extend to %s, beyond available data (latest: %s)",
-                        endDate, LAST_DATA_DATE
+                        endDate, lastDataDate
                     ));
                     return;
                 }

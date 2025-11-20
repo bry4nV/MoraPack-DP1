@@ -31,7 +31,7 @@ import {
 
 const navItems = [
   { href: "/", label: "Inicio", icon: Home },
-  { href: "/mapa", label: "Mapa", icon: Map },
+  { href: "/mapa", label: "En vivo", icon: Map },
   { href: "/simulacion", label: "Simulación", icon: PlayCircle },
   { href: "/pedidos", label: "Mis pedidos", icon: Package },
   { href: "/aeropuertos", label: "Aeropuertos", icon: MapPin },

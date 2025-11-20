@@ -26,35 +26,40 @@ export const PedidosPanel = memo(function PedidosPanel({
   mode = "realtime",
   onSelectPedido,
 }: PedidosPanelProps) {
-  const [filtro, setFiltro] = useState<"todos" | OrderStatus>("todos");
+  const [filtro, setFiltro] = useState<OrderStatus | "todos">("PENDING");
   const [busqueda, setBusqueda] = useState("");
   const [selectedPedido, setSelectedPedido] = useState<OrderSummary | null>(null);
 
+  // Agrupar pedidos por estado
+  const pedidosPorEstado = useMemo(() => {
+    return {
+      COMPLETED: pedidos.filter(p => p.status === 'COMPLETED'),
+      IN_TRANSIT: pedidos.filter(p => p.status === 'IN_TRANSIT'),
+      PENDING: pedidos.filter(p => p.status === 'PENDING'),
+      UNASSIGNED: pedidos.filter(p => p.status === 'UNASSIGNED'),
+    };
+  }, [pedidos]);
+
+  // Seleccionar muestra representativa de pedidos (modelo Dashboard + Muestra)
+  const pedidosMostrados = useMemo(() => {
+    const completados = pedidosPorEstado.COMPLETED.slice(-5).reverse(); // 5 más recientes
+    const enTransito = pedidosPorEstado.IN_TRANSIT.slice(-10).reverse(); // 10 más recientes
+    const pendientes = pedidosPorEstado.PENDING.slice(0, 15); // 15 más antiguos (primeros)
+    const sinAsignar = pedidosPorEstado.UNASSIGNED.length <= 30
+      ? pedidosPorEstado.UNASSIGNED  // Todos si hay pocos
+      : pedidosPorEstado.UNASSIGNED.slice(0, 20); // 20 más antiguos si hay muchos
+
+    // Orden de prioridad: Sin asignar → Pendientes → En tránsito → Completados
+    return [...sinAsignar, ...pendientes, ...enTransito, ...completados];
+  }, [pedidosPorEstado]);
+
+  // Aplicar filtro de tabs a la muestra
   const pedidosFiltrados = useMemo(() => {
-    let filtered = pedidos;
-
-    // Filtrar por estado
-    if (filtro !== "todos") {
-      filtered = filtered.filter((p) => p.status === filtro);
+    if (filtro === "todos") {
+      return pedidosMostrados;
     }
-
-    // Búsqueda por código, origen o destino (temporalmente deshabilitado)
-    /*
-    if (busqueda) {
-      const search = busqueda.toLowerCase();
-      filtered = filtered.filter(
-        (p) =>
-          p.code.toLowerCase().includes(search) ||
-          p.originName.toLowerCase().includes(search) ||
-          p.destinationName.toLowerCase().includes(search) ||
-          p.originCode.toLowerCase().includes(search) ||
-          p.destinationCode.toLowerCase().includes(search)
-      );
-    }
-    */
-
-    return filtered;
-  }, [pedidos, filtro]);
+    return pedidosMostrados.filter((p) => p.status === filtro);
+  }, [pedidosMostrados, filtro]);
 
   // Recalcular métricas basadas en pedidos visibles (filtrados por tiempo)
   const metricasAjustadas = useMemo(() => {
@@ -95,27 +100,38 @@ export const PedidosPanel = memo(function PedidosPanel({
         </div>
 
         {metricasAjustadas && (
-          <div className="grid grid-cols-4 gap-1.5 text-xs">
-            <MetricBadge
-              label="Total"
-              value={metricasAjustadas.totalOrders}
-              color="slate"
-            />
-            <MetricBadge
-              label="Pendientes"
-              value={metricasAjustadas.pending}
-              color="yellow"
-            />
-            <MetricBadge
-              label="En tránsito"
-              value={metricasAjustadas.inTransit}
-              color="blue"
-            />
-            <MetricBadge
-              label="Completados"
-              value={metricasAjustadas.completed}
-              color="green"
-            />
+          <div className="space-y-1.5">
+            <div className="grid grid-cols-4 gap-1.5 text-xs">
+              <MetricBadge
+                label="Total"
+                value={metricasAjustadas.totalOrders}
+                color="slate"
+              />
+              <MetricBadge
+                label="Pendientes"
+                value={metricasAjustadas.pending}
+                color="yellow"
+              />
+              <MetricBadge
+                label="En tránsito"
+                value={metricasAjustadas.inTransit}
+                color="blue"
+              />
+              <MetricBadge
+                label="Completados"
+                value={metricasAjustadas.completed}
+                color="green"
+              />
+            </div>
+            {metricasAjustadas.unassigned > 0 && (
+              <div className="grid grid-cols-1">
+                <MetricBadge
+                  label="⚠️ Sin Asignar (Crítico)"
+                  value={metricasAjustadas.unassigned}
+                  color="red"
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -155,10 +171,7 @@ export const PedidosPanel = memo(function PedidosPanel({
           onValueChange={(value: string) => setFiltro(value as any)}
           className="w-full"
         >
-          <TabsList className="grid w-full grid-cols-5 h-8">
-            <TabsTrigger value="todos" className="text-xs">
-              Todos
-            </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-4 h-8">
             <TabsTrigger value="PENDING" className="text-xs">
               Pend.
             </TabsTrigger>
@@ -168,8 +181,23 @@ export const PedidosPanel = memo(function PedidosPanel({
             <TabsTrigger value="COMPLETED" className="text-xs">
               Comp.
             </TabsTrigger>
+            <TabsTrigger value="UNASSIGNED" className="text-xs">
+              Sin Asig.
+            </TabsTrigger>
           </TabsList>
         </Tabs>
+
+        {/* Info contextual según el filtro */}
+        {mode === "realtime" && pedidos.length > 50 && (
+          <div className="mt-2 px-2 py-1 bg-slate-100 rounded text-center">
+            <p className="text-[10px] text-slate-600">
+              {filtro === "PENDING" && "Mostrando 15 más antiguos"}
+              {filtro === "IN_TRANSIT" && "Mostrando 10 más recientes"}
+              {filtro === "COMPLETED" && "Mostrando 5 más recientes"}
+              {filtro === "UNASSIGNED" && (pedidosPorEstado.UNASSIGNED.length <= 30 ? "Mostrando todos" : "Mostrando 20 más antiguos")}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Lista de pedidos (scrolleable) */}
@@ -212,13 +240,14 @@ function MetricBadge({
 }: {
   label: string;
   value: number;
-  color: "slate" | "yellow" | "blue" | "green";
+  color: "slate" | "yellow" | "blue" | "green" | "red";
 }) {
   const bgColors = {
     slate: "bg-slate-100 text-slate-800",
     yellow: "bg-yellow-100 text-yellow-800",
     blue: "bg-blue-100 text-blue-800",
     green: "bg-green-100 text-green-800",
+    red: "bg-red-100 text-red-800",
   };
 
   return (

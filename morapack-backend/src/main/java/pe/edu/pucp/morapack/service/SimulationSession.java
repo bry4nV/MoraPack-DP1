@@ -225,6 +225,11 @@ public class SimulationSession implements Runnable {
             if (checkForCollapse()) {
                 System.out.println("\n🚨 [SimulationSession] " + sessionId + " - COLLAPSE DETECTED!");
                 System.out.println("   Reason: " + collapseReason);
+
+                // Send COLLAPSED state to frontend
+                state.set(SimulationState.COLLAPSED);
+                sendStatusUpdate(SimulationStatusUpdate.collapsed(collapseReason, iterationCount));
+
                 break; // Exit simulation loop
             }
 
@@ -888,15 +893,23 @@ public class SimulationSession implements Runnable {
      * because isDeliveredOnTime() checks the shipments field, which would otherwise be empty.
      */
     private void populateShipmentsForDeliveryMetrics() {
-        if (lastSolution == null || lastSolution.getPlannerShipments() == null) {
+        System.out.println("\n🔧 [POPULATE SHIPMENTS] Starting...");
+
+        // ✅ FIX: Use allShipments (accumulated from ALL iterations) instead of lastSolution (only last iteration)
+        if (allShipments == null || allShipments.isEmpty()) {
+            System.out.println("   ⚠️ allShipments is NULL or empty - cannot populate shipments");
             return;
         }
+
+        int totalPlannerShipments = allShipments.size();
+        System.out.println("   📦 Total PlannerShipments in allShipments: " + totalPlannerShipments);
+        System.out.println("   📋 Total PlannerOrders in allProcessedOrdersMap: " + allProcessedOrdersMap.size());
 
         // Group PlannerShipments by order ID
         java.util.Map<Integer, java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment>> shipmentsByOrder =
             new java.util.HashMap<>();
 
-        for (pe.edu.pucp.morapack.algos.entities.PlannerShipment plannerShipment : lastSolution.getPlannerShipments()) {
+        for (pe.edu.pucp.morapack.algos.entities.PlannerShipment plannerShipment : allShipments) {
             if (plannerShipment.getOrder() != null) {
                 int orderId = plannerShipment.getOrder().getId();
                 shipmentsByOrder.computeIfAbsent(orderId, k -> new java.util.ArrayList<>())
@@ -904,7 +917,14 @@ public class SimulationSession implements Runnable {
             }
         }
 
+        System.out.println("   📊 PlannerShipments grouped by order: " + shipmentsByOrder.size() + " orders have shipments");
+
         // Convert PlannerShipments to Shipments and assign to PlannerOrders
+        int ordersPopulated = 0;
+        int shipmentsCreated = 0;
+        int shipmentsWithArrival = 0;
+        int shipmentsWithoutArrival = 0;
+
         for (java.util.Map.Entry<Integer, java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment>> entry :
                 shipmentsByOrder.entrySet()) {
             int orderId = entry.getKey();
@@ -924,15 +944,26 @@ public class SimulationSession implements Runnable {
                     java.time.LocalDateTime finalArrival = plannerShipment.getFinalArrivalTime();
                     if (finalArrival != null) {
                         shipment.setEstimatedArrival(finalArrival);
+                        shipmentsWithArrival++;
+                    } else {
+                        shipmentsWithoutArrival++;
                     }
 
                     shipments.add(shipment);
+                    shipmentsCreated++;
                 }
 
                 // Assign shipments to the order
                 order.setShipments(shipments);
+                ordersPopulated++;
             }
         }
+
+        System.out.println("   ✅ Shipments populated:");
+        System.out.println("      - Orders updated: " + ordersPopulated);
+        System.out.println("      - Shipments created: " + shipmentsCreated);
+        System.out.println("      - With arrival time: " + shipmentsWithArrival);
+        System.out.println("      - WITHOUT arrival time: " + shipmentsWithoutArrival + (shipmentsWithoutArrival > 0 ? " ⚠️" : ""));
     }
 
     /**
@@ -1102,6 +1133,32 @@ public class SimulationSession implements Runnable {
             System.out.println("   CRITICAL: Low product assignment (" + String.format("%.1f%%", productAssignmentRate) + ")");
         }
         
+        // 🆕 DEBUG SUMMARY: Count orders with/without arrival times
+        long ordersWithArrival = 0;
+        long ordersWithoutArrival = 0;
+        for (PlannerOrder order : allProcessedOrdersMap.values()) {
+            if (!order.getShipments().isEmpty()) {
+                boolean hasArrival = order.getShipments().stream()
+                    .anyMatch(s -> s.getEstimatedArrival() != null);
+                if (hasArrival) {
+                    ordersWithArrival++;
+                } else {
+                    ordersWithoutArrival++;
+                }
+            }
+        }
+
+        System.out.println("\n🔍 DEBUG SUMMARY - Arrival Time Analysis:");
+        System.out.println("   Orders WITH shipments: " + (ordersWithArrival + ordersWithoutArrival));
+        System.out.println("   ├─ With arrival time: " + ordersWithArrival);
+        System.out.println("   └─ WITHOUT arrival time: " + ordersWithoutArrival + " ⚠️");
+        System.out.println("   On-time deliveries: " + onTimeDeliveries);
+        System.out.println("   Late deliveries: " + lateDeliveries);
+        if (ordersWithoutArrival > 0) {
+            System.out.println("\n   ⚠️ WARNING: " + ordersWithoutArrival + " orders have shipments but NO arrival time!");
+            System.out.println("   This may cause incorrect 'Late' classification.");
+        }
+
         System.out.println("\n" + "=".repeat(80));
         System.out.println("=== END OF SIMULATION METRICS ===");
         System.out.println("=".repeat(80) + "\n");

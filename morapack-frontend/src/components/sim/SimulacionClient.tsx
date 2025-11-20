@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Itinerario } from "@/types/simulation/itinerary.types";
 import type { Aeropuerto } from "@/types/aeropuerto";
 import type { OrderSummary, OrderMetrics } from "@/types/simulation/order-summary.types";
@@ -27,7 +28,7 @@ import type { FinalReport } from "@/types/simulation/final-report.types";
 import { getFinalReport } from "@/lib/final-report-api";
 import { dmsToDecimal } from "@/lib/geo";
 
-type SimulationState = 'IDLE' | 'STARTING' | 'RUNNING' | 'PAUSED' | 'STOPPED' | 'COMPLETED' | 'ERROR';
+type SimulationState = 'IDLE' | 'STARTING' | 'RUNNING' | 'PAUSED' | 'STOPPED' | 'COMPLETED' | 'COLLAPSED' | 'ERROR';
 type ScenarioType = 'WEEKLY' | 'DAILY' | 'COLLAPSE';
 
 interface SimulacionClientProps {
@@ -76,6 +77,10 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
   // Final report modal
   const [showFinalReport, setShowFinalReport] = useState(false);
   const [finalReport, setFinalReport] = useState<FinalReport | null>(null);
+
+  // Collapse alert modal
+  const [showCollapseAlert, setShowCollapseAlert] = useState(false);
+  const [collapseReason, setCollapseReason] = useState<string>("");
 
   // Share functionality
   const [urlCopied, setUrlCopied] = useState(false);
@@ -200,6 +205,22 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                     .then((report) => {
                       setFinalReport(report);
                       setShowFinalReport(true);
+                    })
+                    .catch((error) => {
+                      console.error("Error fetching final report:", error);
+                    });
+                }
+              }
+
+              // Handle collapse detection
+              if (update.state === "COLLAPSED") {
+                setCollapseReason(update.errorMessage || "Sistema colapsado");
+                setShowCollapseAlert(true);
+                // Also fetch final report for COLLAPSE scenario
+                if (sharedSessionId) {
+                  getFinalReport(sharedSessionId)
+                    .then((report) => {
+                      setFinalReport(report);
                     })
                     .catch((error) => {
                       console.error("Error fetching final report:", error);
@@ -388,6 +409,22 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                         .then((report) => {
                           setFinalReport(report);
                           setShowFinalReport(true);
+                        })
+                        .catch((error) => {
+                          console.error("Error fetching final report:", error);
+                        });
+                    }
+                  }
+
+                  // Handle collapse detection
+                  if (update.state === "COLLAPSED") {
+                    setCollapseReason(update.errorMessage || "Sistema colapsado");
+                    setShowCollapseAlert(true);
+                    // Also fetch final report for COLLAPSE scenario
+                    if (sessionId) {
+                      getFinalReport(sessionId)
+                        .then((report) => {
+                          setFinalReport(report);
                         })
                         .catch((error) => {
                           console.error("Error fetching final report:", error);
@@ -983,11 +1020,12 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
           <Badge variant={
             simulationState === 'RUNNING' ? 'default' :
             simulationState === 'COMPLETED' ? 'outline' :
+            simulationState === 'COLLAPSED' ? 'destructive' :
             simulationState === 'ERROR' ? 'destructive' : 'secondary'
           } className={`text-xs px-2.5 py-1 shadow-lg backdrop-blur ${
             simulationState === 'RUNNING' ? '' : 'bg-white/95'
           }`}>
-            {simulationState}
+            {simulationState === 'COLLAPSED' ? 'COLAPSO' : simulationState}
           </Badge>
 
           {/* Iteraciones */}
@@ -1103,6 +1141,52 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
       </div>
 
       {/* Final Report Modal */}
+      {/* Collapse Alert Modal */}
+      <Dialog open={showCollapseAlert} onOpenChange={setShowCollapseAlert}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              Sistema Colapsado
+            </DialogTitle>
+            <DialogDescription className="pt-4 space-y-3">
+              <p className="text-base">
+                La simulación ha detectado un colapso del sistema logístico.
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                <p className="text-sm text-red-800 font-medium">
+                  {collapseReason}
+                </p>
+              </div>
+              <p className="text-sm text-gray-600">
+                El sistema ya no puede asignar pedidos debido a limitaciones de capacidad o tiempo.
+                Revisa el reporte final para analizar las métricas y causas del colapso.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowCollapseAlert(false)}
+            >
+              Cerrar
+            </Button>
+            <Button
+              onClick={() => {
+                setShowCollapseAlert(false);
+                if (finalReport) {
+                  setShowFinalReport(true);
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Ver Reporte Final
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ReporteFinalModal
         open={showFinalReport}
         onOpenChange={setShowFinalReport}

@@ -108,21 +108,13 @@ export function ReporteFinalModal({ open, onOpenChange, report }: ReporteFinalMo
                   <p className="font-medium">{report.scenarioType}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Valor K</p>
-                  <p className="font-medium">{report.k}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Ventana de Tiempo (Sc)</p>
-                  <p className="font-medium">{report.scMinutes} minutos</p>
-                </div>
-                <div>
                   <p className="text-sm text-muted-foreground">Total Iteraciones</p>
                   <p className="font-medium">{report.totalIterations}</p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-sm text-muted-foreground">Período de Simulación</p>
                   <p className="font-medium">
-                    {report.startTime} → {report.endTime}
+                    {report.startTime} → {report.scenarioType === 'COLLAPSE' && report.collapseDetected ? 'Indefinido (hasta colapso)' : report.endTime}
                   </p>
                 </div>
               </div>
