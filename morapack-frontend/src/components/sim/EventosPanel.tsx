@@ -9,12 +9,14 @@ interface EventosPanelProps {
   cancellations: FlightCancellation[];
   onCancellationCreated: (c: FlightCancellation) => void;
   onRefresh: () => void;
+  currentSimulationTime?: string;
 }
 
 export const EventosPanel = memo(function EventosPanel({
   cancellations,
   onCancellationCreated,
   onRefresh,
+  currentSimulationTime,
 }: EventosPanelProps) {
   return (
     <div className="h-full flex flex-col bg-white">
@@ -32,6 +34,7 @@ export const EventosPanel = memo(function EventosPanel({
           cancellations={cancellations}
           onCancellationCreated={onCancellationCreated}
           onRefresh={onRefresh}
+          currentSimulationTime={currentSimulationTime}
         />
       </div>
     </div>

@@ -58,4 +58,20 @@ public interface SimFlightRepository extends JpaRepository<SimFlight, Long> {
         @Param("startDate") LocalDate startDate,
         @Param("endDate") LocalDate endDate
     );
+
+    /**
+     * Find a specific flight by origin, destination, date, and departure time.
+     * Used for cancellations to verify if flight exists in database.
+     */
+    @Query("SELECT f FROM SimFlight f WHERE " +
+           "f.airportOriginCode = :origin " +
+           "AND f.airportDestinationCode = :destination " +
+           "AND f.flightDate = :flightDate " +
+           "AND f.departureTime = :departureTime")
+    SimFlight findFlightByRouteAndTime(
+        @Param("origin") String origin,
+        @Param("destination") String destination,
+        @Param("flightDate") LocalDate flightDate,
+        @Param("departureTime") java.time.LocalTime departureTime
+    );
 }

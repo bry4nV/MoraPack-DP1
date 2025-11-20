@@ -9,13 +9,18 @@
 
 export interface FlightCancellation {
   id: string;
+  type?: string;                          // "SCHEDULED" | "MANUAL"
+  status: 'PENDING' | 'EXECUTED' | 'FAILED' | 'CANCELLED';
   flightOrigin: string;
   flightDestination: string;
   scheduledDepartureTime: string;         // HH:mm format (e.g., "03:34")
+  flightIdentifier?: string;              // "ORIGIN-DEST-HH:mm"
   cancellationTime: string | null;        // Full ISO datetime when cancellation happens
+  executedTime?: string | null;           // Full ISO datetime when cancellation was executed
   reason: string;
-  status: 'PENDING' | 'EXECUTED';
   affectedProductsCount?: number;         // Number of products affected (only when EXECUTED)
+  replanificationTriggered?: boolean;     // Whether replanification was triggered
+  errorMessage?: string | null;           // Error message if failed
 }
 
 export interface CancelFlightRequest {

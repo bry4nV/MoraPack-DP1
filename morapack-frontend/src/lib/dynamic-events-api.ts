@@ -86,6 +86,12 @@ export async function getCancellations(): Promise<FlightCancellation[]> {
     }
 
     const data: CancellationsListResponse = await response.json();
+
+    // 🔍 DEBUG: Log raw data from backend
+    console.log('🔍 [DEBUG] Raw cancellations from backend:', data.cancellations);
+    console.log('🔍 [DEBUG] First cancellation status:', data.cancellations?.[0]?.status);
+    console.log('🔍 [DEBUG] First cancellation full object:', JSON.stringify(data.cancellations?.[0], null, 2));
+
     return data.cancellations || [];
   } catch (error) {
     console.error('Error fetching cancellations:', error);

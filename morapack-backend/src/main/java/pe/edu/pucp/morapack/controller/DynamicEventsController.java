@@ -386,12 +386,18 @@ public class DynamicEventsController {
     private FlightCancellationDTO toCancellationDTO(FlightCancellation c) {
         FlightCancellationDTO dto = new FlightCancellationDTO();
         dto.setId(c.getId());
+        dto.setType(c.getType() != null ? c.getType().name() : null);
+        dto.setStatus(c.getStatus().name());
         dto.setFlightOrigin(c.getFlightOrigin());
         dto.setFlightDestination(c.getFlightDestination());
         dto.setScheduledDepartureTime(c.getScheduledDepartureTime());
+        dto.setFlightIdentifier(c.getFlightIdentifier());
         dto.setCancellationTime(c.getCancellationTime() != null ? c.getCancellationTime().toString() : null);
+        dto.setExecutedTime(c.getExecutedTime() != null ? c.getExecutedTime().toString() : null);
         dto.setReason(c.getReason());
-        dto.setStatus(c.getStatus().name());
+        dto.setAffectedProductsCount(c.getAffectedProductsCount());
+        dto.setReplanificationTriggered(c.isReplanificationTriggered());
+        dto.setErrorMessage(c.getErrorMessage());
         return dto;
     }
     
@@ -429,6 +435,7 @@ public class DynamicEventsController {
             List<Map<String, Object>> cancellationsData =
                 (List<Map<String, Object>>) request.get("cancellations");
             String startDateStr = (String) request.get("startDate");
+            String currentSimTimeStr = (String) request.get("currentSimulationTime");
 
             if (cancellationsData == null || cancellationsData.isEmpty()) {
                 Map<String, Object> error = new HashMap<>();
@@ -446,25 +453,46 @@ public class DynamicEventsController {
                 String destination = (String) cancData.get("destination");
                 String departureTime = (String) cancData.get("departureTime"); // HHmm format
 
-                // Parse start date and add the day
-                LocalDateTime scheduledDate = LocalDateTime.parse(startDateStr + "T00:00:00")
-                    .plusDays(day - 1); // day is 1-based
-
-                // Add hours and minutes from departureTime (HHmm)
+                // Parse flight departure time (used to IDENTIFY the flight to cancel)
                 int hours = Integer.parseInt(departureTime.substring(0, 2));
                 int minutes = Integer.parseInt(departureTime.substring(2, 4));
-                scheduledDate = scheduledDate.withHour(hours).withMinute(minutes);
-
-                // Format time as HH:mm
                 String scheduledTimeStr = String.format("%02d:%02d", hours, minutes);
 
+                // ⚠️ DYNAMIC CANCELLATION TIMING (supports live loading during simulation):
+                // Determine cancellation time based on whether simulation is running
+                LocalDateTime cancellationTime;
+
+                // Log what we received (only once per batch)
+                if (successCount == 0) {
+                    System.out.println("🔍 [Bulk Upload] currentSimTimeStr received: '" + currentSimTimeStr + "'");
+                }
+
+                if (currentSimTimeStr != null && !currentSimTimeStr.isEmpty()) {
+                    // SCENARIO: Loaded DURING simulation (live)
+                    // Use current simulation time so cancellation processes in next iteration
+                    cancellationTime = LocalDateTime.parse(currentSimTimeStr);
+                    System.out.println(String.format("✅ [Live] Cancelación inmediata: %s → %s @ %s (simTime: %s)",
+                        origin, destination, scheduledTimeStr, cancellationTime));
+                } else {
+                    // SCENARIO: Loaded BEFORE simulation starts (pre-loaded)
+                    // Schedule for 00:00 of the specified day
+                    cancellationTime = LocalDateTime.parse(startDateStr + "T00:00:00")
+                        .plusDays(day - 1); // day is 1-based
+                    System.out.println(String.format("📅 [Pre-loaded] Día %d: %s → %s @ %s (programado: %s)",
+                        day, origin, destination, scheduledTimeStr, cancellationTime));
+                }
+
+                // The system checks: if (cancellationTime <= currentTime) → Execute
+                // Flight will only cancel if status is ON_GROUND_ORIGIN (verified in CancellationService)
+
                 // Create scheduled cancellation using constructor
+                // Note: Flight will only cancel if it's still on ground (ON_GROUND_ORIGIN)
                 FlightCancellation cancellation = new FlightCancellation(
                     origin,
                     destination,
                     scheduledTimeStr,
-                    scheduledDate,
-                    "Bulk cancellation upload"
+                    cancellationTime,
+                    String.format("Cancelación programada día %d", day)
                 );
 
                 bulkCancellations.add(cancellation);
