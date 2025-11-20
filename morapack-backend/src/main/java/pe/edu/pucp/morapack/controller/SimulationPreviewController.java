@@ -4,9 +4,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import pe.edu.pucp.morapack.algos.scheduler.ScenarioConfig;
 import pe.edu.pucp.morapack.dto.simulation.SimulationPreviewResponse;
+import pe.edu.pucp.morapack.dto.simulation.FinalReportDTO;
 import pe.edu.pucp.morapack.service.SimulationDataService;
+import pe.edu.pucp.morapack.service.SimulationManager;
+import pe.edu.pucp.morapack.service.SimulationSession;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * REST controller for simulation preview functionality.
@@ -16,11 +22,15 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/simulation")
 public class SimulationPreviewController {
-    
+
     private final SimulationDataService dataService;
-    
-    public SimulationPreviewController(SimulationDataService dataService) {
+    private final SimulationManager simulationManager;
+
+    public SimulationPreviewController(
+            SimulationDataService dataService,
+            SimulationManager simulationManager) {
         this.dataService = dataService;
+        this.simulationManager = simulationManager;
     }
     
     /**
@@ -79,7 +89,7 @@ public class SimulationPreviewController {
     
     /**
      * Clear the data cache (useful for development/testing).
-     * 
+     *
      * POST /api/simulation/clear-cache
      */
     @PostMapping("/clear-cache")
@@ -92,7 +102,81 @@ public class SimulationPreviewController {
                 .body("{\"error\": \"" + e.getMessage() + "\"}");
         }
     }
-    
+
+    /**
+     * Obtener información de todos los vuelos con su estado actual y cancelación.
+     *
+     * GET /api/simulation/{userId}/flights
+     *
+     * Returns:
+     * - Lista de vuelos con estado (ON_GROUND_ORIGIN, IN_AIR, ON_GROUND_DESTINATION)
+     * - Indicador de si el vuelo está cancelado
+     * - Información de salida y llegada
+     */
+    @GetMapping("/{userId}/flights")
+    public ResponseEntity<Map<String, Object>> getFlightsStatus(@PathVariable String userId) {
+        try {
+            // Try to find session by userId first, then by sessionId (for shared sessions)
+            SimulationSession session = simulationManager.getSession(userId);
+
+            if (session == null) {
+                // If not found by userId, try by sessionId (UUID)
+                session = simulationManager.getSessionBySessionId(userId);
+            }
+
+            if (session == null) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "No active simulation found for: " + userId);
+                return ResponseEntity.badRequest().body(error);
+            }
+
+            List<Map<String, Object>> flights = session.getFlightStatusesWithCancellation();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("count", flights.size());
+            response.put("flights", flights);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "Error getting flights: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    /**
+     * Get final simulation report with all metrics.
+     * This endpoint is called when the simulation finishes or when the user requests a summary.
+     */
+    @GetMapping("/{userId}/final-report")
+    public ResponseEntity<FinalReportDTO> getFinalReport(@PathVariable String userId) {
+        try {
+            // Try to find session by userId first, then by sessionId (for shared sessions)
+            SimulationSession session = simulationManager.getSession(userId);
+
+            if (session == null) {
+                // If not found by userId, try by sessionId (UUID)
+                session = simulationManager.getSessionBySessionId(userId);
+            }
+
+            if (session == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            FinalReportDTO report = session.getFinalReport();
+            return ResponseEntity.ok(report);
+
+        } catch (Exception e) {
+            System.err.println("[SimulationPreviewController] Error getting final report: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     /**
      * Helper to create ScenarioConfig from request parameters.
      */

@@ -102,18 +102,6 @@ export default function DynamicOrdersTab({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="reason" className="text-xs">Razon (opcional)</Label>
-            <Textarea
-              id="reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Ej: Pedido urgente"
-              className="text-sm resize-none"
-              rows={2}
-            />
-          </div>
-
           {error && (
             <div className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
               {error}

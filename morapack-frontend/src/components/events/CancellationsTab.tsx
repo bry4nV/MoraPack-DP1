@@ -1,212 +1,165 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { Plane, MapPin, Target, Clock, AlertCircle } from "lucide-react";
-import { cancelFlight } from "@/lib/dynamic-events-api";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plane, Clock, AlertCircle, FileText, CheckCircle, Upload, List } from "lucide-react";
+import BulkCancellationUpload from "@/components/events/BulkCancellationUpload";
 import type { FlightCancellation } from "@/types/simulation/events.types";
-import type { Aeropuerto } from "@/types";
 
 interface CancellationsTabProps {
-  aeropuertos: Aeropuerto[];
   cancellations: FlightCancellation[];
   onCancellationCreated: (c: FlightCancellation) => void;
   onRefresh: () => void;
 }
 
 export default function CancellationsTab({
-  aeropuertos,
   cancellations,
   onCancellationCreated,
   onRefresh,
 }: CancellationsTabProps) {
-  const [origin, setOrigin] = useState("");
-  const [destination, setDestination] = useState("");
-  const [departureTime, setDepartureTime] = useState("");
-  const [reason, setReason] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("upload");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(false);
-    setLoading(true);
-
-    try {
-      const result = await cancelFlight({
-        flightOrigin: origin,
-        flightDestination: destination,
-        scheduledDepartureTime: departureTime,
-        reason: reason || "Manual cancellation",
-      });
-
-      if (result.success && result.cancellation) {
-        onCancellationCreated(result.cancellation);
-        setSuccess(true);
-        // Reset form
-        setOrigin("");
-        setDestination("");
-        setDepartureTime("");
-        setReason("");
-        // Refresh list
-        setTimeout(() => onRefresh(), 500);
-      } else {
-        setError(result.message);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Separar cancelaciones por estado
+  const pendingCancellations = cancellations.filter(c => c.status === "PENDING");
+  const executedCancellations = cancellations.filter(c => c.status === "EXECUTED");
 
   return (
     <div className="h-full flex flex-col">
-      {/* Form Section */}
-      <div className="p-3 border-b">
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="origin" className="text-xs">Origen</Label>
-            <Select value={origin} onValueChange={setOrigin} required>
-              <SelectTrigger id="origin" className="h-9 text-sm">
-                <SelectValue placeholder="Seleccionar aeropuerto" />
-              </SelectTrigger>
-              <SelectContent>
-                {aeropuertos.map((a) => (
-                  <SelectItem key={a.code} value={a.code}>
-                    {a.code} - {a.city}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+        <TabsList className="grid w-full grid-cols-2 mx-3 mt-3">
+          <TabsTrigger value="upload" className="text-sm">
+            <Upload className="h-4 w-4 mr-2" />
+            Cargar CSV
+          </TabsTrigger>
+          <TabsTrigger value="list" className="text-sm">
+            <List className="h-4 w-4 mr-2" />
+            Ver Cancelaciones
+            {cancellations.length > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">
+                {cancellations.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="destination" className="text-xs">Destino</Label>
-            <Select value={destination} onValueChange={setDestination} required>
-              <SelectTrigger id="destination" className="h-9 text-sm">
-                <SelectValue placeholder="Seleccionar aeropuerto" />
-              </SelectTrigger>
-              <SelectContent>
-                {aeropuertos.map((a) => (
-                  <SelectItem key={a.code} value={a.code}>
-                    {a.code} - {a.city}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <TabsContent value="upload" className="flex-1 overflow-y-auto p-3 m-0">
+          <BulkCancellationUpload onCancellationsUploaded={onRefresh} />
+        </TabsContent>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="departureTime" className="text-xs">Hora de Salida Programada</Label>
-            <Input
-              id="departureTime"
-              type="datetime-local"
-              value={departureTime}
-              onChange={(e) => setDepartureTime(e.target.value)}
-              className="h-9 text-sm"
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="reason" className="text-xs">Razon (opcional)</Label>
-            <Textarea
-              id="reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Ej: Mantenimiento programado"
-              className="text-sm resize-none"
-              rows={2}
-            />
-          </div>
-
-          {error && (
-            <div className="text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200">
-              {error}
+        <TabsContent value="list" className="flex-1 overflow-y-auto p-3 space-y-4 m-0">
+        {/* Cancelaciones Programadas */}
+        {pendingCancellations.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold flex items-center gap-2">
+                <Clock className="h-4 w-4 text-yellow-600" />
+                Programadas ({pendingCancellations.length})
+              </h4>
             </div>
-          )}
-
-          {success && (
-            <div className="text-xs text-green-600 bg-green-50 p-2 rounded border border-green-200">
-              Vuelo cancelado exitosamente
+            <div className="space-y-2">
+              {pendingCancellations.map((cancellation) => (
+                <CancellationCard key={cancellation.id} cancellation={cancellation} />
+              ))}
             </div>
-          )}
-
-          <Button
-            type="submit"
-            disabled={loading || !origin || !destination || !departureTime}
-            className="w-full h-9 text-sm"
-          >
-            {loading ? "Cancelando..." : "Cancelar Vuelo"}
-          </Button>
-        </form>
-      </div>
-
-      {/* List Section */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-semibold">Cancelaciones ({cancellations.length})</h4>
-        </div>
-
-        {cancellations.length === 0 && (
-          <div className="text-center text-gray-400 py-8 text-sm">
-            No hay cancelaciones
           </div>
         )}
 
-        {cancellations.map((cancellation) => (
-          <CancellationCard key={cancellation.id} cancellation={cancellation} />
-        ))}
-      </div>
+        {/* Cancelaciones Ejecutadas */}
+        {executedCancellations.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                Ejecutadas ({executedCancellations.length})
+              </h4>
+            </div>
+            <div className="space-y-2">
+              {executedCancellations.map((cancellation) => (
+                <CancellationCard key={cancellation.id} cancellation={cancellation} />
+              ))}
+            </div>
+          </div>
+        )}
+
+          {/* Empty state */}
+          {cancellations.length === 0 && (
+            <div className="text-center text-gray-400 py-12 text-sm">
+              <Plane className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No hay cancelaciones</p>
+              <p className="text-xs mt-1">Carga un archivo CSV para programar cancelaciones</p>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
 
 function CancellationCard({ cancellation }: { cancellation: FlightCancellation }) {
+  const isPending = cancellation.status === "PENDING";
+
   const statusConfig = {
     PENDING: {
       color: "bg-yellow-100 text-yellow-800 border-yellow-300",
-      label: "Pendiente",
+      label: "Programada",
+      icon: Clock,
     },
     EXECUTED: {
-      color: "bg-red-100 text-red-800 border-red-300",
+      color: "bg-green-100 text-green-800 border-green-300",
       label: "Ejecutada",
+      icon: CheckCircle,
     },
   };
 
   const config = statusConfig[cancellation.status];
+  const StatusIcon = config.icon;
 
   return (
     <Card className="border">
       <CardContent className="p-3 space-y-2">
+        {/* Header: Ruta + Estado */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            <Plane className="h-3 w-3" />
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Plane className="h-3.5 w-3.5 text-muted-foreground" />
             <span>{cancellation.flightOrigin} → {cancellation.flightDestination}</span>
           </div>
-          <Badge className={`text-[10px] px-2 py-0.5 ${config.color}`}>
+          <Badge className={`text-[10px] px-2 py-0.5 ${config.color} flex items-center gap-1`}>
+            <StatusIcon className="h-3 w-3" />
             {config.label}
           </Badge>
         </div>
 
+        {/* Detalles */}
         <div className="text-xs text-muted-foreground space-y-1">
           <div className="flex items-center gap-2">
             <Clock className="h-3 w-3" />
-            <span>Salida: {new Date(cancellation.scheduledDepartureTime).toLocaleString('es-ES')}</span>
+            {cancellation.cancellationTime ? (
+              <span>Programado: {new Date(cancellation.cancellationTime).toLocaleString('es-ES', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })} (hora vuelo: {cancellation.scheduledDepartureTime})</span>
+            ) : (
+              <span>Hora vuelo: {cancellation.scheduledDepartureTime}</span>
+            )}
           </div>
+
           {cancellation.reason && (
             <div className="flex items-start gap-2">
               <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
-              <span>{cancellation.reason}</span>
+              <span className="line-clamp-2">{cancellation.reason}</span>
+            </div>
+          )}
+
+          {/* Productos afectados (si ya se ejecutó) */}
+          {cancellation.status === "EXECUTED" && cancellation.affectedProductsCount && cancellation.affectedProductsCount > 0 && (
+            <div className="flex items-center gap-2 text-orange-700 bg-orange-50 p-1.5 rounded mt-1">
+              <FileText className="h-3 w-3" />
+              <span className="font-medium">{cancellation.affectedProductsCount} productos reasignados</span>
             </div>
           )}
         </div>
@@ -214,5 +167,3 @@ function CancellationCard({ cancellation }: { cancellation: FlightCancellation }
     </Card>
   );
 }
-
-

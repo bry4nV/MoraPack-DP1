@@ -10,7 +10,6 @@ import pe.edu.pucp.morapack.algos.entities.PlannerFlight;
 import pe.edu.pucp.morapack.algos.entities.PlannerOrder;
 import pe.edu.pucp.morapack.algos.entities.PlannerShipment;
 import pe.edu.pucp.morapack.algos.utils.RouteOption;
-import pe.edu.pucp.morapack.algos.utils.AirportStorageManager;
 import pe.edu.pucp.morapack.algos.algorithm.tabu.moves.*;
 
 import java.util.*;
@@ -164,8 +163,8 @@ public class TabuSearchPlanner implements IOptimizer {
     private void initializeTabuSearchComponents() {
         this.config = new TabuSearchConfig(
             20,     // tabuListSize inicial (se adapta dinámicamente)
-            250,    // maxIterations (reducido porque ahora hay 168 iteraciones vs 84)
-            42,     // maxIterationsWithoutImprovement (ajustado proporcionalmente)
+            500,    // maxIterations (aumentado para mejor exploración)
+            80,     // maxIterationsWithoutImprovement
             70,     // directRouteProbability
             25,     // oneStopRouteProbability
             1000,   // bottleneckCapacity
@@ -216,40 +215,13 @@ public class TabuSearchPlanner implements IOptimizer {
                         break;
                     }
                 }
-                // Otherwise pick a flight from the same origin that goes to the correct destination
+                // Otherwise pick a flight from the same origin or any flight as last resort
                 if (chosen == null) {
                     for (PlannerFlight f : flights) {
-                        // Must match both origin AND destination
-                        if (f.getOrigin().equals(firstOrder.getOrigin()) && 
-                            f.getDestination().equals(firstOrder.getDestination())) { 
-                            chosen = f; 
-                            break; 
-                        }
+                        if (f.getOrigin().equals(firstOrder.getOrigin())) { chosen = f; break; }
                     }
                 }
-                // DISABLED: Don't send to wrong destinations
-                // Last resort: any flight from same origin (even if destination doesn't match - better than nothing)
-                // if (chosen == null) {
-                //     for (PlannerFlight f : flights) {
-                //         if (f.getOrigin().equals(firstOrder.getOrigin())) { 
-                //             System.out.println("[TABU][DEMO-FALLBACK][WARNING] No direct flight found, using indirect: " + 
-                //                 f.getOrigin().getCode() + "->" + f.getDestination().getCode() + 
-                //                 " (order wants: " + firstOrder.getDestination().getCode() + ")");
-                //             chosen = f; 
-                //             break; 
-                //         }
-                //     }
-                // }
-                // if (chosen == null) chosen = flights.get(0);
-                
-                // If no valid flight found, don't force wrong destination
-                if (chosen == null) {
-                    System.out.println("[TABU][DEMO-FALLBACK] ❌ No valid flight found for order #" + firstOrder.getId() + 
-                        " (" + firstOrder.getOrigin().getCode() + "→" + firstOrder.getDestination().getCode() + ")");
-                    System.out.println("[TABU][DEMO-FALLBACK] Order will remain PENDING until correct flight is available.");
-                    // Don't create invalid shipment
-                    return currentSolution;
-                }
+                if (chosen == null) chosen = flights.get(0);
 
                 int demoQty = Math.max(1, Math.min(firstOrder.getTotalQuantity(), 10));
                 PlannerShipment demoShipment = new PlannerShipment(nextShipmentId++, firstOrder, List.of(chosen), demoQty);
@@ -339,11 +311,6 @@ public class TabuSearchPlanner implements IOptimizer {
                 // Simular movimiento
                 TabuSolution testSolution = new TabuSolution(currentSolution);
                 move.apply(testSolution);
-                
-                // VALIDAR: Verificar que la solución respeta capacidades de aeropuertos
-                if (!isValidSolution(testSolution, airports)) {
-                    continue;  // Skip este movimiento, viola capacidades
-                }
                 
                 // Calcular costo
                 double moveCost = TabuSearchPlannerCostFunction.calculateCost(
@@ -503,10 +470,10 @@ public class TabuSearchPlanner implements IOptimizer {
     }
     
     /**
-     * Obtener tendencia del costo
+     * Obtener icono de tendencia del costo
      */
     private String getTrendIcon(List<Double> costHistory, double currentCost) {
-        if (costHistory.size() < 5) return "[STABLE]";
+        if (costHistory.size() < 5) return "→";
         
         // Comparar con las últimas 5 iteraciones
         double recentAvg = 0;
@@ -518,154 +485,53 @@ public class TabuSearchPlanner implements IOptimizer {
         recentAvg /= count;
         
         if (currentCost < recentAvg * 0.98) {
-            return "[DOWN--]"; // Bajando significativamente
+            return "📉"; // Bajando significativamente
         } else if (currentCost < recentAvg * 0.995) {
-            return "[DOWN-]"; // Bajando ligeramente
+            return "↘️"; // Bajando ligeramente
         } else if (currentCost > recentAvg * 1.005) {
-            return "[UP]"; // Subiendo
+            return "↗️"; // Subiendo
         } else {
-            return "[STABLE]"; // Estable
+            return "→"; // Estable
         }
     }
     
     /**
-     * Obtener estado según iteraciones sin mejora
+     * Obtener icono de estado según iteraciones sin mejora
      */
     private String getStatusIcon(int iterationsWithoutImprovement) {
         if (iterationsWithoutImprovement == 0) {
-            return "[IMPROVING]"; // Mejorando
+            return "✅"; // Mejorando
         } else if (iterationsWithoutImprovement < 10) {
-            return "[SEARCHING]"; // Buscando
+            return "🔄"; // Buscando
         } else if (iterationsWithoutImprovement < 30) {
-            return "[WAITING]"; // Esperando
+            return "⏳"; // Esperando
         } else if (iterationsWithoutImprovement < 50) {
-            return "[WARNING]"; // Advertencia
+            return "⚠️"; // Advertencia
         } else {
-            return "[CRITICAL]"; // Crítico
+            return "🛑"; // Crítico
         }
     }
     
     /**
-     * Obtener clasificación de mejora
+     * Obtener badge de mejora
      */
     private String getImprovementBadge(double improvementPercentage) {
         if (improvementPercentage > 50) {
-            return "[EXCELLENT]"; // Excelente
+            return "🌟🌟🌟"; // Excelente
         } else if (improvementPercentage > 25) {
-            return "[VERY-GOOD]"; // Muy bueno
+            return "🌟🌟"; // Muy bueno
         } else if (improvementPercentage > 10) {
-            return "[GOOD]"; // Bueno
+            return "🌟"; // Bueno
         } else if (improvementPercentage > 5) {
-            return "[MODERATE]"; // Moderado
+            return "⭐"; // Moderado
         } else if (improvementPercentage > 0) {
-            return "[SLIGHT]"; // Leve
+            return "✨"; // Leve
         } else {
             return ""; // Sin mejora
         }
     }
     
-    // ========== VALIDACIÓN DE CAPACIDADES ==========
-    
-    /**
-     * Verifica si una solución respeta las capacidades de aeropuertos.
-     * Calcula las cargas proyectadas en cada aeropuerto y verifica que no excedan capacidades.
-     * 
-     * @param solution Solución a validar
-     * @param airports Lista de aeropuertos
-     * @return true si la solución es válida (no excede capacidades)
-     */
-    private boolean isValidSolution(TabuSolution solution, List<PlannerAirport> airports) {
-        // Crear un mapa de aeropuertos por código para acceso rápido
-        Map<String, PlannerAirport> airportMap = new HashMap<>();
-        for (PlannerAirport airport : airports) {
-            airportMap.put(airport.getCode(), airport);
-        }
-        
-        // Calcular carga máxima proyectada en cada aeropuerto
-        Map<String, Integer> maxLoad = new HashMap<>();
-        
-        for (PlannerShipment shipment : solution.getPlannerShipments()) {
-            List<PlannerFlight> flights = shipment.getFlights();
-            int quantity = shipment.getQuantity();
-            
-            // Para cada aeropuerto intermedio (no el destino final)
-            for (int i = 0; i < flights.size() - 1; i++) {
-                PlannerFlight flight = flights.get(i);
-                String airportCode = flight.getDestination().getCode();
-                
-                // Acumular carga en este aeropuerto (incluyendo hubs)
-                // NOTA: Hubs tienen producción ilimitada, pero capacidad física limitada
-                maxLoad.merge(airportCode, quantity, Integer::sum);
-            }
-        }
-        
-        // Verificar que ningún aeropuerto exceda su capacidad
-        for (Map.Entry<String, Integer> entry : maxLoad.entrySet()) {
-            String code = entry.getKey();
-            int load = entry.getValue();
-            
-            PlannerAirport airport = airportMap.get(code);
-            if (airport != null) {
-                if (load > airport.getStorageCapacity()) {
-                    // Solución inválida: excede capacidad
-                    return false;
-                }
-            }
-        }
-        
-        return true;
-    }
-    
     // ========== GREEDY DINÁMICO ==========
-    
-    /**
-     * Verifica si una ruta puede acomodar la cantidad de productos
-     * considerando las capacidades de los aeropuertos intermedios.
-     * 
-     * @param route La ruta a verificar
-     * @param quantity Cantidad de productos a transportar
-     * @param airportManager Gestor de capacidades de aeropuertos
-     * @return true si todos los aeropuertos de escala tienen capacidad
-     */
-    private boolean canRouteAccommodateAirportCapacity(RouteOption route, int quantity, AirportStorageManager airportManager) {
-        List<PlannerFlight> flights = route.getFlights();
-        
-        // Verificar cada aeropuerto intermedio (no el destino final)
-        for (int i = 0; i < flights.size() - 1; i++) {
-            PlannerFlight flight = flights.get(i);
-            PlannerAirport destination = flight.getDestination();
-            
-            // Verificar si el aeropuerto puede acomodar la cantidad (incluyendo hubs)
-            // NOTA: Hubs tienen producción ilimitada, pero capacidad física limitada
-            if (!airportManager.hasAvailableCapacity(destination, quantity)) {
-                return false;
-            }
-        }
-        
-        return true;
-    }
-    
-    /**
-     * Actualiza las capacidades de los aeropuertos después de asignar productos a una ruta
-     * 
-     * @param route La ruta por la que se transportan productos
-     * @param quantity Cantidad de productos asignados
-     * @param airportManager Gestor de capacidades
-     */
-    private void updateAirportCapacities(RouteOption route, int quantity, AirportStorageManager airportManager) {
-        List<PlannerFlight> flights = route.getFlights();
-        
-        // Reservar capacidad física en cada aeropuerto intermedio
-        // NOTA: Main hubs tienen PRODUCCIÓN ilimitada, pero CAPACIDAD FÍSICA limitada
-        // Todos los aeropuertos tienen límite de espacio de almacenamiento
-        for (int i = 0; i < flights.size() - 1; i++) {
-            PlannerFlight flight = flights.get(i);
-            PlannerAirport destination = flight.getDestination();
-            
-            // Validar capacidad física del aeropuerto (incluyendo hubs)
-            airportManager.reserveCapacity(destination, quantity);
-        }
-    }
     
     /**
      * Genera solución inicial distribuyendo productos dinámicamente entre rutas disponibles
@@ -677,16 +543,11 @@ public class TabuSearchPlanner implements IOptimizer {
 
         TabuSolution solution = new TabuSolution();
         Map<PlannerFlight, Integer> flightCapacityRemaining = new HashMap<>();
-        
-        // NUEVO: Inicializar gestor de capacidades de aeropuertos
-        AirportStorageManager airportManager = new AirportStorageManager(airports);
 
-        // Inicializar capacidades disponibles de vuelos
+        // Inicializar capacidades disponibles
         for (PlannerFlight flight : flights) {
             flightCapacityRemaining.put(flight, flight.getCapacity());
         }
-        
-        System.out.println(String.format("[CAPACITY] Initialized airport capacity tracking for %d airports", airports.size()));
         
         // Ordenar pedidos por prioridad (urgencia) con algo de aleatoriedad
         List<PlannerOrder> prioritizedOrders = new ArrayList<>(orders);
@@ -718,7 +579,7 @@ public class TabuSearchPlanner implements IOptimizer {
             // 1. Intentar rutas directas PRIMERO
             List<RouteOption> directRoutes = findDirectRoutes(order, flights, flightCapacityRemaining);
             
-            // DIVERSIDAD: Mezclar rutas para no siempre elegir las mismas
+            // ✨ DIVERSIDAD: Mezclar rutas para no siempre elegir las mismas
             if (directRoutes.size() > 1) {
                 Collections.shuffle(directRoutes.subList(0, Math.min(5, directRoutes.size())), random);
             }
@@ -728,11 +589,6 @@ public class TabuSearchPlanner implements IOptimizer {
                 
                 int toAssign = Math.min(remainingProducts, route.getMinCapacity());
                 if (toAssign > 0) {
-                    // ✅ VERIFICAR capacidad de aeropuertos antes de asignar
-                    if (!canRouteAccommodateAirportCapacity(route, toAssign, airportManager)) {
-                        continue; // Skip esta ruta, no hay capacidad en aeropuertos
-                    }
-                    
                     PlannerShipment shipment = new PlannerShipment(
                         nextShipmentId++,
                         order,
@@ -741,10 +597,6 @@ public class TabuSearchPlanner implements IOptimizer {
                     );
                     orderShipments.add(shipment);
                     updateCapacities(route.getFlights(), toAssign, flightCapacityRemaining);
-                    
-                    // ✅ ACTUALIZAR capacidades de aeropuertos
-                    updateAirportCapacities(route, toAssign, airportManager);
-                    
                     remainingProducts -= toAssign;
                     
                     System.out.println(String.format("   Assigned %d products to DIRECT route: %s",
@@ -777,11 +629,6 @@ public class TabuSearchPlanner implements IOptimizer {
                     
                     int toAssign = Math.min(remainingProducts, route.getMinCapacity());
                     if (toAssign > 0) {
-                        // ✅ VERIFICAR capacidad de aeropuertos antes de asignar
-                        if (!canRouteAccommodateAirportCapacity(route, toAssign, airportManager)) {
-                            continue; // Skip esta ruta, no hay capacidad en aeropuertos
-                        }
-                        
                         PlannerShipment shipment = new PlannerShipment(
                             nextShipmentId++,
                             order,
@@ -790,10 +637,6 @@ public class TabuSearchPlanner implements IOptimizer {
                         );
                         orderShipments.add(shipment);
                         updateCapacities(route.getFlights(), toAssign, flightCapacityRemaining);
-                        
-                        // ✅ ACTUALIZAR capacidades de aeropuertos
-                        updateAirportCapacities(route, toAssign, airportManager);
-                        
                         remainingProducts -= toAssign;
                         
                         System.out.println(String.format("   Assigned %d products to CONNECTION route (%d stops): %s",
@@ -843,112 +686,16 @@ public class TabuSearchPlanner implements IOptimizer {
                                                 Map<PlannerFlight, Integer> capacityRemaining) {
         List<RouteOption> routes = new ArrayList<>();
         
-        // 🔍 DEBUG: Contar vuelos candidatos
-        int matchingOriginDest = 0;
-        int matchingButWrongTime = 0;
-        int matchingButNoCapacity = 0;
-        
         for (PlannerFlight flight : flights) {
-            boolean originMatch = flight.getOrigin().equals(order.getOrigin());
-            boolean destMatch = flight.getDestination().equals(order.getDestination());
-            boolean timeValid = isValidDepartureTime(order, flight);
-            int capacity = capacityRemaining.getOrDefault(flight, 0);
-            
-            if (originMatch && destMatch) {
-                matchingOriginDest++;
-                if (!timeValid) {
-                    matchingButWrongTime++;
-                } else if (capacity == 0) {
-                    matchingButNoCapacity++;
-                }
-            }
-            
-            if (originMatch && destMatch && timeValid) {
+            if (flight.getOrigin().equals(order.getOrigin()) && 
+                flight.getDestination().equals(order.getDestination()) &&
+                isValidDepartureTime(order, flight)) {
+                
                 RouteOption route = new RouteOption(List.of(flight));
-                route.setMinCapacity(capacity);
+                route.setMinCapacity(capacityRemaining.getOrDefault(flight, 0));
                 
                 if (route.getMinCapacity() > 0) {
                     routes.add(route);
-                }
-            }
-        }
-        
-        // 🔍 DEBUG: Reportar hallazgos Y escribir a archivo de log
-        if (matchingOriginDest > 0 && routes.isEmpty()) {
-            String debugMsg = String.format("   🔍 DEBUG findDirectRoutes: Found %d flights %s→%s but NONE valid:", 
-                matchingOriginDest, order.getOrigin().getCode(), order.getDestination().getCode());
-            System.out.println(debugMsg);
-            System.out.println(String.format("      - Wrong time: %d flights", matchingButWrongTime));
-            System.out.println(String.format("      - No capacity: %d flights", matchingButNoCapacity));
-            System.out.println(String.format("      - Order time: %s, deadline: %d hours", 
-                order.getOrderTime(), order.getMaxDeliveryHours()));
-            
-            // Write detailed debug info to file
-            try (java.io.FileWriter fw = new java.io.FileWriter("flight_debug.log", true);
-                 java.io.PrintWriter pw = new java.io.PrintWriter(fw)) {
-                
-                pw.println("=".repeat(80));
-                pw.println(String.format("ORDER #%d: %d products, %s → %s", 
-                    order.getId(), order.getTotalQuantity(), 
-                    order.getOrigin().getCode(), order.getDestination().getCode()));
-                pw.println(String.format("Order time: %s", order.getOrderTime()));
-                pw.println(String.format("Deadline: %d hours (delivery by: %s)", 
-                    order.getMaxDeliveryHours(), 
-                    order.getOrderTime().plusHours(order.getMaxDeliveryHours())));
-                pw.println(String.format("Found %d matching flights but NONE valid", matchingOriginDest));
-                pw.println(String.format("  Wrong time: %d | No capacity: %d", 
-                    matchingButWrongTime, matchingButNoCapacity));
-                pw.println();
-                
-                // Show ALL matching flights with detailed analysis
-                int flightNum = 0;
-                for (PlannerFlight flight : flights) {
-                    if (flight.getOrigin().equals(order.getOrigin()) && 
-                        flight.getDestination().equals(order.getDestination())) {
-                        flightNum++;
-                        long hoursUntilDep = java.time.temporal.ChronoUnit.HOURS.between(
-                            order.getOrderTime(), flight.getDepartureTime());
-                        int capacity = capacityRemaining.getOrDefault(flight, 0);
-                        boolean timeValid = isValidDepartureTime(order, flight);
-                        
-                        pw.println(String.format("  Flight #%d: %s", flightNum, flight.getCode()));
-                        pw.println(String.format("    Departs: %s (in %d hours from order)", 
-                            flight.getDepartureTime(), hoursUntilDep));
-                        pw.println(String.format("    Arrives: %s", flight.getArrivalTime()));
-                        pw.println(String.format("    Capacity: %d", capacity));
-                        pw.println(String.format("    Time valid: %s (0 <= %d <= %d)?", 
-                            timeValid, hoursUntilDep, order.getMaxDeliveryHours()));
-                        
-                        if (!timeValid) {
-                            if (hoursUntilDep < 0) {
-                                pw.println("    ❌ REJECTED: Flight departs BEFORE order time");
-                            } else {
-                                pw.println("    ❌ REJECTED: Flight departs AFTER deadline");
-                            }
-                        } else if (capacity == 0) {
-                            pw.println("    ❌ REJECTED: No capacity remaining");
-                        }
-                        pw.println();
-                    }
-                }
-                pw.println();
-                pw.flush();
-                
-            } catch (Exception e) {
-                System.err.println("   ⚠️  Failed to write debug log: " + e.getMessage());
-            }
-            
-            // Show sample flights in console (limited to 3)
-            int sampleCount = 0;
-            for (PlannerFlight flight : flights) {
-                if (flight.getOrigin().equals(order.getOrigin()) && 
-                    flight.getDestination().equals(order.getDestination())) {
-                    long hoursUntilDep = java.time.temporal.ChronoUnit.HOURS.between(
-                        order.getOrderTime(), flight.getDepartureTime());
-                    System.out.println(String.format("      Sample flight: departs %s (in %d hours), arrives %s, capacity=%d",
-                        flight.getDepartureTime(), hoursUntilDep, flight.getArrivalTime(),
-                        capacityRemaining.getOrDefault(flight, 0)));
-                    if (++sampleCount >= 3) break;
                 }
             }
         }
@@ -1014,7 +761,7 @@ public class TabuSearchPlanner implements IOptimizer {
 
     private boolean isValidConnection(PlannerFlight first, PlannerFlight second) {
         long connectionHours = ChronoUnit.HOURS.between(first.getArrivalTime(), second.getDepartureTime());
-        return connectionHours >= 1;  // ✅ Solo mínimo 1 hora (no hay máximo en el enunciado)
+        return connectionHours >= 1 && connectionHours <= 24;
     }
     
     private void updateCapacities(List<PlannerFlight> route, int quantity, Map<PlannerFlight, Integer> remaining) {

@@ -50,9 +50,14 @@ public class OrderSummaryDTO {
     @JsonProperty("status")
     public OrderStatus status;       // PENDING, IN_TRANSIT, COMPLETED, UNASSIGNED
 
-    // Assigned flights (empty in preview mode)
+    // Assigned flights (empty in preview mode) - DEPRECATED, use shipments instead
     @JsonProperty("assignedFlights")
     public List<FlightSegmentInfo> assignedFlights = new ArrayList<>();
+
+    // 🆕 Shipments: Detailed breakdown of how the order is split across multiple shipments
+    // Each shipment has its own quantity and route (empty in preview mode)
+    @JsonProperty("shipments")
+    public List<ShipmentInfo> shipments = new ArrayList<>();
 
     // Priority (optional, for future use)
     @JsonProperty("priority")

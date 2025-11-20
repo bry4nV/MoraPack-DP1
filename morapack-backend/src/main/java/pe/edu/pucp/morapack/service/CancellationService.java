@@ -130,16 +130,36 @@ public class CancellationService {
      */
     public List<FlightCancellation> processCancellationsAt(LocalDateTime currentSimulationTime) {
         List<FlightCancellation> executed = new ArrayList<>();
-        
+
+        // DEBUG: Log total cancellations in memory
+        int totalCancellations = cancellations.size();
+        long pendingCount = cancellations.values().stream()
+            .filter(c -> c.getStatus() == FlightCancellation.CancellationStatus.PENDING)
+            .count();
+
+        if (totalCancellations > 0) {
+            logger.info("🔍 [DEBUG] Total cancellations: {}, Pending: {}, CurrentTime: {}",
+                totalCancellations, pendingCount, currentSimulationTime);
+
+            // DEBUG: Log first 3 pending cancellations for debugging
+            cancellations.values().stream()
+                .filter(c -> c.getStatus() == FlightCancellation.CancellationStatus.PENDING)
+                .limit(3)
+                .forEach(c -> logger.info("  📅 Pending: {} @ {}, shouldExecute: {}",
+                    c.getFlightIdentifier(),
+                    c.getCancellationTime(),
+                    c.shouldExecuteAt(currentSimulationTime)));
+        }
+
         // Filtrar cancelaciones pendientes que deben ejecutarse
         List<FlightCancellation> toExecute = cancellations.values().stream()
             .filter(c -> c.shouldExecuteAt(currentSimulationTime))
             .collect(Collectors.toList());
-        
+
         if (toExecute.isEmpty()) {
             return executed;
         }
-        
+
         logger.info("🔴 Procesando {} cancelaciones en tiempo: {}", toExecute.size(), currentSimulationTime);
         
         for (FlightCancellation cancellation : toExecute) {
@@ -279,11 +299,29 @@ public class CancellationService {
             logger.debug("🔄 Replanificación marcada: {}", cancellationId);
         }
     }
-    
+
+    /**
+     * Agrega cancelaciones en masa (bulk upload desde UI).
+     * No valida existencia de vuelos - las cancelaciones se programan directamente.
+     *
+     * @param bulkCancellations Lista de cancelaciones a agregar
+     * @return Número de cancelaciones agregadas
+     */
+    public int addBulkCancellations(List<FlightCancellation> bulkCancellations) {
+        int added = 0;
+        for (FlightCancellation cancellation : bulkCancellations) {
+            cancellations.put(cancellation.getId(), cancellation);
+            added++;
+        }
+
+        logger.info("✅ {} cancelaciones agregadas en masa", added);
+        return added;
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // UTILIDADES
     // ═══════════════════════════════════════════════════════════════
-    
+
     /**
      * Limpia todas las cancelaciones.
      */

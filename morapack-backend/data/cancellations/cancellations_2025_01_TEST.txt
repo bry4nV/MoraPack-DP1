@@ -1,0 +1,31 @@
+# Archivo de prueba de cancelaciones programadas
+# Formato: dd.ORIGEN-DESTINO-HHmm
+# dd: día del mes (01-31)
+# HHmm: hora en formato 24h (0800 = 08:00)
+#
+# IMPORTANTE - TIMEZONES:
+# Las horas (HHmm) están en UTC
+# Ejemplo: 0800 = 08:00 UTC
+# - Para Lima (GMT-5): sería 03:00 hora local
+# - Para Bruselas (GMT+2): sería 10:00 hora local
+#
+# EJEMPLO DE CANCELACIONES PARA PRUEBAS:
+# Día 1: Cancelar vuelo Lima-Santiago a las 08:00
+01.SPIM-SCEL-0800
+
+# Día 1: Cancelar vuelo Lima-Buenos Aires a las 10:30
+01.SPIM-SAEZ-1030
+
+# Día 2: Cancelar vuelo Santiago-Lima a las 14:00
+02.SCEL-SPIM-1400
+
+# Día 3: Cancelar vuelo Europa-Lima a las 18:00
+03.EBCI-SPIM-1800
+
+# Día 5: Múltiples cancelaciones (simulación de mal clima)
+05.SPIM-SCEL-0600
+05.SPIM-SCEL-0900
+05.SCEL-SPIM-1200
+
+# Día 7: Cancelación al final de la semana
+07.SPIM-SAEZ-2000

@@ -105,21 +105,35 @@ public class SimulationManager {
                 return;
             }
             
-            LocalDate endDate = startDate.plusDays(simulationDays);
-            if (endDate.isAfter(LAST_DATA_DATE)) {
-                sendError(userId, String.format(
-                    "Simulation would extend to %s, beyond available data (latest: %s)", 
-                    endDate, LAST_DATA_DATE
-                ));
-                return;
-            }
-            
             // ✅ Use DatabaseDataProvider to load ALL orders from database
             DataProvider dataProvider = databaseDataProvider;
 
-            // Calculate simulation time range
+            // Calculate simulation time range based on scenario
             LocalDateTime startTime = startDate.atStartOfDay();
-            LocalDateTime endTime = startTime.plusDays(simulationDays);
+            LocalDateTime endTime;
+
+            // For COLLAPSE and DAILY, use a very far end date (will stop based on other conditions)
+            if (scenario.getType() == ScenarioConfig.ScenarioType.COLLAPSE ||
+                scenario.getType() == ScenarioConfig.ScenarioType.DAILY) {
+                // Use max available data range
+                endTime = LAST_DATA_DATE.atTime(23, 59, 59);
+                System.out.println("[SimulationManager] " + scenario.getType() + " scenario: running until " +
+                                 (scenario.getType() == ScenarioConfig.ScenarioType.COLLAPSE ? "collapse detected" : "stopped"));
+            } else {
+                // WEEKLY: use fixed duration
+                int durationMinutes = scenario.getTotalDurationMinutes();
+                endTime = startTime.plusMinutes(durationMinutes);
+
+                // Validate end date doesn't exceed available data
+                LocalDate endDate = endTime.toLocalDate();
+                if (endDate.isAfter(LAST_DATA_DATE)) {
+                    sendError(userId, String.format(
+                        "Simulation would extend to %s, beyond available data (latest: %s)",
+                        endDate, LAST_DATA_DATE
+                    ));
+                    return;
+                }
+            }
 
             System.out.println("[SimulationManager] ✅ Starting simulation with DatabaseDataProvider");
             System.out.println("[SimulationManager] ✅ This will load ALL orders from ALL destinations (not just SUAA)");
@@ -152,7 +166,7 @@ public class SimulationManager {
             System.out.println("   Scenario: " + scenario.getType());
             System.out.println("   Session ID: " + session.getSessionId());
             System.out.println("   Start Date: " + startDate);
-            System.out.println("   End Date: " + endDate);
+            System.out.println("   End Date: " + endTime.toLocalDate());
 
         } catch (Exception e) {
             String errorMsg = "Failed to initialize simulation: " + e.getMessage();
@@ -256,7 +270,18 @@ public class SimulationManager {
     public SimulationSession getSession(String userId) {
         return activeSessions.get(userId);
     }
-    
+
+    /**
+     * Get session by sessionId (UUID)
+     * This searches through all active sessions to find one with matching sessionId
+     */
+    public SimulationSession getSessionBySessionId(String sessionId) {
+        return activeSessions.values().stream()
+            .filter(session -> session.getSessionId().equals(sessionId))
+            .findFirst()
+            .orElse(null);
+    }
+
     /**
      * Clean up completed/failed sessions
      */
