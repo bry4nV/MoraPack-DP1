@@ -110,6 +110,19 @@ public class FlightStatusTracker {
         }
 
         logger.debug("✅ Estados actualizados: {} vuelos rastreados", flightStatusCache.size());
+
+        // DEBUG: Log todos los vuelos rastreados para identificar cuáles están en uso
+        if (flightStatusCache.size() > 0) {
+            logger.info("📋 VUELOS EN USO (rastreados en itinerarios):");
+            flightStatusCache.values().stream()
+                .limit(20)  // Limitar a 20 para no saturar logs
+                .forEach(flight -> logger.info("   ✈️ {} | Estado: {} | Cancelable: {}",
+                    flight.flightId, flight.status, flight.cancellable));
+
+            if (flightStatusCache.size() > 20) {
+                logger.info("   ... y {} vuelos más", flightStatusCache.size() - 20);
+            }
+        }
     }
     
     /**
@@ -238,6 +251,33 @@ public class FlightStatusTracker {
         }
     }
     
+    /**
+     * Registra un vuelo cancelado en el tracker (para vuelos que existen en BD pero no en itinerarios).
+     * Esto permite que las cancelaciones procesen vuelos que no están siendo usados actualmente.
+     *
+     * @param origin Código de aeropuerto de origen
+     * @param destination Código de aeropuerto de destino
+     * @param scheduledTime Hora programada (HH:mm)
+     * @param cancellationTime Tiempo de la cancelación
+     */
+    public void registerCancelledFlight(String origin, String destination, String scheduledTime, LocalDateTime cancellationTime) {
+        String flightId = String.format("%s-%s-%s", origin, destination, scheduledTime);
+
+        // Crear un FlightStatusInfo marcado como ON_GROUND_ORIGIN para que sea cancelable
+        // Usamos la hora de cancelación como referencia temporal
+        FlightStatusInfo info = new FlightStatusInfo(
+            FlightStatus.ON_GROUND_ORIGIN,
+            flightId,
+            origin,
+            destination,
+            cancellationTime, // Como no tenemos los datos exactos, usamos la hora de cancelación
+            cancellationTime.plusHours(2) // Estimación de llegada
+        );
+
+        flightStatusCache.put(flightId, info);
+        logger.info("📝 Vuelo registrado en tracker: {} (estado: ON_GROUND_ORIGIN, cancelable)", flightId);
+    }
+
     /**
      * Limpia el cache de estados.
      */

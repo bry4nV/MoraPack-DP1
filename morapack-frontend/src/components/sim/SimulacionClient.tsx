@@ -141,6 +141,9 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                 setSimulatedTime(update.simulatedTime);
                 lastBackendTimeRef.current = update.simulatedTime;
                 lastUpdateTimestampRef.current = Date.now();
+
+                // Refresh cancellations on each iteration to update status
+                getCancellations().then(data => setCancellations(data)).catch(err => console.error('Error refreshing cancellations:', err));
               }
 
               // Update orders if present
@@ -1134,6 +1137,7 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                 cancellations={cancellations}
                 onCancellationCreated={handleCancellationCreated}
                 onRefresh={loadDynamicEvents}
+                currentSimulationTime={simulatedTime || lastBackendTimeRef.current}
               />
             </TabsContent>
           </Tabs>

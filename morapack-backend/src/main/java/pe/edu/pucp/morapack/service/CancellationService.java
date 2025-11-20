@@ -1,6 +1,8 @@
 package pe.edu.pucp.morapack.service;
 
 import pe.edu.pucp.morapack.model.FlightCancellation;
+import pe.edu.pucp.morapack.model.simulation.SimFlight;
+import pe.edu.pucp.morapack.repository.simulation.SimFlightRepository;
 import pe.edu.pucp.morapack.algos.data.loaders.CancellationFileLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -25,18 +28,20 @@ import java.util.stream.Collectors;
 public class CancellationService {
     
     private static final Logger logger = LoggerFactory.getLogger(CancellationService.class);
-    
+
     private final FlightStatusTracker flightStatusTracker;
-    
+    private final SimFlightRepository simFlightRepository;
+
     // Almacenamiento de cancelaciones
     private final Map<String, FlightCancellation> cancellations = new ConcurrentHashMap<>();
-    
+
     // ═══════════════════════════════════════════════════════════════
     // CONSTRUCTOR
     // ═══════════════════════════════════════════════════════════════
-    
-    public CancellationService(FlightStatusTracker flightStatusTracker) {
+
+    public CancellationService(FlightStatusTracker flightStatusTracker, SimFlightRepository simFlightRepository) {
         this.flightStatusTracker = flightStatusTracker;
+        this.simFlightRepository = simFlightRepository;
     }
     
     // ═══════════════════════════════════════════════════════════════
@@ -129,6 +134,8 @@ public class CancellationService {
      * @return Lista de cancelaciones ejecutadas en esta iteración
      */
     public List<FlightCancellation> processCancellationsAt(LocalDateTime currentSimulationTime) {
+        logger.info("🟢 [processCancellationsAt] LLAMADO - CurrentTime: {}", currentSimulationTime);
+
         List<FlightCancellation> executed = new ArrayList<>();
 
         // DEBUG: Log total cancellations in memory
@@ -136,6 +143,8 @@ public class CancellationService {
         long pendingCount = cancellations.values().stream()
             .filter(c -> c.getStatus() == FlightCancellation.CancellationStatus.PENDING)
             .count();
+
+        logger.info("🟢 [processCancellationsAt] Total: {}, Pending: {}", totalCancellations, pendingCount);
 
         if (totalCancellations > 0) {
             logger.info("🔍 [CANCEL DEBUG] Total cancellations: {}, Pending: {}, CurrentTime: {}",
@@ -232,14 +241,71 @@ public class CancellationService {
             );
 
             if (flightInfo == null) {
-                String error = "Vuelo no encontrado en FlightStatusTracker";
-                cancellation.markAsFailed(error);
-                logger.error("❌ {}: {}", error, cancellation.getFlightIdentifier());
-                logger.error("   ⚠️ Posibles causas:");
-                logger.error("      1. El vuelo no está en los itinerarios actuales");
-                logger.error("      2. El tiempo programado no coincide (buscando: {})", cancellation.getScheduledDepartureTime());
-                logger.error("      3. El vuelo ya despegó o completó");
-                return false;
+                logger.warn("⚠️ Vuelo no encontrado en FlightStatusTracker, verificando en BD...");
+
+                // Verificar si el vuelo existe en la base de datos
+                try {
+                    // Parsear la hora programada (formato HH:mm)
+                    LocalTime scheduledTime = LocalTime.parse(cancellation.getScheduledDepartureTime());
+
+                    // Calcular la fecha del vuelo basada en la hora de cancelación
+                    LocalDate flightDate = cancellation.getCancellationTime().toLocalDate();
+
+                    // Buscar en la base de datos
+                    SimFlight dbFlight = simFlightRepository.findFlightByRouteAndTime(
+                        cancellation.getFlightOrigin(),
+                        cancellation.getFlightDestination(),
+                        flightDate,
+                        scheduledTime
+                    );
+
+                    if (dbFlight != null) {
+                        logger.info("✅ Vuelo encontrado en BD: {} (id: {})",
+                            cancellation.getFlightIdentifier(), dbFlight.getId());
+                        logger.info("   📦 Agregando al FlightStatusTracker en memoria con estado CANCELLED");
+
+                        // Registrar el vuelo en el tracker como CANCELADO
+                        // Esto permite que la cancelación proceda sin necesidad de que el vuelo esté en itinerarios
+                        flightStatusTracker.registerCancelledFlight(
+                            cancellation.getFlightOrigin(),
+                            cancellation.getFlightDestination(),
+                            cancellation.getScheduledDepartureTime(),
+                            executionTime
+                        );
+
+                        // Re-obtener el estado (ahora debería existir)
+                        flightInfo = flightStatusTracker.getFlightStatus(
+                            cancellation.getFlightOrigin(),
+                            cancellation.getFlightDestination(),
+                            cancellation.getScheduledDepartureTime()
+                        );
+
+                        if (flightInfo == null) {
+                            String error = "Error al registrar vuelo en tracker después de encontrarlo en BD";
+                            cancellation.markAsFailed(error);
+                            logger.error("❌ {}", error);
+                            return false;
+                        }
+
+                        logger.info("✅ Vuelo agregado al tracker, procediendo con cancelación");
+
+                    } else {
+                        String error = "Vuelo no encontrado ni en FlightStatusTracker ni en BD";
+                        cancellation.markAsFailed(error);
+                        logger.error("❌ {}: {}", error, cancellation.getFlightIdentifier());
+                        logger.error("   ⚠️ Posibles causas:");
+                        logger.error("      1. El vuelo no existe en la base de datos para la fecha {}", flightDate);
+                        logger.error("      2. El tiempo programado no coincide (buscando: {})", cancellation.getScheduledDepartureTime());
+                        logger.error("      3. Los códigos de aeropuerto no coinciden exactamente");
+                        return false;
+                    }
+
+                } catch (Exception e) {
+                    String error = "Error al verificar vuelo en BD: " + e.getMessage();
+                    cancellation.markAsFailed(error);
+                    logger.error("❌ {}", error, e);
+                    return false;
+                }
             }
             
             if (!flightInfo.cancellable) {
@@ -350,13 +416,32 @@ public class CancellationService {
      * @return Número de cancelaciones agregadas
      */
     public int addBulkCancellations(List<FlightCancellation> bulkCancellations) {
+        logger.info("🔵 [addBulkCancellations] INICIO - Recibidas {} cancelaciones", bulkCancellations.size());
+        logger.info("🔵 [addBulkCancellations] Estado del mapa ANTES: {} cancelaciones en memoria", cancellations.size());
+
         int added = 0;
         for (FlightCancellation cancellation : bulkCancellations) {
-            cancellations.put(cancellation.getId(), cancellation);
+            String id = cancellation.getId();
+            cancellations.put(id, cancellation);
             added++;
+
+            // Log first 3 cancellations for debugging
+            if (added <= 3) {
+                logger.info("🔵   #{} - ID: {}, Route: {}, Time: {}, CancelAt: {}, Status: {}",
+                    added, id, cancellation.getFlightIdentifier(),
+                    cancellation.getScheduledDepartureTime(),
+                    cancellation.getCancellationTime(),
+                    cancellation.getStatus());
+            }
         }
 
         logger.info("✅ {} cancelaciones agregadas en masa", added);
+        logger.info("🔵 [addBulkCancellations] Estado del mapa DESPUÉS: {} cancelaciones en memoria", cancellations.size());
+        logger.info("🔵 [addBulkCancellations] Pending count: {}",
+            cancellations.values().stream()
+                .filter(c -> c.getStatus() == FlightCancellation.CancellationStatus.PENDING)
+                .count());
+
         return added;
     }
 

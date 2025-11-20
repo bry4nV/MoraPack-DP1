@@ -12,12 +12,14 @@ interface CancellationsTabProps {
   cancellations: FlightCancellation[];
   onCancellationCreated: (c: FlightCancellation) => void;
   onRefresh: () => void;
+  currentSimulationTime?: string;
 }
 
 export default function CancellationsTab({
   cancellations,
   onCancellationCreated,
   onRefresh,
+  currentSimulationTime,
 }: CancellationsTabProps) {
   const [activeTab, setActiveTab] = useState<string>("upload");
 
@@ -45,7 +47,10 @@ export default function CancellationsTab({
         </TabsList>
 
         <TabsContent value="upload" className="flex-1 overflow-y-auto p-3 m-0">
-          <BulkCancellationUpload onCancellationsUploaded={onRefresh} />
+          <BulkCancellationUpload
+            onCancellationsUploaded={onRefresh}
+            currentSimulationTime={currentSimulationTime}
+          />
         </TabsContent>
 
         <TabsContent value="list" className="flex-1 overflow-y-auto p-3 space-y-4 m-0">
@@ -100,7 +105,7 @@ export default function CancellationsTab({
 function CancellationCard({ cancellation }: { cancellation: FlightCancellation }) {
   const isPending = cancellation.status === "PENDING";
 
-  const statusConfig = {
+  const statusConfig: Record<string, { color: string; label: string; icon: any }> = {
     PENDING: {
       color: "bg-yellow-100 text-yellow-800 border-yellow-300",
       label: "Programada",
@@ -111,9 +116,17 @@ function CancellationCard({ cancellation }: { cancellation: FlightCancellation }
       label: "Ejecutada",
       icon: CheckCircle,
     },
+    FAILED: {
+      color: "bg-red-100 text-red-800 border-red-300",
+      label: "Fallida",
+      icon: AlertCircle,
+    },
   };
 
-  const config = statusConfig[cancellation.status];
+  // 🔍 DEBUG: Log status
+  console.log('🔍 [CancellationCard] Status:', cancellation.status, 'Full object:', cancellation);
+
+  const config = statusConfig[cancellation.status] || statusConfig.PENDING;
   const StatusIcon = config.icon;
 
   return (
@@ -148,20 +161,13 @@ function CancellationCard({ cancellation }: { cancellation: FlightCancellation }
             )}
           </div>
 
-          {cancellation.reason && (
-            <div className="flex items-start gap-2">
-              <AlertCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
-              <span className="line-clamp-2">{cancellation.reason}</span>
-            </div>
-          )}
-
-          {/* Productos afectados (si ya se ejecutó) */}
-          {cancellation.status === "EXECUTED" && cancellation.affectedProductsCount && cancellation.affectedProductsCount > 0 && (
+          {/* Productos afectados (oculto temporalmente) */}
+          {/* {cancellation.status === "EXECUTED" && cancellation.affectedProductsCount && cancellation.affectedProductsCount > 0 && (
             <div className="flex items-center gap-2 text-orange-700 bg-orange-50 p-1.5 rounded mt-1">
               <FileText className="h-3 w-3" />
               <span className="font-medium">{cancellation.affectedProductsCount} productos reasignados</span>
             </div>
-          )}
+          )} */}
         </div>
       </CardContent>
     </Card>

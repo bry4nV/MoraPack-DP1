@@ -10,6 +10,7 @@ import { Upload, File, AlertCircle, CheckCircle, X, FileText, Calendar } from "l
 
 interface BulkCancellationUploadProps {
   onCancellationsUploaded: () => void;
+  currentSimulationTime?: string; // Tiempo actual de la simulación (ISO format)
 }
 
 interface ParsedCancellation {
@@ -23,6 +24,7 @@ interface ParsedCancellation {
 
 export default function BulkCancellationUpload({
   onCancellationsUploaded,
+  currentSimulationTime,
 }: BulkCancellationUploadProps) {
   const [selectedMonth, setSelectedMonth] = useState<string>("12");
   const [selectedYear, setSelectedYear] = useState<string>("2025");
@@ -211,6 +213,7 @@ export default function BulkCancellationUpload({
         body: JSON.stringify({
           cancellations: cancellationsData,
           startDate: startDate,
+          currentSimulationTime: currentSimulationTime, // Tiempo actual de la simulación
         })
       });
 
