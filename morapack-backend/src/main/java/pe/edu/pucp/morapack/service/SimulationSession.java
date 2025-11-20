@@ -19,6 +19,7 @@ import pe.edu.pucp.morapack.utils.TabuSolutionToDtoConverter;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,6 +56,11 @@ public class SimulationSession implements Runnable {
     private LocalDateTime currentTime;
     private int iterationCount = 0;
     private int totalExpectedIterations = 0;
+
+    // Collapse detection (for COLLAPSE scenario)
+    private boolean collapseDetected = false;
+    private String collapseReason = null;
+    private int consecutiveHighUnassignedIterations = 0;
     
     // Tabu Search planner
     private final TabuSearchPlanner planner;
@@ -214,12 +220,23 @@ public class SimulationSession implements Runnable {
             
             // Execute one iteration
             executeIteration();
-            
+
+            // Check for collapse (COLLAPSE scenario only)
+            if (checkForCollapse()) {
+                System.out.println("\n🚨 [SimulationSession] " + sessionId + " - COLLAPSE DETECTED!");
+                System.out.println("   Reason: " + collapseReason);
+                break; // Exit simulation loop
+            }
+
             // Speed-controlled delay (ALWAYS apply, even for empty iterations)
             applySpeedControlledDelay();
         }
-        
+
         System.out.println("\n[SimulationSession] " + sessionId + " ending simulation loop");
+        if (collapseDetected) {
+            System.out.println("🚨 SIMULATION ENDED DUE TO COLLAPSE");
+            System.out.println("   " + collapseReason);
+        }
         printFinalMetrics();
     }
     
@@ -503,7 +520,79 @@ public class SimulationSession implements Runnable {
         System.out.println("   ⏰ Time advanced: " + previousTime + " → " + currentTime);
         System.out.println("   ✅ Iteration completed, sending update to frontend");
     }
-    
+
+    /**
+     * Check if system has collapsed (for COLLAPSE scenario)
+     * Returns true if collapse is detected
+     */
+    private boolean checkForCollapse() {
+        // Only check for COLLAPSE scenario
+        if (scenario.getType() != ScenarioConfig.ScenarioType.COLLAPSE) {
+            return false;
+        }
+
+        int totalOrders = allProcessedOrdersMap.size();
+        if (totalOrders == 0) {
+            return false; // Too early to detect collapse
+        }
+
+        // Calculate current unassignment rate
+        int unassignedCount = 0;
+        for (PlannerOrder order : allProcessedOrdersMap.values()) {
+            int requested = order.getTotalQuantity();
+            int assigned = totalAssignedPerOrder.getOrDefault(order.getId(), 0);
+            if (assigned == 0) {
+                unassignedCount++;
+            }
+        }
+
+        double unassignedRate = (unassignedCount * 100.0) / totalOrders;
+
+        // COLLAPSE CRITERION 1: High unassigned rate sustained over multiple iterations
+        final double COLLAPSE_THRESHOLD = 60.0; // 60% unassigned
+        final int MIN_CONSECUTIVE_ITERATIONS = 3; // Must be sustained for 3 iterations
+
+        if (unassignedRate >= COLLAPSE_THRESHOLD) {
+            consecutiveHighUnassignedIterations++;
+            System.out.println("   ⚠️  [COLLAPSE CHECK] High unassigned rate: " +
+                             String.format("%.1f%%", unassignedRate) +
+                             " (" + consecutiveHighUnassignedIterations + "/" + MIN_CONSECUTIVE_ITERATIONS + " iterations)");
+
+            if (consecutiveHighUnassignedIterations >= MIN_CONSECUTIVE_ITERATIONS) {
+                collapseDetected = true;
+                collapseReason = String.format("System collapsed: %.1f%% of orders cannot be assigned (threshold: %.1f%%)",
+                                             unassignedRate, COLLAPSE_THRESHOLD);
+                System.out.println("\n🚨 " + collapseReason);
+                return true;
+            }
+        } else {
+            // Reset counter if rate drops below threshold
+            consecutiveHighUnassignedIterations = 0;
+        }
+
+        // COLLAPSE CRITERION 2: All pending orders have expired deadlines
+        if (!pendingOrders.isEmpty()) {
+            boolean allExpired = true;
+            for (PlannerOrder order : pendingOrders) {
+                LocalDateTime deadline = order.getDeadlineInDestinationTimezone();
+                if (deadline != null && !currentTime.isAfter(deadline)) {
+                    allExpired = false;
+                    break;
+                }
+            }
+
+            if (allExpired && pendingOrders.size() >= 10) {
+                collapseDetected = true;
+                collapseReason = String.format("System collapsed: All %d pending orders have expired deadlines",
+                                             pendingOrders.size());
+                System.out.println("\n🚨 " + collapseReason);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void applySpeedControlledDelay() throws InterruptedException {
         // Base delay between iterations (in ms)
         // Ajustado para que la simulación dure ~30 minutos
@@ -788,9 +877,64 @@ public class SimulationSession implements Runnable {
     public LocalDateTime getCurrentSimulationTime() {
         return currentTime;
     }
-    
+
     // ========== METRICS METHODS ==========
-    
+
+    /**
+     * 🔧 Populate Shipment data in PlannerOrders for delivery timeliness calculation.
+     *
+     * This method converts PlannerShipments from the algorithm solution into Shipment
+     * entities and assigns them to their corresponding PlannerOrders. This is necessary
+     * because isDeliveredOnTime() checks the shipments field, which would otherwise be empty.
+     */
+    private void populateShipmentsForDeliveryMetrics() {
+        if (lastSolution == null || lastSolution.getPlannerShipments() == null) {
+            return;
+        }
+
+        // Group PlannerShipments by order ID
+        java.util.Map<Integer, java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment>> shipmentsByOrder =
+            new java.util.HashMap<>();
+
+        for (pe.edu.pucp.morapack.algos.entities.PlannerShipment plannerShipment : lastSolution.getPlannerShipments()) {
+            if (plannerShipment.getOrder() != null) {
+                int orderId = plannerShipment.getOrder().getId();
+                shipmentsByOrder.computeIfAbsent(orderId, k -> new java.util.ArrayList<>())
+                    .add(plannerShipment);
+            }
+        }
+
+        // Convert PlannerShipments to Shipments and assign to PlannerOrders
+        for (java.util.Map.Entry<Integer, java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment>> entry :
+                shipmentsByOrder.entrySet()) {
+            int orderId = entry.getKey();
+            java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment> plannerShipments = entry.getValue();
+
+            PlannerOrder order = allProcessedOrdersMap.get(orderId);
+            if (order != null) {
+                java.util.List<pe.edu.pucp.morapack.model.Shipment> shipments = new java.util.ArrayList<>();
+
+                for (pe.edu.pucp.morapack.algos.entities.PlannerShipment plannerShipment : plannerShipments) {
+                    // Create a transient Shipment entity (not persisted to DB)
+                    pe.edu.pucp.morapack.model.Shipment shipment = new pe.edu.pucp.morapack.model.Shipment();
+                    shipment.setId(plannerShipment.getId());
+                    shipment.setQuantity(plannerShipment.getQuantity());
+
+                    // Set estimatedArrival from the final arrival time of the PlannerShipment
+                    java.time.LocalDateTime finalArrival = plannerShipment.getFinalArrivalTime();
+                    if (finalArrival != null) {
+                        shipment.setEstimatedArrival(finalArrival);
+                    }
+
+                    shipments.add(shipment);
+                }
+
+                // Assign shipments to the order
+                order.setShipments(shipments);
+            }
+        }
+    }
+
     /**
      * Print comprehensive final metrics at the end of the simulation.
      * Analyzes all shipments across all iterations to calculate:
@@ -804,25 +948,35 @@ public class SimulationSession implements Runnable {
         System.out.println("\n" + "=".repeat(80));
         System.out.println("=== FINAL SIMULATION METRICS ===");
         System.out.println("=".repeat(80));
-        
+
+        // 🔧 FIX: Populate Shipment data in PlannerOrders before calculating metrics
+        populateShipmentsForDeliveryMetrics();
+
         // Categorize orders using accumulated metrics
         int fullyCompleted = 0;
         int partiallyCompleted = 0;
         int notCompleted = 0;
         long totalProductsRequested = 0;
         long totalProductsAssigned = 0;
-        
+
+        // 🆕 Timezone-aware delivery metrics
+        int onTimeDeliveries = 0;
+        int lateDeliveries = 0;
+        int undeliveredOrders = 0;
+        long totalDelayHours = 0;
+        long maxDelayHours = 0;
+
         // Analyze all orders that entered the simulation
         int overAssignedCount = 0;
         long overAssignedProducts = 0;
-        
+
         for (PlannerOrder order : allProcessedOrdersMap.values()) {
             int orderId = order.getId();
             int requested = order.getTotalQuantity();
             int assigned = totalAssignedPerOrder.getOrDefault(orderId, 0);
-            
+
             totalProductsRequested += requested;
-            
+
             // ✅ IMPLEMENTED: Cap assigned products to what was actually requested
             // Some orders may be over-assigned due to algorithm behavior
             if (assigned > requested) {
@@ -832,13 +986,28 @@ public class SimulationSession implements Runnable {
             } else {
                 totalProductsAssigned += assigned;
             }
-            
+
             if (assigned == 0) {
                 notCompleted++;
+                undeliveredOrders++;
             } else if (assigned >= requested) {
                 fullyCompleted++;
+
+                // 🆕 Check if delivered on time (using destination timezone)
+                if (order.isDeliveredOnTime()) {
+                    onTimeDeliveries++;
+                } else {
+                    lateDeliveries++;
+                    long delayHours = order.getDelayHours();
+                    totalDelayHours += delayHours;
+                    if (delayHours > maxDelayHours) {
+                        maxDelayHours = delayHours;
+                    }
+                }
             } else {
                 partiallyCompleted++;
+                // Partial deliveries count as "late" for metrics
+                lateDeliveries++;
             }
         }
         
@@ -876,10 +1045,32 @@ public class SimulationSession implements Runnable {
         System.out.println("\n📦 SHIPMENTS GENERATED:");
         System.out.println("   Total shipments: " + totalShipmentsCreated);
         System.out.println("   Unique orders with shipments: " + totalAssignedPerOrder.size());
-        
+
+        // 🆕 On-time delivery metrics (timezone-aware)
+        int deliveredOrders = onTimeDeliveries + lateDeliveries;
+        double onTimeRate = deliveredOrders > 0 ? (onTimeDeliveries * 100.0 / deliveredOrders) : 0.0;
+        double avgDelayHours = lateDeliveries > 0 ? (totalDelayHours * 1.0 / lateDeliveries) : 0.0;
+
+        System.out.println("\n⏰ DELIVERY TIMELINESS (Timezone-Aware):");
+        System.out.println("   Delivered orders: " + deliveredOrders);
+        System.out.println("   ├─ ✅ On-time: " + onTimeDeliveries +
+                         String.format(" (%.1f%%)", onTimeRate));
+        System.out.println("   └─ ⏰ Late: " + lateDeliveries +
+                         String.format(" (%.1f%%)", 100.0 - onTimeRate));
+
+        if (lateDeliveries > 0) {
+            System.out.println("\n📊 DELAY STATISTICS:");
+            System.out.println("   Average delay: " + String.format("%.1f hours", avgDelayHours));
+            System.out.println("   Maximum delay: " + maxDelayHours + " hours");
+            System.out.println("   Total delay hours: " + totalDelayHours + " hours");
+        }
+
+        System.out.println("\nℹ️  NOTE: Deadlines are calculated using destination timezone");
+        System.out.println("   (48h same continent, 72h intercontinental from order time at destination)");
+
         // Report over-assignments if detected
         if (overAssignedCount > 0) {
-            System.out.println("\nOVER-ASSIGNMENT DETECTED:");
+            System.out.println("\n⚠️  OVER-ASSIGNMENT DETECTED:");
             System.out.println("   Orders over-assigned: " + overAssignedCount);
             System.out.println("   Excess products: " + String.format("%,d", overAssignedProducts));
             System.out.println("   (This may indicate duplicate shipments or algorithm issues)");
@@ -915,7 +1106,138 @@ public class SimulationSession implements Runnable {
         System.out.println("=== END OF SIMULATION METRICS ===");
         System.out.println("=".repeat(80) + "\n");
     }
-    
+
+    /**
+     * Generate final report DTO with all metrics.
+     * This method calculates the same metrics as printFinalMetrics() but returns them as a DTO.
+     */
+    public pe.edu.pucp.morapack.dto.simulation.FinalReportDTO getFinalReport() {
+        pe.edu.pucp.morapack.dto.simulation.FinalReportDTO report =
+            new pe.edu.pucp.morapack.dto.simulation.FinalReportDTO();
+
+        // 🔧 FIX: Populate Shipment data in PlannerOrders before calculating metrics
+        populateShipmentsForDeliveryMetrics();
+
+        // Categorize orders using accumulated metrics
+        int fullyCompleted = 0;
+        int partiallyCompleted = 0;
+        int notCompleted = 0;
+        long totalProductsRequested = 0;
+        long totalProductsAssigned = 0;
+
+        // Timezone-aware delivery metrics
+        int onTimeDeliveries = 0;
+        int lateDeliveries = 0;
+        long totalDelayHours = 0;
+        long maxDelayHours = 0;
+
+        // Analyze all orders
+        for (PlannerOrder order : allProcessedOrdersMap.values()) {
+            int orderId = order.getId();
+            int requested = order.getTotalQuantity();
+            int assigned = totalAssignedPerOrder.getOrDefault(orderId, 0);
+
+            totalProductsRequested += requested;
+
+            // Cap assigned products to what was actually requested
+            if (assigned > requested) {
+                totalProductsAssigned += requested;
+            } else {
+                totalProductsAssigned += assigned;
+            }
+
+            if (assigned == 0) {
+                notCompleted++;
+            } else if (assigned >= requested) {
+                fullyCompleted++;
+
+                // Check if delivered on time (using destination timezone)
+                if (order.isDeliveredOnTime()) {
+                    onTimeDeliveries++;
+                } else {
+                    lateDeliveries++;
+                    long delayHours = order.getDelayHours();
+                    totalDelayHours += delayHours;
+                    if (delayHours > maxDelayHours) {
+                        maxDelayHours = delayHours;
+                    }
+                }
+            } else {
+                partiallyCompleted++;
+                // Partial deliveries count as "late" for metrics
+                lateDeliveries++;
+            }
+        }
+
+        int totalOrders = allProcessedOrdersMap.size();
+
+        // Calculate rates
+        double completionRate = totalOrders > 0 ? (fullyCompleted * 100.0 / totalOrders) : 0.0;
+        double productAssignmentRate = totalProductsRequested > 0
+            ? (totalProductsAssigned * 100.0 / totalProductsRequested) : 0.0;
+
+        int deliveredOrders = onTimeDeliveries + lateDeliveries;
+        double onTimeRate = deliveredOrders > 0 ? (onTimeDeliveries * 100.0 / deliveredOrders) : 0.0;
+        double avgDelayHours = lateDeliveries > 0 ? (totalDelayHours * 1.0 / lateDeliveries) : 0.0;
+
+        // Populate report DTO
+        report.scenarioType = scenario.getType().toString();
+        report.k = scenario.getK();
+        report.scMinutes = scenario.getScMinutes();
+        report.totalIterations = iterationCount;
+        report.startTime = startTime != null ? startTime.toString() : "";
+        report.endTime = endTime != null ? endTime.toString() : "";
+
+        report.totalOrders = totalOrders;
+        report.fullyCompleted = fullyCompleted;
+        report.partiallyCompleted = partiallyCompleted;
+        report.notCompleted = notCompleted;
+        report.completionRate = completionRate;
+
+        report.totalProductsRequested = totalProductsRequested;
+        report.totalProductsAssigned = totalProductsAssigned;
+        report.productAssignmentRate = productAssignmentRate;
+
+        report.totalShipments = totalShipmentsCreated;
+
+        report.deliveredOrders = deliveredOrders;
+        report.onTimeDeliveries = onTimeDeliveries;
+        report.lateDeliveries = lateDeliveries;
+        report.onTimeRate = onTimeRate;
+        report.avgDelayHours = avgDelayHours;
+        report.maxDelayHours = maxDelayHours;
+        report.totalDelayHours = totalDelayHours;
+
+        // Calculate overall rating
+        report.rating = calculateRating(completionRate, onTimeRate, productAssignmentRate);
+
+        // Collapse metrics (for COLLAPSE scenario)
+        report.collapseDetected = collapseDetected;
+        report.collapseReason = collapseReason;
+
+        return report;
+    }
+
+    /**
+     * Calculate overall rating based on key metrics.
+     */
+    private String calculateRating(double completionRate, double onTimeRate, double productAssignmentRate) {
+        // Weighted average: completion 40%, on-time 40%, product assignment 20%
+        double score = (completionRate * 0.4) + (onTimeRate * 0.4) + (productAssignmentRate * 0.2);
+
+        if (score >= 85.0) {
+            return "EXCELLENT";
+        } else if (score >= 70.0) {
+            return "GOOD";
+        } else if (score >= 50.0) {
+            return "MODERATE";
+        } else if (score >= 30.0) {
+            return "POOR";
+        } else {
+            return "CRITICAL";
+        }
+    }
+
     // ========== CONTROL METHODS ==========
     
     public void pause() {
@@ -989,10 +1311,47 @@ public class SimulationSession implements Runnable {
     
     public boolean isRunning() {
         SimulationState currentState = state.get();
-        return currentState == SimulationState.RUNNING || 
+        return currentState == SimulationState.RUNNING ||
                currentState == SimulationState.PAUSED;
     }
-    
+
+    /**
+     * Obtiene información de todos los vuelos con su estado actual y si están cancelados.
+     *
+     * @return Lista de información de vuelos con estado y cancelación
+     */
+    public List<java.util.Map<String, Object>> getFlightStatusesWithCancellation() {
+        List<java.util.Map<String, Object>> flightInfos = new ArrayList<>();
+
+        // Obtener todos los vuelos del tracker
+        Collection<FlightStatusTracker.FlightStatusInfo> allFlights = flightStatusTracker.getAllFlights();
+
+        for (FlightStatusTracker.FlightStatusInfo flight : allFlights) {
+            java.util.Map<String, Object> info = new java.util.HashMap<>();
+
+            // Información básica del vuelo
+            info.put("flightId", flight.flightId);
+            info.put("origin", flight.origin);
+            info.put("destination", flight.destination);
+            info.put("scheduledDeparture", flight.scheduledDeparture.toString());
+            info.put("scheduledArrival", flight.scheduledArrival.toString());
+            info.put("status", flight.status.name());
+            info.put("cancellable", flight.cancellable);
+
+            // Verificar si el vuelo está cancelado
+            boolean isCancelled = cancellationService.isFlightCancelled(
+                flight.origin,
+                flight.destination,
+                flight.scheduledDeparture.toString()
+            );
+            info.put("cancelled", isCancelled);
+
+            flightInfos.add(info);
+        }
+
+        return flightInfos;
+    }
+
     // ========== ORDER TRACKING METHODS ==========
     
     /**
@@ -1033,9 +1392,12 @@ public class SimulationSession implements Runnable {
             dto.requestDateISO = order.getOrderTime().toString();
             dto.etaISO = null; // Could estimate based on assigned flights
 
-            // Assigned flights (search in latest results)
+            // Assigned flights (search in latest results) - DEPRECATED
             dto.assignedFlights = findAssignedFlights(order.getId());
-            
+
+            // 🆕 Shipments: Detailed breakdown by shipment with quantities
+            dto.shipments = findShipments(order.getId());
+
             summaries.add(dto);
         }
         
@@ -1165,7 +1527,65 @@ public class SimulationSession implements Runnable {
 
         return segments;
     }
-    
+
+    /**
+     * 🆕 Find shipments (envíos) for a specific order.
+     * Each shipment represents a portion of the order with its own quantity and route.
+     *
+     * Example:
+     *   Order #100: 500 products Lima → Miami
+     *
+     *   Shipment #1: 200 products, route [LIM→MIA] (direct)
+     *   Shipment #2: 150 products, route [LIM→MEX, MEX→MIA] (1 stopover)
+     *   Shipment #3: 150 products, route [LIM→PTY, PTY→MIA] (1 stopover)
+     */
+    private java.util.List<pe.edu.pucp.morapack.dto.simulation.ShipmentInfo> findShipments(int orderId) {
+        java.util.List<pe.edu.pucp.morapack.dto.simulation.ShipmentInfo> shipments = new java.util.ArrayList<>();
+
+        // Use lastSolution if available
+        if (lastSolution != null && lastSolution.getPlannerShipments() != null) {
+            pe.edu.pucp.morapack.algos.entities.PlannerOrder order = allProcessedOrdersMap.get(orderId);
+
+            if (order != null) {
+                // Get all PlannerShipments for this order
+                java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment> orderShipments =
+                    lastSolution.getShipmentsForOrder(order);
+
+                // Convert each PlannerShipment to ShipmentInfo DTO
+                for (pe.edu.pucp.morapack.algos.entities.PlannerShipment plannerShipment : orderShipments) {
+                    java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> route =
+                        new java.util.ArrayList<>();
+
+                    // Extract flight segments from this shipment's route
+                    for (pe.edu.pucp.morapack.algos.entities.PlannerFlight flight : plannerShipment.getFlights()) {
+                        String originCode = (flight.getOrigin() != null) ? flight.getOrigin().getCode() : "???";
+                        String destCode = (flight.getDestination() != null) ? flight.getDestination().getCode() : "???";
+
+                        pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segment =
+                            new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
+                                flight.getCode(),
+                                originCode,
+                                destCode
+                            );
+                        route.add(segment);
+                    }
+
+                    // Create ShipmentInfo with quantity and route
+                    pe.edu.pucp.morapack.dto.simulation.ShipmentInfo shipmentInfo =
+                        new pe.edu.pucp.morapack.dto.simulation.ShipmentInfo(
+                            plannerShipment.getId(),
+                            plannerShipment.getQuantity(),
+                            route
+                        );
+
+                    shipments.add(shipmentInfo);
+                }
+            }
+        }
+
+        return shipments;
+    }
+
     /**
      * Calculate aggregate metrics about all orders.
      */

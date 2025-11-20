@@ -248,6 +248,16 @@ public class DatabaseDataProvider implements DataProvider {
 
     /**
      * Convert SimFlight to PlannerFlight
+     *
+     * IMPORTANTE - CONTRATO DE TIMEZONES:
+     * - Los campos departure_time + arrival_time en la BD están almacenados en UTC
+     * - Se combinan con flight_date en LocalDateTime que representa UTC
+     * - La simulación compara estos tiempos contra currentTime (también UTC)
+     *
+     * EJEMPLO:
+     * - BD: SKBO → SEQM, departure = 03:34:00, arrival = 05:21:00
+     * - Ambas en UTC
+     * - Bogotá y Quito están en GMT-5, por lo que localmente serían 22:34 y 00:21
      */
     private PlannerFlight convertFlightToPlanner(SimFlight dbFlight) {
         PlannerAirport origin = airportCache.get(dbFlight.getAirportOriginCode());
@@ -261,7 +271,7 @@ public class DatabaseDataProvider implements DataProvider {
         LocalDateTime departure = LocalDateTime.of(dbFlight.getFlightDate(), dbFlight.getDepartureTime());
         LocalDateTime arrival = LocalDateTime.of(dbFlight.getFlightDate(), dbFlight.getArrivalTime());
 
-        // Si arrival < departure, significa que llega al día siguiente
+        // Si arrival < departure, significa que llega al día siguiente (en UTC)
         if (arrival.isBefore(departure)) {
             arrival = arrival.plusDays(1);
         }
@@ -279,6 +289,17 @@ public class DatabaseDataProvider implements DataProvider {
 
     /**
      * Convert SimOrder to PlannerOrder
+     *
+     * IMPORTANTE - CONTRATO DE TIMEZONES:
+     * - Los campos order_date + order_time en la BD están almacenados en UTC
+     * - Se combinan en un LocalDateTime que representa UTC
+     * - El deadline se calculará posteriormente usando timezone del destino
+     *   (ver PlannerOrder.getDeadlineInDestinationTimezone())
+     *
+     * EJEMPLO:
+     * - BD: order_time = 01:38:00, destination = EBCI (Bruselas, GMT+2)
+     * - Se interpreta como: 01:38:00 UTC = 03:38:00 hora local de Bruselas
+     * - Deadline (48h): 03:38:00 + 48h en timezone de Bruselas = 01:38:00 UTC (+2 días)
      */
     private PlannerOrder convertOrderToPlanner(SimOrder dbOrder) {
         // Para orders, necesitamos origin y destination
@@ -306,9 +327,9 @@ public class DatabaseDataProvider implements DataProvider {
             destination
         );
 
-        // Setear el timestamp del pedido
+        // Setear el timestamp del pedido (UTC)
         LocalDateTime orderTime = LocalDateTime.of(dbOrder.getOrderDate(), dbOrder.getOrderTime());
-        plannerOrder.setOrderTime(orderTime);
+        plannerOrder.setOrderTime(orderTime);  // UTC
 
         // Setear el client ID
         plannerOrder.setClientId(dbOrder.getClientCode());

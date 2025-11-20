@@ -22,10 +22,3 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
-
-# Documentation/Analysis files (work in progress)
-ANALISIS_CAPACIDADES_Y_RESTRICCIONES.md
-ANALISIS_ESTADO_ACTUAL_Y_PLAN_K.md
-MANEJO_EVENTOS_DINAMICOS.md
-PLAN_COMPLETO_IMPLEMENTACION.md
-RESPUESTA_REFACTORIZACION_MINIMA.md

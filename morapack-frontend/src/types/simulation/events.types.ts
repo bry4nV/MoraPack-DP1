@@ -11,10 +11,11 @@ export interface FlightCancellation {
   id: string;
   flightOrigin: string;
   flightDestination: string;
-  scheduledDepartureTime: string;
-  cancellationTime: string | null;
+  scheduledDepartureTime: string;         // HH:mm format (e.g., "03:34")
+  cancellationTime: string | null;        // Full ISO datetime when cancellation happens
   reason: string;
   status: 'PENDING' | 'EXECUTED';
+  affectedProductsCount?: number;         // Number of products affected (only when EXECUTED)
 }
 
 export interface CancelFlightRequest {

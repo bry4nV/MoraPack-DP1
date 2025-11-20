@@ -401,8 +401,59 @@ function PedidoDetailsModal({
             </div>
           </div>
 
-          {/* Vuelos asignados */}
-          {pedido.assignedFlights.length > 0 && (
+          {/* 🆕 Envíos (Shipments) */}
+          {pedido.shipments && pedido.shipments.length > 0 ? (
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm text-muted-foreground uppercase flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Envíos ({pedido.shipments.length} envío{pedido.shipments.length !== 1 && "s"})
+              </h3>
+
+              <div className="space-y-3">
+                {pedido.shipments.map((shipment, shipmentIndex) => (
+                  <Card key={shipment.shipmentId} className="border-2">
+                    <CardContent className="p-3 space-y-2">
+                      {/* Header del envío */}
+                      <div className="flex items-center justify-between pb-2 border-b">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs font-mono">
+                            Envío #{shipmentIndex + 1}
+                          </Badge>
+                          <Badge className="bg-blue-100 text-blue-800 text-xs">
+                            {shipment.quantity} producto{shipment.quantity !== 1 && "s"}
+                          </Badge>
+                        </div>
+                        <Badge variant={shipment.isDirect ? "default" : "secondary"} className="text-[10px]">
+                          {shipment.isDirect ? "Directo" : `${shipment.numberOfStops} escala${shipment.numberOfStops !== 1 ? "s" : ""}`}
+                        </Badge>
+                      </div>
+
+                      {/* Ruta del envío */}
+                      <div className="space-y-1.5">
+                        {shipment.route.map((segment, segmentIndex) => (
+                          <div key={segmentIndex} className="flex items-center gap-2 p-2 bg-slate-50 rounded">
+                            {segmentIndex > 0 && (
+                              <div className="flex flex-col items-center mr-1">
+                                <div className="h-2 w-px bg-slate-300"></div>
+                                <div className="text-[10px] text-muted-foreground">↓</div>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 flex-1">
+                              <span className="font-medium text-sm">{segment.originCode}</span>
+                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="font-medium text-sm">{segment.destinationCode}</span>
+                            </div>
+                            <span className="text-xs font-mono text-muted-foreground">{segment.flightCode}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ) : pedido.assignedFlights && pedido.assignedFlights.length > 0 ? (
+            // Fallback: Mostrar vuelos legacy si no hay shipments
             <div className="space-y-3">
               <h3 className="font-semibold text-sm text-muted-foreground uppercase flex items-center gap-2">
                 <Plane className="h-4 w-4" />
@@ -425,10 +476,8 @@ function PedidoDetailsModal({
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Sin vuelos asignados */}
-          {pedido.assignedFlights.length === 0 && (
+          ) : (
+            // Sin asignación
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
               <p className="text-sm text-amber-800">
                 Este pedido aún no tiene vuelos asignados.

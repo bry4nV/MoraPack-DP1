@@ -72,11 +72,19 @@ export async function addDynamicOrder(data: DynamicOrderRequest): Promise<Dynami
 export async function getCancellations(): Promise<FlightCancellation[]> {
   try {
     const response = await fetch(`${baseUrl}${API_ENDPOINTS.DYNAMIC_EVENTS.GET_CANCELLATIONS}`);
-    
+
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      console.warn(`Failed to fetch cancellations: HTTP ${response.status}`);
+      return [];
     }
-    
+
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.warn('Cancellations endpoint returned non-JSON response');
+      return [];
+    }
+
     const data: CancellationsListResponse = await response.json();
     return data.cancellations || [];
   } catch (error) {

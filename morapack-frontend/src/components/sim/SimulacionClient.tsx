@@ -13,20 +13,28 @@ import type { Itinerario } from "@/types/simulation/itinerary.types";
 import type { Aeropuerto } from "@/types/aeropuerto";
 import type { OrderSummary, OrderMetrics } from "@/types/simulation/order-summary.types";
 import type { SimulationPreview } from "@/types/simulation/preview.types";
-import { Play, Pause, Square, RotateCcw, Plane, Calendar, Clock, Gauge, PackageCheck, TrendingUp, ChevronLeft, ChevronRight, Timer, Menu, ChevronDown, ChevronUp } from "lucide-react";
+import { Play, Pause, Square, RotateCcw, Plane, Calendar, Clock, Gauge, PackageCheck, TrendingUp, ChevronLeft, ChevronRight, Timer, Menu, ChevronDown, ChevronUp, FileText, Share2, Check, AlertCircle } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 import { PedidosPanel } from "./PedidosPanel";
 import { EventosPanel } from "./EventosPanel";
-import { getCancellations, getDynamicOrders } from "@/lib/dynamic-events-api";
-import type { FlightCancellation, DynamicOrder } from "@/types/simulation/events.types";
+import { VuelosPanel } from "./VuelosPanel";
+import { ReporteFinalModal } from "./ReporteFinalModal";
+import { getCancellations } from "@/lib/dynamic-events-api";
+import type { FlightCancellation } from "@/types/simulation/events.types";
+import type { FinalReport } from "@/types/simulation/final-report.types";
+import { getFinalReport } from "@/lib/final-report-api";
 import { dmsToDecimal } from "@/lib/geo";
 
 type SimulationState = 'IDLE' | 'STARTING' | 'RUNNING' | 'PAUSED' | 'STOPPED' | 'COMPLETED' | 'ERROR';
 type ScenarioType = 'WEEKLY' | 'DAILY' | 'COLLAPSE';
 
-export default function SimulacionClient() {
+interface SimulacionClientProps {
+  sharedSessionId?: string; // Optional session ID for joining existing simulation
+}
+
+export default function SimulacionClient({ sharedSessionId }: SimulacionClientProps = {}) {
   const [itinerarios, setItinerarios] = useState<Itinerario[]>([]);
   const [aeropuertos, setAeropuertos] = useState<Aeropuerto[]>([]);
   const [connected, setConnected] = useState(false);
@@ -64,15 +72,21 @@ export default function SimulacionClient() {
   
   // Métricas finales
   const [finalMetrics, setFinalMetrics] = useState<any>(null);
-  
+
+  // Final report modal
+  const [showFinalReport, setShowFinalReport] = useState(false);
+  const [finalReport, setFinalReport] = useState<FinalReport | null>(null);
+
+  // Share functionality
+  const [urlCopied, setUrlCopied] = useState(false);
+
   // Pedidos (preview + realtime)
   const [previewData, setPreviewData] = useState<SimulationPreview | null>(null);
   const [pedidos, setPedidos] = useState<OrderSummary[]>([]);
   const [metricasPedidos, setMetricasPedidos] = useState<OrderMetrics | null>(null);
-  
+
   // Dynamic events
   const [cancellations, setCancellations] = useState<FlightCancellation[]>([]);
-  const [dynamicOrders, setDynamicOrders] = useState<DynamicOrder[]>([]);
 
   // Connect to WebSocket on mount
   useEffect(() => {
@@ -84,6 +98,121 @@ export default function SimulacionClient() {
       onConnect: () => {
         console.log("Connected to WebSocket");
         setConnected(true);
+
+        // If joining shared session, connect directly
+        if (sharedSessionId) {
+          setSessionId(sharedSessionId);
+          console.log("Joining shared session:", sharedSessionId);
+          setSimulationState('RUNNING'); // Assume shared session is already running
+
+          // Subscribe to session-specific topic
+          stompClient.subscribe(`/topic/simulation/${sharedSessionId}`, (sessionMessage) => {
+            try {
+              const update = JSON.parse(sessionMessage.body);
+              console.log("Simulation update:", update);
+
+              // 🔍 DEBUG: Ver estructura completa de itinerarios
+              if (update.latestResult?.itinerarios && update.latestResult.itinerarios.length > 0) {
+                const firstItin = update.latestResult.itinerarios[0];
+                console.log("🔍 [SimulacionClient] Primer itinerario RAW del JSON:", {
+                  id: firstItin.id,
+                  orderId: firstItin.orderId,
+                  numSegmentos: firstItin.segmentos?.length || 0,
+                  firstSegment: firstItin.segmentos?.[0],
+                  vueloKeys: firstItin.segmentos?.[0]?.vuelo ? Object.keys(firstItin.segmentos[0].vuelo) : [],
+                });
+              }
+
+              // Update simulation state
+              if (update.state) {
+                setSimulationState(update.state);
+                setMessage(update.message || "");
+              }
+
+              // Update metrics
+              if (update.currentIteration !== undefined) setCurrentIteration(update.currentIteration);
+              if (update.totalIterations !== undefined) setTotalIterations(update.totalIterations);
+              if (update.simulatedTime) {
+                setSimulatedTime(update.simulatedTime);
+                lastBackendTimeRef.current = update.simulatedTime;
+                lastUpdateTimestampRef.current = Date.now();
+              }
+
+              // Update orders if present
+              if (update.latestResult?.orders) {
+                setPedidos(update.latestResult.orders);
+              }
+
+              // Update metrics if present
+              if (update.latestResult?.metrics) {
+                setMetricasPedidos(update.latestResult.metrics);
+              }
+
+              // Update itineraries
+              if (update.latestResult?.itinerarios) {
+                const mappedItinerarios = update.latestResult.itinerarios.map((itin: any) => ({
+                  id: itin.id,
+                  pedidoId: itin.orderId,
+                  segmentos: itin.segments.map((seg: any) => ({
+                    numeroSegmento: seg.segmentNumber,
+                    vuelo: {
+                      origen: {
+                        codigo: seg.flight.origin.code,
+                        nombre: seg.flight.origin.name || seg.flight.origin.code,
+                        latitude: seg.flight.origin.latitude,
+                        longitude: seg.flight.origin.longitude,
+                        latitud: seg.flight.origin.latitude,
+                        longitud: seg.flight.origin.longitude,
+                        gmt: seg.flight.origin.gmt,
+                        esSede: seg.flight.origin.isHub || false,
+                        capacidadAlmacen: seg.flight.origin.totalCapacity || 1000,
+                        pais: { id: 0, nombre: "Unknown", continente: "Unknown" },
+                      },
+                      destino: {
+                        codigo: seg.flight.destination.code,
+                        nombre: seg.flight.destination.name || seg.flight.destination.code,
+                        latitude: seg.flight.destination.latitude,
+                        longitude: seg.flight.destination.longitude,
+                        latitud: seg.flight.destination.latitude,
+                        longitud: seg.flight.destination.longitude,
+                        gmt: seg.flight.destination.gmt,
+                        esSede: seg.flight.destination.isHub || false,
+                        capacidadAlmacen: seg.flight.destination.totalCapacity || 1000,
+                        pais: { id: 0, nombre: "Unknown", continente: "Unknown" },
+                      },
+                      salidaProgramadaISO: seg.flight.scheduledDepartureISO,
+                      llegadaProgramadaISO: seg.flight.scheduledArrivalISO,
+                      capacidad: seg.flight.capacity,
+                      preplanificado: seg.flight.preplanned,
+                      estado: seg.flight.status,
+                    },
+                  })),
+                }));
+                setItinerarios(mappedItinerarios);
+              }
+
+              // Store final metrics when completed
+              if (update.state === "COMPLETED" && update.latestResult) {
+                setFinalMetrics(update.latestResult);
+                // Fetch and show final report
+                if (sharedSessionId) {
+                  getFinalReport(sharedSessionId)
+                    .then((report) => {
+                      setFinalReport(report);
+                      setShowFinalReport(true);
+                    })
+                    .catch((error) => {
+                      console.error("Error fetching final report:", error);
+                    });
+                }
+              }
+            } catch (e) {
+              console.error("Error parsing simulation update:", e);
+            }
+          });
+
+          return; // Skip regular session ID logic
+        }
 
         // Subscribe to control topic (to receive session ID)
         stompClient.subscribe("/topic/simulation-control", (message) => {
@@ -119,7 +248,7 @@ export default function SimulacionClient() {
                   setMessage(update.message || "");
                   setCurrentIteration(update.currentIteration || 0);
                   setTotalIterations(update.totalIterations || 0);
-                  setProgress(update.progress || 0);
+                  setProgress((update.progressPercentage || 0) / 100); // Backend sends 0-100, we need 0-1
                   setSpeed(update.currentSpeed || 1);
                   
                   // ✅ Update simulated time with interpolation tracking
@@ -253,6 +382,17 @@ export default function SimulacionClient() {
                   // Store final metrics when completed
                   if (update.state === "COMPLETED" && update.latestResult) {
                     setFinalMetrics(update.latestResult);
+                    // Fetch and show final report
+                    if (sessionId) {
+                      getFinalReport(sessionId)
+                        .then((report) => {
+                          setFinalReport(report);
+                          setShowFinalReport(true);
+                        })
+                        .catch((error) => {
+                          console.error("Error fetching final report:", error);
+                        });
+                    }
                   }
                 } catch (e) {
                   console.error("Error parsing simulation update:", e);
@@ -290,9 +430,8 @@ export default function SimulacionClient() {
       intervalId = setInterval(() => {
         setElapsedSeconds(prev => prev + 1);
       }, 1000);
-    } else if (simulationState === 'IDLE' || simulationState === 'STOPPED') {
-      setElapsedSeconds(0);
     }
+    // Timer stops automatically when state changes from RUNNING
 
     return () => {
       if (intervalId) clearInterval(intervalId);
@@ -401,12 +540,8 @@ export default function SimulacionClient() {
   // Memoized event handlers for EventosPanel
   const loadDynamicEvents = useCallback(async () => {
     try {
-      const [cancellationsData, ordersData] = await Promise.all([
-        getCancellations(),
-        getDynamicOrders(),
-      ]);
+      const cancellationsData = await getCancellations();
       setCancellations(cancellationsData);
-      setDynamicOrders(ordersData);
     } catch (error) {
       console.error('Error loading dynamic events:', error);
     }
@@ -414,10 +549,6 @@ export default function SimulacionClient() {
 
   const handleCancellationCreated = useCallback((c: FlightCancellation) => {
     setCancellations(prev => [...prev, c]);
-  }, []);
-
-  const handleOrderCreated = useCallback((o: DynamicOrder) => {
-    setDynamicOrders(prev => [...prev, o]);
   }, []);
 
   // Load dynamic events when connected
@@ -553,6 +684,7 @@ export default function SimulacionClient() {
     setItinerarios([]);
     setCurrentIteration(0);
     setProgress(0);
+    setElapsedSeconds(0); // ✅ Reset timer
     // ✅ FIX: Limpiar pedidos y métricas al resetear
     setPedidos(previewData?.orders || []);
     setMetricasPedidos(previewData ? {
@@ -627,7 +759,7 @@ export default function SimulacionClient() {
                     <RadioGroup
                       value={scenarioType}
                       onValueChange={(value: ScenarioType) => setScenarioType(value)}
-                      disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
+                      disabled={simulationState === 'RUNNING' || simulationState === 'STARTING' || !!sharedSessionId}
                       className="flex items-center gap-3"
                     >
                       <div className="flex items-center space-x-1.5">
@@ -643,6 +775,12 @@ export default function SimulacionClient() {
                         </Label>
                       </div>
                     </RadioGroup>
+                    {(simulationState === 'RUNNING' || simulationState === 'STARTING') && (
+                      <div className="flex items-center gap-1.5 text-amber-600 text-xs mt-1">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        <span>Detén la simulación para cambiar escenario</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Fecha y hora de inicio */}
@@ -655,14 +793,14 @@ export default function SimulacionClient() {
                         onChange={(e) => setStartDate(e.target.value)}
                         min="2025-01-02"
                         max="2025-12-31"
-                        disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
+                        disabled={simulationState === 'RUNNING' || simulationState === 'STARTING' || !!sharedSessionId}
                         className="w-[130px] h-8 text-sm px-2"
                       />
                       <Input
                         type="time"
                         value={startTime}
                         onChange={(e) => setStartTime(e.target.value)}
-                        disabled={simulationState === 'RUNNING' || simulationState === 'STARTING'}
+                        disabled={simulationState === 'RUNNING' || simulationState === 'STARTING' || !!sharedSessionId}
                         className="w-[90px] h-8 text-sm px-2"
                       />
                     </div>
@@ -711,28 +849,7 @@ export default function SimulacionClient() {
                 <div className="flex items-center gap-2 pt-3 border-t">
                   <Label className="text-xs text-muted-foreground font-semibold uppercase mr-2">Controles</Label>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleReset}
-                    disabled={!connected || simulationState === 'STARTING'}
-                    className="h-8 px-3 gap-2"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    <span className="text-sm">Reiniciar</span>
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleStop}
-                    disabled={!connected || simulationState === 'IDLE' || simulationState === 'STOPPED'}
-                    className="h-8 px-3 gap-2"
-                  >
-                    <Square className="h-4 w-4" />
-                    <span className="text-sm">Detener</span>
-                  </Button>
-
+                  {/* 1. Botón principal: Iniciar/Pausar/Reanudar */}
                   {simulationState === 'PAUSED' ? (
                     <Button
                       variant="default"
@@ -755,7 +872,7 @@ export default function SimulacionClient() {
                       <Pause className="h-4 w-4" />
                       <span className="text-sm">Pausar</span>
                     </Button>
-                  ) : (
+                  ) : !sharedSessionId ? (
                     <Button
                       variant="default"
                       size="sm"
@@ -766,19 +883,110 @@ export default function SimulacionClient() {
                       <Play className="h-4 w-4" />
                       <span className="text-sm">Iniciar</span>
                     </Button>
-                  )}
+                  ) : null}
+
+                  {/* 2. Detener */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleStop}
+                    disabled={!connected || simulationState === 'IDLE' || simulationState === 'STOPPED'}
+                    className="h-8 px-3 gap-2"
+                  >
+                    <Square className="h-4 w-4" />
+                    <span className="text-sm">Detener</span>
+                  </Button>
+
+                  {/* 3. Reiniciar */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReset}
+                    disabled={!connected || simulationState === 'STARTING'}
+                    className="h-8 px-3 gap-2"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="text-sm">Reiniciar</span>
+                  </Button>
+
+                  {/* Separador visual */}
+                  <div className="h-6 w-px bg-border mx-1" />
+
+                  {/* 4. Compartir */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (sessionId) {
+                        const shareUrl = `${window.location.origin}/simulacion/${sessionId}`;
+                        navigator.clipboard.writeText(shareUrl).then(() => {
+                          setUrlCopied(true);
+                          setTimeout(() => setUrlCopied(false), 2000);
+                        }).catch((error) => {
+                          console.error("Error copying URL:", error);
+                        });
+                      }
+                    }}
+                    disabled={!sessionId || simulationState === 'IDLE' || simulationState === 'STARTING'}
+                    className="h-8 px-3 gap-2"
+                  >
+                    {urlCopied ? (
+                      <>
+                        <Check className="h-4 w-4" />
+                        <span className="text-sm">Copiado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Share2 className="h-4 w-4" />
+                        <span className="text-sm">Compartir</span>
+                      </>
+                    )}
+                  </Button>
+
+                  {/* 5. Ver Reporte */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (sessionId) {
+                        getFinalReport(sessionId)
+                          .then((report) => {
+                            setFinalReport(report);
+                            setShowFinalReport(true);
+                          })
+                          .catch((error) => {
+                            console.error("Error fetching final report:", error);
+                          });
+                      }
+                    }}
+                    disabled={!sessionId || simulationState === 'IDLE' || simulationState === 'STARTING'}
+                    className="h-8 px-3 gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span className="text-sm">Ver Reporte</span>
+                  </Button>
                 </div>
           </CardContent>
         </Card>
 
         {/* Badges de estado debajo del panel de control - SIEMPRE VISIBLES CON POSICIÓN FIJA */}
         <div className="mt-2 flex items-center gap-2 min-h-[32px]">
+          {/* Indicador de sesión compartida */}
+          {sharedSessionId && (
+            <Badge variant="outline" className="text-xs px-2.5 py-1 shadow-lg bg-blue-50/95 border-blue-300 text-blue-700 backdrop-blur">
+              <Share2 className="h-3 w-3 mr-1" />
+              Sesión Compartida
+            </Badge>
+          )}
+
           {/* Estado */}
           <Badge variant={
             simulationState === 'RUNNING' ? 'default' :
             simulationState === 'COMPLETED' ? 'outline' :
             simulationState === 'ERROR' ? 'destructive' : 'secondary'
-          } className="text-xs px-2.5 py-1 shadow-lg bg-white/95 backdrop-blur">
+          } className={`text-xs px-2.5 py-1 shadow-lg backdrop-blur ${
+            simulationState === 'RUNNING' ? '' : 'bg-white/95'
+          }`}>
             {simulationState}
           </Badge>
 
@@ -851,12 +1059,15 @@ export default function SimulacionClient() {
           isPanelOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
         }`}>
           <Tabs defaultValue="pedidos" className="h-full flex flex-col">
-            <TabsList className="grid grid-cols-2 m-2 mb-0">
+            <TabsList className="grid grid-cols-3 m-2 mb-0">
               <TabsTrigger value="pedidos" className="text-xs">
                 Pedidos
               </TabsTrigger>
+              <TabsTrigger value="vuelos" className="text-xs">
+                Vuelos
+              </TabsTrigger>
               <TabsTrigger value="eventos" className="text-xs">
-                Eventos
+                Cancelaciones
               </TabsTrigger>
             </TabsList>
 
@@ -876,19 +1087,27 @@ export default function SimulacionClient() {
               />
             </TabsContent>
 
+            <TabsContent value="vuelos" className="flex-1 m-0 overflow-hidden">
+              <VuelosPanel userId={sessionId || ""} />
+            </TabsContent>
+
             <TabsContent value="eventos" className="flex-1 m-0 overflow-hidden">
               <EventosPanel
-                aeropuertos={aeropuertos}
                 cancellations={cancellations}
-                dynamicOrders={dynamicOrders}
                 onCancellationCreated={handleCancellationCreated}
-                onOrderCreated={handleOrderCreated}
                 onRefresh={loadDynamicEvents}
               />
             </TabsContent>
           </Tabs>
         </Card>
       </div>
+
+      {/* Final Report Modal */}
+      <ReporteFinalModal
+        open={showFinalReport}
+        onOpenChange={setShowFinalReport}
+        report={finalReport}
+      />
     </div>
   );
 }

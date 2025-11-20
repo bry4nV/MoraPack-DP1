@@ -28,16 +28,19 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/simulation/events")
 public class DynamicEventsController {
-    
+
     private final CancellationService cancellationService;
     private final DynamicOrderService dynamicOrderService;
-    
+    private final pe.edu.pucp.morapack.service.FlightStatusTracker flightStatusTracker;
+
     public DynamicEventsController(
             CancellationService cancellationService,
-            DynamicOrderService dynamicOrderService) {
-        
+            DynamicOrderService dynamicOrderService,
+            pe.edu.pucp.morapack.service.FlightStatusTracker flightStatusTracker) {
+
         this.cancellationService = cancellationService;
         this.dynamicOrderService = dynamicOrderService;
+        this.flightStatusTracker = flightStatusTracker;
     }
     
     // ═══════════════════════════════════════════════════════════════
@@ -166,7 +169,39 @@ public class DynamicEventsController {
         
         return ResponseEntity.ok(response);
     }
-    
+
+    /**
+     * Obtener vuelos en tierra (cancelables).
+     * Solo retorna vuelos que no han despegado.
+     */
+    @GetMapping("/flights/grounded")
+    public ResponseEntity<Map<String, Object>> getGroundedFlights() {
+        List<pe.edu.pucp.morapack.service.FlightStatusTracker.FlightStatusInfo> groundedFlights =
+            flightStatusTracker.getCancellableFlights();
+
+        // Convertir a DTOs simples
+        List<Map<String, Object>> flightDtos = groundedFlights.stream()
+            .map(flight -> {
+                Map<String, Object> dto = new HashMap<>();
+                dto.put("code", flight.flightId);
+                dto.put("origin", flight.origin);
+                dto.put("destination", flight.destination);
+                dto.put("scheduledDepartureTime", flight.scheduledDeparture.toString());
+                dto.put("scheduledArrivalTime", flight.scheduledArrival.toString());
+                dto.put("status", flight.status.name());
+                dto.put("cancellable", flight.cancellable);
+                return dto;
+            })
+            .collect(Collectors.toList());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("count", flightDtos.size());
+        response.put("flights", flightDtos);
+
+        return ResponseEntity.ok(response);
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // PEDIDOS DINÁMICOS
     // ═══════════════════════════════════════════════════════════════
@@ -371,6 +406,87 @@ public class DynamicEventsController {
         dto.setReason(o.getReason());
         dto.setStatus(o.getStatus().name());
         return dto;
+    }
+
+    /**
+     * Cargar cancelaciones en masa desde el frontend.
+     *
+     * Formato del request:
+     * {
+     *   "cancellations": [
+     *     {"day": 1, "origin": "SPIM", "destination": "SCEL", "departureTime": "0800"},
+     *     {"day": 5, "origin": "SKBO", "destination": "SEQM", "departureTime": "1430"}
+     *   ],
+     *   "startDate": "2025-12-01"
+     * }
+     */
+    @PostMapping("/bulk-cancel-flights")
+    public ResponseEntity<Map<String, Object>> bulkCancelFlights(
+            @RequestBody Map<String, Object> request) {
+
+        try {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> cancellationsData =
+                (List<Map<String, Object>>) request.get("cancellations");
+            String startDateStr = (String) request.get("startDate");
+
+            if (cancellationsData == null || cancellationsData.isEmpty()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "No cancellations provided");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+            }
+
+            int successCount = 0;
+            java.util.List<FlightCancellation> bulkCancellations = new java.util.ArrayList<>();
+
+            for (Map<String, Object> cancData : cancellationsData) {
+                int day = ((Number) cancData.get("day")).intValue();
+                String origin = (String) cancData.get("origin");
+                String destination = (String) cancData.get("destination");
+                String departureTime = (String) cancData.get("departureTime"); // HHmm format
+
+                // Parse start date and add the day
+                LocalDateTime scheduledDate = LocalDateTime.parse(startDateStr + "T00:00:00")
+                    .plusDays(day - 1); // day is 1-based
+
+                // Add hours and minutes from departureTime (HHmm)
+                int hours = Integer.parseInt(departureTime.substring(0, 2));
+                int minutes = Integer.parseInt(departureTime.substring(2, 4));
+                scheduledDate = scheduledDate.withHour(hours).withMinute(minutes);
+
+                // Format time as HH:mm
+                String scheduledTimeStr = String.format("%02d:%02d", hours, minutes);
+
+                // Create scheduled cancellation using constructor
+                FlightCancellation cancellation = new FlightCancellation(
+                    origin,
+                    destination,
+                    scheduledTimeStr,
+                    scheduledDate,
+                    "Bulk cancellation upload"
+                );
+
+                bulkCancellations.add(cancellation);
+                successCount++;
+            }
+
+            // Add all cancellations to the service
+            cancellationService.addBulkCancellations(bulkCancellations);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", successCount + " cancellations loaded successfully");
+            response.put("count", successCount);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "Failed to load cancellations: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        }
     }
 }
 
