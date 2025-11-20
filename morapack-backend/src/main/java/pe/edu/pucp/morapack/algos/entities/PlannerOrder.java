@@ -125,19 +125,49 @@ public class PlannerOrder {
      */
     public boolean isDeliveredOnTime() {
         if (shipments.isEmpty() || orderTime == null) {
+            System.out.println("  ⚠️ [DELIVERY CHECK] Order #" + id + ": FALSE (empty shipments or null orderTime)");
             return false;  // Sin shipments no puede estar "a tiempo"
         }
 
         LocalDateTime deadline = getDeadlineInDestinationTimezone();
         if (deadline == null) {
+            System.out.println("  ⚠️ [DELIVERY CHECK] Order #" + id + ": FALSE (deadline is null)");
             return false;  // Sin deadline calculable, no se puede determinar
         }
 
-        // Verificar que TODOS los shipments hayan llegado antes del deadline
-        return shipments.stream()
+        // Contar shipments con/sin arrival time
+        long totalShipments = shipments.size();
+        long shipmentsWithArrival = shipments.stream()
             .map(Shipment::getEstimatedArrival)
             .filter(arrival -> arrival != null)
-            .allMatch(arrival -> arrival.isBefore(deadline) || arrival.isEqual(deadline));
+            .count();
+        long shipmentsWithoutArrival = totalShipments - shipmentsWithArrival;
+
+        // DEBUG: Log arrival times
+        System.out.println("  📊 [DELIVERY CHECK] Order #" + id + ":");
+        System.out.println("     Total shipments: " + totalShipments);
+        System.out.println("     With arrival time: " + shipmentsWithArrival);
+        System.out.println("     WITHOUT arrival time: " + shipmentsWithoutArrival + " ⚠️");
+        System.out.println("     Deadline: " + deadline);
+
+        // Si NO hay arrival times, retornar false
+        if (shipmentsWithArrival == 0) {
+            System.out.println("     Result: FALSE (no arrival times found)");
+            return false;
+        }
+
+        // Verificar que TODOS los shipments CON arrival time llegaron antes del deadline
+        boolean allOnTime = shipments.stream()
+            .map(Shipment::getEstimatedArrival)
+            .filter(arrival -> arrival != null)
+            .allMatch(arrival -> {
+                boolean onTime = arrival.isBefore(deadline) || arrival.isEqual(deadline);
+                System.out.println("       - Arrival: " + arrival + " → " + (onTime ? "ON TIME ✓" : "LATE ✗"));
+                return onTime;
+            });
+
+        System.out.println("     Result: " + (allOnTime ? "TRUE ✓" : "FALSE ✗"));
+        return allOnTime;
     }
 
     /**

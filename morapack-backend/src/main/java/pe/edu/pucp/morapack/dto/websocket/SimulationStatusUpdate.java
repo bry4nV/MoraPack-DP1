@@ -81,11 +81,21 @@ public class SimulationStatusUpdate {
     
     public static SimulationStatusUpdate error(String errorMessage, String details) {
         SimulationStatusUpdate update = new SimulationStatusUpdate(
-            SimulationState.ERROR, 
+            SimulationState.ERROR,
             errorMessage
         );
         update.setErrorMessage(errorMessage);
         update.setErrorDetails(details);
+        return update;
+    }
+
+    public static SimulationStatusUpdate collapsed(String collapseReason, int currentIteration) {
+        SimulationStatusUpdate update = new SimulationStatusUpdate(
+            SimulationState.COLLAPSED,
+            collapseReason
+        );
+        update.setCurrentIteration(currentIteration);
+        update.setErrorMessage(collapseReason); // Usar errorMessage para mostrar la razón
         return update;
     }
     

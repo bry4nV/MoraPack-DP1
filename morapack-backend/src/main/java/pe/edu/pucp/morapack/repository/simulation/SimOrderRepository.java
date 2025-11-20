@@ -55,4 +55,10 @@ public interface SimOrderRepository extends JpaRepository<SimOrder, Long> {
            "o.status = 'PENDING' " +
            "ORDER BY o.orderDate, o.orderTime")
     List<SimOrder> findPendingOrders();
+
+    /**
+     * Get the maximum order date in the database.
+     */
+    @Query("SELECT MAX(o.orderDate) FROM SimOrder o")
+    LocalDate findMaxOrderDate();
 }

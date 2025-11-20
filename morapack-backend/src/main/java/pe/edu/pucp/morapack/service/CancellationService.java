@@ -138,17 +138,19 @@ public class CancellationService {
             .count();
 
         if (totalCancellations > 0) {
-            logger.info("🔍 [DEBUG] Total cancellations: {}, Pending: {}, CurrentTime: {}",
+            logger.info("🔍 [CANCEL DEBUG] Total cancellations: {}, Pending: {}, CurrentTime: {}",
                 totalCancellations, pendingCount, currentSimulationTime);
 
-            // DEBUG: Log first 3 pending cancellations for debugging
+            // DEBUG: Log first 5 pending cancellations for debugging
             cancellations.values().stream()
                 .filter(c -> c.getStatus() == FlightCancellation.CancellationStatus.PENDING)
-                .limit(3)
-                .forEach(c -> logger.info("  📅 Pending: {} @ {}, shouldExecute: {}",
-                    c.getFlightIdentifier(),
-                    c.getCancellationTime(),
-                    c.shouldExecuteAt(currentSimulationTime)));
+                .limit(5)
+                .forEach(c -> {
+                    logger.info("  📅 Pending: {} @ {}", c.getFlightIdentifier(), c.getCancellationTime());
+                    logger.info("     shouldExecute: {}", c.shouldExecuteAt(currentSimulationTime));
+                    logger.info("     reason: cancellationTime ({}) <= currentTime ({})",
+                        c.getCancellationTime(), currentSimulationTime);
+                });
         }
 
         // Filtrar cancelaciones pendientes que deben ejecutarse
@@ -161,6 +163,9 @@ public class CancellationService {
         }
 
         logger.info("🔴 Procesando {} cancelaciones en tiempo: {}", toExecute.size(), currentSimulationTime);
+        logger.info("   📋 Lista de cancelaciones a ejecutar:");
+        toExecute.forEach(c -> logger.info("      - {} @ {}",
+            c.getFlightIdentifier(), c.getCancellationTime()));
         
         for (FlightCancellation cancellation : toExecute) {
             boolean success = executeCancellation(cancellation, currentSimulationTime);
@@ -177,26 +182,63 @@ public class CancellationService {
     
     /**
      * Ejecuta una cancelación específica.
-     * 
+     *
      * @param cancellation Cancelación a ejecutar
      * @param executionTime Tiempo de ejecución
      * @return true si se ejecutó correctamente
      */
     private boolean executeCancellation(FlightCancellation cancellation, LocalDateTime executionTime) {
         logger.info("🔴 Ejecutando cancelación: {}", cancellation.getFlightIdentifier());
-        
+
         try {
+            // DEBUG: Log cancellation details
+            logger.info("   📅 Detalles:");
+            logger.info("      Origin: {}", cancellation.getFlightOrigin());
+            logger.info("      Destination: {}", cancellation.getFlightDestination());
+            logger.info("      Scheduled time: {}", cancellation.getScheduledDepartureTime());
+            logger.info("      Cancellation time: {}", cancellation.getCancellationTime());
+            logger.info("      Execution time: {}", executionTime);
+
+            // DEBUG: Log all tracked flights
+            var allFlights = flightStatusTracker.getAllFlights();
+            logger.info("   🔍 FlightStatusTracker tiene {} vuelos rastreados", allFlights.size());
+
+            // DEBUG: Log flights with matching origin
+            var matchingOrigin = allFlights.stream()
+                .filter(f -> f.origin.equals(cancellation.getFlightOrigin()))
+                .toList();
+            logger.info("   🔍 Vuelos con origen {}: {}", cancellation.getFlightOrigin(), matchingOrigin.size());
+
+            // DEBUG: Log flights with matching origin AND destination
+            var matchingRoute = allFlights.stream()
+                .filter(f -> f.origin.equals(cancellation.getFlightOrigin())
+                          && f.destination.equals(cancellation.getFlightDestination()))
+                .toList();
+            logger.info("   🔍 Vuelos con ruta {}-{}: {}",
+                cancellation.getFlightOrigin(),
+                cancellation.getFlightDestination(),
+                matchingRoute.size());
+
+            if (!matchingRoute.isEmpty()) {
+                logger.info("   📋 Vuelos disponibles en esa ruta:");
+                matchingRoute.forEach(f -> logger.info("      - {}", f.toString()));
+            }
+
             // Verificar estado del vuelo
             FlightStatusTracker.FlightStatusInfo flightInfo = flightStatusTracker.getFlightStatus(
                 cancellation.getFlightOrigin(),
                 cancellation.getFlightDestination(),
                 cancellation.getScheduledDepartureTime()
             );
-            
+
             if (flightInfo == null) {
-                String error = "Vuelo no encontrado";
+                String error = "Vuelo no encontrado en FlightStatusTracker";
                 cancellation.markAsFailed(error);
                 logger.error("❌ {}: {}", error, cancellation.getFlightIdentifier());
+                logger.error("   ⚠️ Posibles causas:");
+                logger.error("      1. El vuelo no está en los itinerarios actuales");
+                logger.error("      2. El tiempo programado no coincide (buscando: {})", cancellation.getScheduledDepartureTime());
+                logger.error("      3. El vuelo ya despegó o completó");
                 return false;
             }
             

@@ -10,6 +10,7 @@ public enum SimulationState {
     PAUSED,      // Temporarily stopped by user
     STOPPED,     // Terminated by user
     COMPLETED,   // Finished successfully
+    COLLAPSED,   // System collapse detected (COLLAPSE scenario only)
     ERROR        // Failed with error
 }
 
