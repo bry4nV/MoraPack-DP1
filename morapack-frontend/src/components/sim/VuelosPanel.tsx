@@ -29,16 +29,25 @@ export const VuelosPanel = memo(function VuelosPanel({ userId }: VuelosPanelProp
     setError(null);
     try {
       const response = await getFlightsStatus(userId);
-      if (response.success) {
-        setFlights(response.flights);
+      if (response && response.success) {
+        setFlights(response.flights || []);
       } else {
         setError("No se pudo cargar los vuelos");
       }
     } catch (error) {
       console.error("Error loading flights:", error);
       // No mostrar error si es porque la simulación no ha iniciado
-      if (error instanceof Error && !error.message.includes("404")) {
-        setError("Error al cargar vuelos. Verifica que la simulación esté iniciada.");
+      if (error instanceof Error) {
+        if (error.message.includes("404")) {
+          // 404 significa que la sesión no existe o no ha iniciado
+          setError("Esperando inicio de simulación...");
+        } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          setError("No se pudo conectar con el servidor. Verifica que el backend esté corriendo.");
+        } else {
+          setError("Error al cargar vuelos. Intenta recargar la página.");
+        }
+      } else {
+        setError("Error desconocido al cargar vuelos.");
       }
     } finally {
       setLoading(false);
@@ -282,18 +291,30 @@ function FlightCard({ flight }: FlightCardProps) {
         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
           <div>
             <span className="font-medium">Salida:</span>{" "}
-            {new Date(flight.scheduledDeparture).toLocaleTimeString("es-ES", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}{" "}
+            {(() => {
+              try {
+                return new Date(flight.scheduledDeparture).toLocaleTimeString("es-ES", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              } catch {
+                return "N/A";
+              }
+            })()}{" "}
             <span className="text-[10px] opacity-60">UTC</span>
           </div>
           <div>
             <span className="font-medium">Llegada:</span>{" "}
-            {new Date(flight.scheduledArrival).toLocaleTimeString("es-ES", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}{" "}
+            {(() => {
+              try {
+                return new Date(flight.scheduledArrival).toLocaleTimeString("es-ES", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              } catch {
+                return "N/A";
+              }
+            })()}{" "}
             <span className="text-[10px] opacity-60">UTC</span>
           </div>
         </div>

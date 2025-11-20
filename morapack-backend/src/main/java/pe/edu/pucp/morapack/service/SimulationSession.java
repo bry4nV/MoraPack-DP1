@@ -1547,34 +1547,42 @@ public class SimulationSession implements Runnable {
     
     /**
      * Find flight segments assigned to a specific order.
-     * Searches through the most recent iteration results.
+     * ✅ FIX: Searches through ALL iteration results (not just last one) to find completed orders.
      * Returns minimal flight info (code, origin, destination) to show route without storing full itinerary.
      */
     private java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> findAssignedFlights(int orderId) {
         java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> segments = new java.util.ArrayList<>();
 
-        // Search in the last result (most recent iteration)
+        // ✅ FIX: Search in ALL results (not just last), since completed orders may be in older iterations
         if (!allResults.isEmpty()) {
-            pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse lastResult =
-                allResults.get(allResults.size() - 1);
+            // Iterate from newest to oldest to get the most recent itinerary for this order
+            for (int i = allResults.size() - 1; i >= 0; i--) {
+                pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse result = allResults.get(i);
 
-            if (lastResult.itineraries != null) {
-                for (var itinerario : lastResult.itineraries) {
-                    // ✅ Check if this itinerary belongs to our order using orderId field
-                    if (itinerario.orderId == orderId && itinerario.segments != null) {
-                        // Extract segments with origin/destination info
-                        for (var segmento : itinerario.segments) {
-                            if (segmento.flight != null && segmento.flight.code != null) {
-                                String originCode = (segmento.flight.origin != null) ? segmento.flight.origin.code : "???";
-                                String destCode = (segmento.flight.destination != null) ? segmento.flight.destination.code : "???";
+                if (result.itineraries != null) {
+                    for (var itinerario : result.itineraries) {
+                        // ✅ Check if this itinerary belongs to our order using orderId field
+                        if (itinerario.orderId == orderId && itinerario.segments != null) {
+                            // Extract segments with origin/destination info
+                            for (var segmento : itinerario.segments) {
+                                if (segmento.flight != null && segmento.flight.code != null) {
+                                    String originCode = (segmento.flight.origin != null) ? segmento.flight.origin.code : "???";
+                                    String destCode = (segmento.flight.destination != null) ? segmento.flight.destination.code : "???";
 
-                                pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segmentInfo =
-                                    new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
-                                        segmento.flight.code,
-                                        originCode,
-                                        destCode
-                                    );
-                                segments.add(segmentInfo);
+                                    pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segmentInfo =
+                                        new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
+                                            segmento.flight.code,
+                                            originCode,
+                                            destCode
+                                        );
+                                    segments.add(segmentInfo);
+                                }
+                            }
+
+                            // Found this order, stop searching
+                            if (!segments.isEmpty()) {
+                                System.out.println("  🔍 findAssignedFlights(order=" + orderId + "): found in iteration result #" + i);
+                                return segments;
                             }
                         }
                     }
@@ -1599,44 +1607,61 @@ public class SimulationSession implements Runnable {
     private java.util.List<pe.edu.pucp.morapack.dto.simulation.ShipmentInfo> findShipments(int orderId) {
         java.util.List<pe.edu.pucp.morapack.dto.simulation.ShipmentInfo> shipments = new java.util.ArrayList<>();
 
-        // Use lastSolution if available
-        if (lastSolution != null && lastSolution.getPlannerShipments() != null) {
-            pe.edu.pucp.morapack.algos.entities.PlannerOrder order = allProcessedOrdersMap.get(orderId);
+        // ✅ FIX: Use allShipments instead of only lastSolution to include shipments from ALL iterations
+        // This includes COMPLETED shipments (already arrived), not just active ones
+        if (!allShipments.isEmpty()) {
+            // 🔍 DEBUG: Log search
+            int totalShipments = allShipments.size();
+            int matchingShipments = 0;
 
-            if (order != null) {
-                // Get all PlannerShipments for this order
-                java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment> orderShipments =
-                    lastSolution.getShipmentsForOrder(order);
+            // Filter shipments for this specific order
+            for (pe.edu.pucp.morapack.algos.entities.PlannerShipment plannerShipment : allShipments) {
+                if (plannerShipment == null) continue;
 
-                // Convert each PlannerShipment to ShipmentInfo DTO
-                for (pe.edu.pucp.morapack.algos.entities.PlannerShipment plannerShipment : orderShipments) {
+                pe.edu.pucp.morapack.algos.entities.PlannerOrder shipmentOrder = plannerShipment.getOrder();
+                if (shipmentOrder == null) continue;
+
+                if (shipmentOrder.getId() == orderId) {
+                    matchingShipments++;
+
                     java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> route =
                         new java.util.ArrayList<>();
 
                     // Extract flight segments from this shipment's route
-                    for (pe.edu.pucp.morapack.algos.entities.PlannerFlight flight : plannerShipment.getFlights()) {
-                        String originCode = (flight.getOrigin() != null) ? flight.getOrigin().getCode() : "???";
-                        String destCode = (flight.getDestination() != null) ? flight.getDestination().getCode() : "???";
+                    if (plannerShipment.getFlights() != null) {
+                        for (pe.edu.pucp.morapack.algos.entities.PlannerFlight flight : plannerShipment.getFlights()) {
+                            if (flight == null) continue;
 
-                        pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segment =
-                            new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
-                                flight.getCode(),
-                                originCode,
-                                destCode
-                            );
-                        route.add(segment);
+                            String originCode = (flight.getOrigin() != null) ? flight.getOrigin().getCode() : "???";
+                            String destCode = (flight.getDestination() != null) ? flight.getDestination().getCode() : "???";
+
+                            pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segment =
+                                new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
+                                    flight.getCode(),
+                                    originCode,
+                                    destCode
+                                );
+                            route.add(segment);
+                        }
                     }
 
-                    // Create ShipmentInfo with quantity and route
-                    pe.edu.pucp.morapack.dto.simulation.ShipmentInfo shipmentInfo =
-                        new pe.edu.pucp.morapack.dto.simulation.ShipmentInfo(
-                            plannerShipment.getId(),
-                            plannerShipment.getQuantity(),
-                            route
-                        );
+                    // Only add if route is not empty
+                    if (!route.isEmpty()) {
+                        pe.edu.pucp.morapack.dto.simulation.ShipmentInfo shipmentInfo =
+                            new pe.edu.pucp.morapack.dto.simulation.ShipmentInfo(
+                                plannerShipment.getId(),
+                                plannerShipment.getQuantity(),
+                                route
+                            );
 
-                    shipments.add(shipmentInfo);
+                        shipments.add(shipmentInfo);
+                    }
                 }
+            }
+
+            // 🔍 DEBUG: Log results
+            if (matchingShipments > 0) {
+                System.out.println("  📦 findShipments(order=" + orderId + "): found " + matchingShipments + " shipments (searched " + totalShipments + " total)");
             }
         }
 

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Itinerario } from "@/types/simulation/itinerary.types";
 import type { Aeropuerto } from "@/types/aeropuerto";
 import type { OrderSummary, OrderMetrics } from "@/types/simulation/order-summary.types";
@@ -41,7 +42,7 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
   const [connected, setConnected] = useState(false);
   const [client, setClient] = useState<Client | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
   // Estados de simulación
   const [simulationState, setSimulationState] = useState<SimulationState>('IDLE');
   const [scenarioType, setScenarioType] = useState<ScenarioType>('WEEKLY');
@@ -688,7 +689,22 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
 
   // Control handlers - Memoized for performance
   const sendControlMessage = useCallback((action: string, extras = {}) => {
-    if (client && connected) {
+    if (!client) {
+      console.error("STOMP client not initialized");
+      return;
+    }
+
+    if (!connected) {
+      console.error("STOMP client not connected");
+      return;
+    }
+
+    if (!client.connected) {
+      console.error("STOMP client connection not active");
+      return;
+    }
+
+    try {
       // Combine date and time for START action
       const startDateTime = action === 'START'
         ? `${startDate}T${startTime}:00`
@@ -706,6 +722,8 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
         }),
       });
       console.log(`Sent control: ${action}`, { startDateTime, ...extras });
+    } catch (error) {
+      console.error(`Error sending control message (${action}):`, error);
     }
   }, [client, connected, startDate, startTime, scenarioType, speed]);
 
@@ -823,38 +841,100 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                     )}
                   </div>
 
-                  {/* Fecha y hora de inicio */}
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-xs text-muted-foreground font-semibold uppercase">Fecha y Hora de Inicio</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
+                  {/* Fecha de inicio */}
+                  <div className="flex flex-col gap-1 min-h-[56px]">
+                    <Label className="text-xs text-muted-foreground font-semibold uppercase h-[18px]">
+                      Fecha
+                    </Label>
+
+                    <div
+                      className="relative w-[110px] h-9 cursor-pointer"
+                      onClick={() => {
+                        if (
+                          simulationState === "RUNNING" ||
+                          simulationState === "STARTING" ||
+                          !!sharedSessionId
+                        ) {
+                          return; // no abrir si está deshabilitado
+                        }
+
+                        const input = dateInputRef.current;
+                        if (!input) return;
+
+                        // Navegadores modernos
+                        // @ts-ignore
+                        if (typeof input.showPicker === "function") {
+                          // @ts-ignore
+                          input.showPicker();
+                        } else {
+                          // Fallback para navegadores sin showPicker
+                          input.focus();
+                          input.click();
+                        }
+                      }}
+                    >
+                      {/* Input real, invisible, solo para que el navegador tenga el datepicker */}
+                      <input
+                        ref={dateInputRef}
                         type="date"
                         value={startDate}
                         onChange={(e) => setStartDate(e.target.value)}
                         min="2025-01-02"
                         max="2025-12-31"
-                        disabled={simulationState === 'RUNNING' || simulationState === 'STARTING' || !!sharedSessionId}
-                        className="w-[130px] h-8 text-sm px-2"
+                        disabled={
+                          simulationState === "RUNNING" ||
+                          simulationState === "STARTING" ||
+                          !!sharedSessionId
+                        }
+                        className="absolute inset-0 w-full h-full opacity-0"
                       />
-                      <Input
-                        type="time"
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        disabled={simulationState === 'RUNNING' || simulationState === 'STARTING' || !!sharedSessionId}
-                        className="w-[90px] h-8 text-sm px-2"
-                      />
+
+                      {/* Texto formateado dd/mm/aaaa */}
+                      <div
+                        className={`flex items-center justify-center w-full h-full text-sm border rounded-md px-2
+                        ${
+                          simulationState === "RUNNING" ||
+                          simulationState === "STARTING" ||
+                          !!sharedSessionId
+                            ? "bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed"
+                            : "bg-white border-gray-300 text-gray-900"
+                        }`}
+                      >
+                        {(() => {
+                          const [year, month, day] = startDate.split("-");
+                          return `${day}/${month}/${year}`;
+                        })()}
+                      </div>
                     </div>
                   </div>
 
+                  {/* Hora de inicio */}
+                  <div className="flex flex-col gap-1 min-h-[56px]">
+                    <Label className="text-xs text-muted-foreground font-semibold uppercase h-[18px]">
+                      Hora
+                    </Label>
+                    <Input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      disabled={
+                        simulationState === "RUNNING" ||
+                        simulationState === "STARTING" ||
+                        !!sharedSessionId
+                      }
+                      className="w-[110px] h-9 text-sm px-2"
+                    />
+                  </div>
+
                   {/* Velocidad de simulación */}
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-xs text-muted-foreground font-semibold uppercase">Velocidad</Label>
+                  <div className="flex flex-col gap-1 min-h-[56px]">
+                    <Label className="text-xs text-muted-foreground font-semibold uppercase h-[18px]">Velocidad</Label>
                     <Select
                       value={speed.toString()}
                       onValueChange={handleSpeedChange}
                       disabled={simulationState !== 'RUNNING'}
                     >
-                      <SelectTrigger className="w-20 h-8 text-sm px-2">
+                      <SelectTrigger className="w-[70px] h-8 text-sm px-2">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -868,8 +948,8 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                   </div>
 
                   {/* Progreso y Timer */}
-                  <div className="flex flex-col gap-1 ml-auto">
-                    <Label className="text-xs text-muted-foreground font-semibold uppercase">Progreso</Label>
+                  <div className="flex flex-col gap-1 ml-auto min-h-[56px]">
+                    <Label className="text-xs text-muted-foreground font-semibold uppercase h-[18px]">Progreso</Label>
                     <div className="flex items-center gap-3">
                       <div className="text-sm">
                         <span className="font-medium">{currentIteration}/{totalIterations}</span>
