@@ -12,6 +12,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/airports")
+@CrossOrigin(origins = "http://localhost:3000")
 @Tag(name = "Aeropuertos", description = "API para gestión de aeropuertos")
 public class AirportController {
 
