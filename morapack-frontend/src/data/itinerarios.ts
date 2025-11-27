@@ -3,7 +3,7 @@ import type { Itinerario } from "@/types/itinerario";
 import type { Vuelo } from "@/types";
 
 const byCode = (c:string)=>{
-  const ap=AEROPUERTOS.find(a=>a.codigo===c);
+  const ap=AEROPUERTOS.find(a=>a.code===c);
   if(!ap) throw new Error(`Aeropuerto ${c} no encontrado`);
   return ap;
 };
