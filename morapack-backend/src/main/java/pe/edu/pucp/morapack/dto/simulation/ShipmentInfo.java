@@ -22,6 +22,9 @@ public class ShipmentInfo {
     @JsonProperty("quantity")
     public int quantity;              // Number of products in THIS shipment
 
+    @JsonProperty("status")
+    public String status;             // PENDING, IN_TRANSIT, IN_WAREHOUSE, DELIVERED, CANCELLED
+
     @JsonProperty("route")
     public List<FlightSegmentInfo> route = new ArrayList<>();  // Flight segments forming the complete route
 

@@ -11,6 +11,7 @@ import { Upload, File, AlertCircle, CheckCircle, X, FileText, Calendar } from "l
 interface BulkCancellationUploadProps {
   onCancellationsUploaded: () => void;
   currentSimulationTime?: string; // Tiempo actual de la simulación (ISO format)
+  simulationStartDate?: string; // Fecha de inicio de la simulación (YYYY-MM-DD format)
 }
 
 interface ParsedCancellation {
@@ -25,9 +26,14 @@ interface ParsedCancellation {
 export default function BulkCancellationUpload({
   onCancellationsUploaded,
   currentSimulationTime,
+  simulationStartDate,
 }: BulkCancellationUploadProps) {
-  const [selectedMonth, setSelectedMonth] = useState<string>("12");
-  const [selectedYear, setSelectedYear] = useState<string>("2025");
+  // Auto-detect year and month from simulation start date if available
+  const defaultYear = simulationStartDate ? simulationStartDate.substring(0, 4) : "2025";
+  const defaultMonth = simulationStartDate ? simulationStartDate.substring(5, 7) : "01";
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(defaultMonth);
+  const [selectedYear, setSelectedYear] = useState<string>(defaultYear);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ParsedCancellation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -204,7 +210,9 @@ export default function BulkCancellationUpload({
         departureTime: c.time, // HHmm format
       }));
 
-      const startDate = `${selectedYear}-${selectedMonth}-01`;
+      // Use simulation start date if available, otherwise construct from dropdowns
+      // IMPORTANT: The "day" in CSV is relative to the simulation start date
+      const startDate = simulationStartDate || `${selectedYear}-${selectedMonth}-01`;
 
       // Enviar las cancelaciones al backend
       const response = await fetch('/api/simulation/events/bulk-cancel-flights', {

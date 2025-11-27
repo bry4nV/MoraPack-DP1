@@ -51,9 +51,9 @@ public class SimulationManager {
     // Default simulation parameters
     private final int simulationDays = 7;    // 1 week
 
-    // Valid date range for simulation data
-    private final LocalDate FIRST_DATA_DATE = LocalDate.of(2025, 1, 2);  // Primera fecha con datos
-    private LocalDate lastDataDate;  // Dynamically loaded from database
+    // Valid date range for simulation data (both loaded dynamically from database)
+    private LocalDate firstDataDate;  // Earliest order date in database
+    private LocalDate lastDataDate;   // Latest order date in database
 
     @Autowired
     public SimulationManager(
@@ -75,21 +75,28 @@ public class SimulationManager {
         this.databaseDataProvider = databaseDataProvider;
         this.simOrderRepository = simOrderRepository;
 
-        // Query the database to find the actual last order date
+        // Query the database to find the actual date range
         try {
+            this.firstDataDate = simOrderRepository.findMinOrderDate();
             this.lastDataDate = simOrderRepository.findMaxOrderDate();
-            if (this.lastDataDate == null) {
-                this.lastDataDate = LocalDate.of(2025, 1, 31); // Fallback
-                System.out.println("[SimulationManager] ⚠️  No orders found in database, using fallback date: " + this.lastDataDate);
+
+            if (this.firstDataDate == null || this.lastDataDate == null) {
+                // Fallback values
+                this.firstDataDate = LocalDate.of(2025, 1, 2);
+                this.lastDataDate = LocalDate.of(2025, 1, 31);
+                System.out.println("[SimulationManager] ⚠️  No orders found in database, using fallback dates: " +
+                                 this.firstDataDate + " to " + this.lastDataDate);
             } else {
                 System.out.println("[SimulationManager] ✅ Initialized with DatabaseDataProvider");
                 System.out.println("[SimulationManager] ✅ Loading ALL orders from database (not files)");
-                System.out.println("[SimulationManager] 📅 Data available from " + FIRST_DATA_DATE + " to " + this.lastDataDate);
+                System.out.println("[SimulationManager] 📅 Data available from " + this.firstDataDate + " to " + this.lastDataDate);
             }
         } catch (Exception e) {
-            this.lastDataDate = LocalDate.of(2025, 1, 31); // Fallback
-            System.err.println("[SimulationManager] ⚠️  Error querying max order date: " + e.getMessage());
-            System.err.println("[SimulationManager] ⚠️  Using fallback date: " + this.lastDataDate);
+            // Fallback values
+            this.firstDataDate = LocalDate.of(2025, 1, 2);
+            this.lastDataDate = LocalDate.of(2025, 1, 31);
+            System.err.println("[SimulationManager] ⚠️  Error querying order date range: " + e.getMessage());
+            System.err.println("[SimulationManager] ⚠️  Using fallback dates: " + this.firstDataDate + " to " + this.lastDataDate);
         }
     }
     
@@ -97,7 +104,7 @@ public class SimulationManager {
      * Start a new simulation for a user
      * @param startDate Optional start date (if null, defaults to FIRST_DATA_DATE)
      */
-    public void startSimulation(String userId, ScenarioConfig scenario, LocalDate startDate) {
+    public void startSimulation(String userId, ScenarioConfig scenario, LocalDate startDate, double initialSpeedMultiplier) {
         // Check if user already has an active simulation
         SimulationSession existingSession = activeSessions.get(userId);
         if (existingSession != null && existingSession.isRunning()) {
@@ -113,14 +120,14 @@ public class SimulationManager {
             
             // Validate and set start date
             if (startDate == null) {
-                startDate = FIRST_DATA_DATE;  // Default to first day of data
+                startDate = firstDataDate;  // Default to first day of data
             }
-            
+
             // Validate date range
-            if (startDate.isBefore(FIRST_DATA_DATE)) {
+            if (startDate.isBefore(firstDataDate)) {
                 sendError(userId, String.format(
-                    "Start date %s is before available data (earliest: %s)", 
-                    startDate, FIRST_DATA_DATE
+                    "Start date %s is before available data (earliest: %s)",
+                    startDate, firstDataDate
                 ));
                 return;
             }
@@ -158,7 +165,7 @@ public class SimulationManager {
             System.out.println("[SimulationManager] ✅ Starting simulation with DatabaseDataProvider");
             System.out.println("[SimulationManager] ✅ This will load ALL orders from ALL destinations (not just SUAA)");
             
-            // Create new session (with dynamic events support)
+            // Create new session (with dynamic events support and initial speed)
             SimulationSession session = new SimulationSession(
                 userId,
                 dataProvider,
@@ -170,7 +177,8 @@ public class SimulationManager {
                 dynamicOrderService,
                 orderInjectionService,
                 replanificationService,
-                flightStatusTracker
+                flightStatusTracker,
+                initialSpeedMultiplier
             );
             
             // Store and start
@@ -233,9 +241,12 @@ public class SimulationManager {
             sendError(userId, "No active simulation found");
             return;
         }
-        
+
         session.stop();
-        
+
+        // Clear all loaded cancellations to avoid them persisting to next simulation
+        cancellationService.clearCancellations();
+
         // Clean up after a short delay
         new Thread(() -> {
             try {
@@ -246,7 +257,7 @@ public class SimulationManager {
                 Thread.currentThread().interrupt();
             }
         }).start();
-        
+
         System.out.println("[SimulationManager] Stopped simulation for user: " + userId);
     }
     
@@ -259,14 +270,17 @@ public class SimulationManager {
             session.stop();
             activeSessions.remove(userId);
         }
-        
+
+        // Clear all loaded cancellations to avoid them persisting to next simulation
+        cancellationService.clearCancellations();
+
         // Send idle state
         SimulationStatusUpdate update = new SimulationStatusUpdate(
             SimulationState.IDLE,
             "Simulation reset. Ready to start new simulation."
         );
         messagingTemplate.convertAndSendToUser(userId, "/queue/simulation", update);
-        
+
         System.out.println("[SimulationManager] Reset simulation for user: " + userId);
     }
     

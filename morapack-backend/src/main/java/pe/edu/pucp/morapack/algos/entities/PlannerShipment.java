@@ -10,33 +10,45 @@ import java.util.stream.Collectors;
  * Representa un envío de N productos siguiendo una RUTA (secuencia de vuelos).
  * - Si ruta tiene 1 vuelo → Envío DIRECTO (sin escalas)
  * - Si ruta tiene 2+ vuelos → Envío con ESCALAS
- * 
+ *
  * Ejemplo:
  *   Order #100: 500 productos Lima → Miami
- *   
+ *
  *   PlannerShipment #1: 200 productos, ruta [LIM→MIA] (directo)
  *   PlannerShipment #2: 150 productos, ruta [LIM→MEX, MEX→MIA] (1 escala)
  *   PlannerShipment #3: 150 productos, ruta [LIM→PTY, PTY→MIA] (1 escala)
  */
 public class PlannerShipment {
+
+    /**
+     * Estado del shipment en el ciclo de vida de replanificación
+     */
+    public enum Status {
+        ACTIVE,      // Shipment activo (usado en la solución actual)
+        CANCELLED    // Shipment cancelado (reemplazado por replanificación)
+    }
+
     private int id;
     private PlannerOrder order;
     private List<PlannerFlight> flightSequence;  // Secuencia de vuelos (ruta completa)
     private int quantity;                  // Cantidad de productos en ESTE envío
+    private Status status;                 // Estado del shipment (ACTIVE por defecto)
     
     public PlannerShipment(int id, PlannerOrder order, List<PlannerFlight> flights, int quantity) {
         this.id = id;
         this.order = order;
         this.flightSequence = new ArrayList<>(flights);
         this.quantity = quantity;
+        this.status = Status.ACTIVE;  // Por defecto, los shipments son activos
     }
-    
+
     // Constructor de copia
     public PlannerShipment(PlannerShipment other) {
         this.id = other.id;
         this.order = other.order;
         this.flightSequence = new ArrayList<>(other.flightSequence);
         this.quantity = other.quantity;
+        this.status = other.status;  // Copiar también el estado
     }
     
     // ========== Getters/Setters ==========
@@ -61,10 +73,26 @@ public class PlannerShipment {
         this.quantity = quantity; 
     }
     
-    public void setFlights(List<PlannerFlight> flights) { 
-        this.flightSequence = new ArrayList<>(flights); 
+    public void setFlights(List<PlannerFlight> flights) {
+        this.flightSequence = new ArrayList<>(flights);
     }
-    
+
+    public Status getStatus() {
+        return status;
+    }
+
+    public void setStatus(Status status) {
+        this.status = status;
+    }
+
+    public boolean isActive() {
+        return status == Status.ACTIVE;
+    }
+
+    public boolean isCancelled() {
+        return status == Status.CANCELLED;
+    }
+
     // ========== Métodos de Consulta ==========
     
     /**
@@ -219,12 +247,13 @@ public class PlannerShipment {
     
     @Override
     public String toString() {
-        return String.format("PlannerShipment{id=%d, order=%d, route=%s, qty=%d, stops=%d, valid=%s}",
-            id, 
-            order != null ? order.getId() : -1, 
-            getRouteDescription(), 
-            quantity, 
+        return String.format("PlannerShipment{id=%d, order=%d, route=%s, qty=%d, stops=%d, status=%s, valid=%s}",
+            id,
+            order != null ? order.getId() : -1,
+            getRouteDescription(),
+            quantity,
             getNumberOfStops(),
+            status,
             isValidSequence() ? "✓" : "✗");
     }
     

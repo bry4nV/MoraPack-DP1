@@ -39,11 +39,16 @@ public class ReplanificationTask {
     // Pedidos afectados
     private List<Integer> affectedOrderIds;     // IDs de pedidos afectados
     private int totalAffectedProducts;          // Total de productos afectados
-    
+
+    // 🆕 Tracking detallado de productos
+    private java.util.Map<Integer, Integer> productsToReassign;      // Productos esperados por pedido
+    private java.util.Map<Integer, Integer> productsReassigned;       // Productos reasignados por pedido
+    private java.util.Map<Integer, Integer> productsPending;          // Productos pendientes por pedido
+
     // Envíos
     private int cancelledShipmentsCount;        // Envíos cancelados
     private int newShipmentsCount;              // Nuevos envíos creados
-    
+
     // Resultado
     private boolean successful;                 // Si fue exitosa
     private String errorMessage;                // Mensaje de error (si falló)
@@ -57,6 +62,9 @@ public class ReplanificationTask {
         this.status = ReplanificationStatus.PENDING;
         this.affectedOrderIds = new ArrayList<>();
         this.successful = false;
+        this.productsToReassign = new java.util.HashMap<>();
+        this.productsReassigned = new java.util.HashMap<>();
+        this.productsPending = new java.util.HashMap<>();
     }
     
     public ReplanificationTask(String cancellationId, String cancelledFlightId, LocalDateTime triggeredTime) {
@@ -123,6 +131,57 @@ public class ReplanificationTask {
      */
     public void addAffectedOrders(List<Integer> orderIds) {
         this.affectedOrderIds.addAll(orderIds);
+    }
+
+    /**
+     * 🆕 Setea los productos a reasignar por pedido
+     */
+    public void setProductsToReassign(java.util.Map<Integer, Integer> productsToReassign) {
+        this.productsToReassign = new java.util.HashMap<>(productsToReassign);
+    }
+
+    /**
+     * 🆕 Setea los productos reasignados por pedido
+     */
+    public void setProductsReassigned(java.util.Map<Integer, Integer> productsReassigned) {
+        this.productsReassigned = new java.util.HashMap<>(productsReassigned);
+
+        // Calcular productos pendientes
+        calculatePendingProducts();
+    }
+
+    /**
+     * 🆕 Calcula productos pendientes de replanificación por pedido
+     */
+    private void calculatePendingProducts() {
+        this.productsPending = new java.util.HashMap<>();
+
+        for (java.util.Map.Entry<Integer, Integer> entry : productsToReassign.entrySet()) {
+            int orderId = entry.getKey();
+            int expected = entry.getValue();
+            int reassigned = productsReassigned.getOrDefault(orderId, 0);
+            int pending = expected - reassigned;
+
+            if (pending > 0) {
+                productsPending.put(orderId, pending);
+            }
+        }
+    }
+
+    /**
+     * 🆕 Obtiene el número total de productos pendientes
+     */
+    public int getTotalProductsPending() {
+        return productsPending.values().stream()
+            .mapToInt(Integer::intValue)
+            .sum();
+    }
+
+    /**
+     * 🆕 Verifica si todos los productos fueron reasignados
+     */
+    public boolean areAllProductsReassigned() {
+        return getTotalProductsPending() == 0;
     }
     
     /**
@@ -274,7 +333,20 @@ public class ReplanificationTask {
     public void setReassignmentRate(double reassignmentRate) {
         this.reassignmentRate = reassignmentRate;
     }
-    
+
+    // 🆕 Getters para tracking detallado
+    public java.util.Map<Integer, Integer> getProductsToReassign() {
+        return new java.util.HashMap<>(productsToReassign);
+    }
+
+    public java.util.Map<Integer, Integer> getProductsReassigned() {
+        return new java.util.HashMap<>(productsReassigned);
+    }
+
+    public java.util.Map<Integer, Integer> getProductsPending() {
+        return new java.util.HashMap<>(productsPending);
+    }
+
     @Override
     public String toString() {
         return getSummary();

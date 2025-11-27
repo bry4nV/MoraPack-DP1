@@ -64,17 +64,25 @@ public class SimulationWebSocketController {
     private void handleStart(String userId, SimulationControlMessage message) {
         // Create ScenarioConfig from message
         ScenarioConfig scenario = message.toScenarioConfig();
-        
+
         // Extract start date (optional)
         java.time.LocalDate startDate = message.getStartDateAsLocalDate();
-        
+
+        // Extract speed multiplier (optional, defaults to 1.0)
+        Double speedMultiplier = message.getSpeedMultiplier();
+        if (speedMultiplier == null) {
+            speedMultiplier = 1.0;
+        }
+
         System.out.println("[WebSocket] Starting simulation for user: " + userId);
         System.out.println("   Scenario: " + scenario.getType());
         System.out.println("   K: " + scenario.getK());
         System.out.println("   Sc: " + scenario.getScMinutes() + " minutes");
         System.out.println("   Start Date: " + (startDate != null ? startDate : "default"));
-        
-        simulationManager.startSimulation(userId, scenario, startDate);
+        System.out.println("   Initial Speed: " + speedMultiplier + "x");
+
+        // Pass initial speed directly to startSimulation
+        simulationManager.startSimulation(userId, scenario, startDate, speedMultiplier);
     }
     
     private void handlePause(String userId) {

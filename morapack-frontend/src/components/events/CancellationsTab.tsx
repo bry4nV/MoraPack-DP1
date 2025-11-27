@@ -4,8 +4,9 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plane, Clock, AlertCircle, FileText, CheckCircle, Upload, List } from "lucide-react";
+import { Plane, Clock, AlertCircle, CheckCircle, Upload, List, FileText, RefreshCw } from "lucide-react";
 import BulkCancellationUpload from "@/components/events/BulkCancellationUpload";
+import ReplanificationDetailsComponent from "@/components/events/ReplanificationDetails";
 import type { FlightCancellation } from "@/types/simulation/events.types";
 
 interface CancellationsTabProps {
@@ -13,6 +14,7 @@ interface CancellationsTabProps {
   onCancellationCreated: (c: FlightCancellation) => void;
   onRefresh: () => void;
   currentSimulationTime?: string;
+  simulationStartDate?: string;
 }
 
 export default function CancellationsTab({
@@ -20,12 +22,21 @@ export default function CancellationsTab({
   onCancellationCreated,
   onRefresh,
   currentSimulationTime,
+  simulationStartDate,
 }: CancellationsTabProps) {
   const [activeTab, setActiveTab] = useState<string>("upload");
 
   // Separar cancelaciones por estado
   const pendingCancellations = cancellations.filter(c => c.status === "PENDING");
   const executedCancellations = cancellations.filter(c => c.status === "EXECUTED");
+
+  // DEBUG: Log cancellations status
+  console.log("🔍 [CancellationsTab] Total cancellations:", cancellations.length);
+  console.log("🔍 [CancellationsTab] Pending:", pendingCancellations.length);
+  console.log("🔍 [CancellationsTab] Executed:", executedCancellations.length);
+  if (cancellations.length > 0) {
+    console.log("🔍 [CancellationsTab] First cancellation:", cancellations[0]);
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -50,10 +61,26 @@ export default function CancellationsTab({
           <BulkCancellationUpload
             onCancellationsUploaded={onRefresh}
             currentSimulationTime={currentSimulationTime}
+            simulationStartDate={simulationStartDate}
           />
         </TabsContent>
 
         <TabsContent value="list" className="flex-1 overflow-y-auto p-3 space-y-4 m-0">
+        {/* Header con botón de refrescar */}
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-gray-700">
+            Cancelaciones Registradas
+          </h3>
+          <button
+            onClick={onRefresh}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+            title="Refrescar cancelaciones"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refrescar
+          </button>
+        </div>
+
         {/* Cancelaciones Programadas */}
         {pendingCancellations.length > 0 && (
           <div className="space-y-2">
@@ -161,13 +188,25 @@ function CancellationCard({ cancellation }: { cancellation: FlightCancellation }
             )}
           </div>
 
-          {/* Productos afectados (oculto temporalmente) */}
-          {/* {cancellation.status === "EXECUTED" && cancellation.affectedProductsCount && cancellation.affectedProductsCount > 0 && (
-            <div className="flex items-center gap-2 text-orange-700 bg-orange-50 p-1.5 rounded mt-1">
+          {/* 🆕 Detalles de replanificación (expandible) */}
+          {cancellation.status === "EXECUTED" && cancellation.replanificationTriggered && cancellation.replanificationDetails && (
+            <ReplanificationDetailsComponent
+              details={cancellation.replanificationDetails}
+              affectedProductsCount={cancellation.affectedProductsCount}
+            />
+          )}
+
+          {/* Fallback: Mostrar info básica si no hay detalles completos */}
+          {cancellation.status === "EXECUTED" && cancellation.replanificationTriggered && !cancellation.replanificationDetails && (
+            <div className="flex items-center gap-2 text-blue-700 bg-blue-50 p-1.5 rounded mt-1">
               <FileText className="h-3 w-3" />
-              <span className="font-medium">{cancellation.affectedProductsCount} productos reasignados</span>
+              <span className="font-medium text-xs">
+                {cancellation.affectedProductsCount && cancellation.affectedProductsCount > 0
+                  ? `✓ ${cancellation.affectedProductsCount} productos replanificados`
+                  : `✓ Replanificación completada`}
+              </span>
             </div>
-          )} */}
+          )}
         </div>
       </CardContent>
     </Card>
