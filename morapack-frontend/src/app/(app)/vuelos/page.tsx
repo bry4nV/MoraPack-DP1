@@ -44,7 +44,7 @@ export default function VuelosPage() {
     setCancellingId(id); 
     startTransition(async () => {
       try {
-        await flightsApi.cancelFlight(String(id));
+        await flightsApi.cancelFlight(id);
         fetchData(); 
       } catch (error) {
         console.error("Error al cancelar vuelo:", error);
