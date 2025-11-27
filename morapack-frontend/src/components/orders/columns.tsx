@@ -1,6 +1,6 @@
 "use client";
 
-import { Order, OrderState } from "@/types/order";
+import { Order } from "@/types/order";
 import { Calendar, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
