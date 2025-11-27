@@ -449,6 +449,20 @@ public class DynamicEventsController {
         dto.setErrorMessage(task.getErrorMessage());
         dto.setReassignmentRate(task.getReassignmentRate());
         dto.setSummary(task.getSummary());
+
+        // 🆕 Tracking detallado de productos
+        dto.setProductsToReassign(task.getProductsToReassign());
+        dto.setProductsReassigned(task.getProductsReassigned());
+        dto.setProductsPending(task.getProductsPending());
+        dto.setTotalProductsPending(task.getTotalProductsPending());
+
+        // 🔍 DEBUG: Verificar que los datos se están mapeando correctamente al DTO
+        logger.info("🔍 [toReplanificationDTO] DTO creado para task {}", task.getId());
+        logger.info("   📋 affectedOrderIds: {}", dto.getAffectedOrderIds());
+        logger.info("   📦 productsToReassign: {}", dto.getProductsToReassign());
+        logger.info("   ✅ productsReassigned: {}", dto.getProductsReassigned());
+        logger.info("   ⏳ productsPending: {}", dto.getProductsPending());
+
         return dto;
     }
     

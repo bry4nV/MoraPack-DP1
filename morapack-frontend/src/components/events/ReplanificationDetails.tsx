@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Package, FileText, Zap, TrendingUp } from "lucide-react";
 import type { ReplanificationDetails } from "@/types/simulation/events.types";
+import { AffectedOrdersTracking } from "./AffectedOrdersTracking";
 
 interface ReplanificationDetailsProps {
   details: ReplanificationDetails;
@@ -74,23 +75,30 @@ export default function ReplanificationDetailsComponent({
             </div>
           </div>
 
-          {/* IDs de pedidos afectados (primeros 10) */}
-          {details.affectedOrderIds && details.affectedOrderIds.length > 0 && (
-            <div className="bg-white p-1.5 rounded border">
-              <div className="text-[10px] text-gray-500 mb-1">Pedidos afectados:</div>
-              <div className="flex flex-wrap gap-1">
-                {details.affectedOrderIds.slice(0, 10).map(id => (
-                  <Badge key={id} variant="outline" className="text-[9px] px-1 py-0">
-                    #{id}
-                  </Badge>
-                ))}
-                {details.affectedOrderIds.length > 10 && (
-                  <Badge variant="outline" className="text-[9px] px-1 py-0 bg-gray-100">
-                    +{details.affectedOrderIds.length - 10} más
-                  </Badge>
-                )}
-              </div>
+          {/* 🆕 Tracking detallado de pedidos afectados */}
+          {details.productsToReassign && Object.keys(details.productsToReassign).length > 0 ? (
+            <div className="bg-white p-2 rounded border">
+              <AffectedOrdersTracking replanificationDetails={details} />
             </div>
+          ) : (
+            /* IDs de pedidos afectados (primeros 10) - Fallback si no hay tracking detallado */
+            details.affectedOrderIds && details.affectedOrderIds.length > 0 && (
+              <div className="bg-white p-1.5 rounded border">
+                <div className="text-[10px] text-gray-500 mb-1">Pedidos afectados:</div>
+                <div className="flex flex-wrap gap-1">
+                  {details.affectedOrderIds.slice(0, 10).map(id => (
+                    <Badge key={id} variant="outline" className="text-[9px] px-1 py-0">
+                      #{id}
+                    </Badge>
+                  ))}
+                  {details.affectedOrderIds.length > 10 && (
+                    <Badge variant="outline" className="text-[9px] px-1 py-0 bg-gray-100">
+                      +{details.affectedOrderIds.length - 10} más
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )
           )}
 
           {/* Estado y resumen */}

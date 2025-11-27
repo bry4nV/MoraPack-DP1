@@ -28,6 +28,23 @@ export interface ReplanificationDetails {
   errorMessage: string | null;
   reassignmentRate: number;               // % de productos reasignados
   summary: string;                        // Resumen descriptivo
+
+  // 🆕 Tracking detallado de productos por pedido
+  productsToReassign?: Record<number, number>;    // Productos esperados a reasignar por pedido
+  productsReassigned?: Record<number, number>;    // Productos efectivamente reasignados por pedido
+  productsPending?: Record<number, number>;       // Productos pendientes por pedido
+  totalProductsPending?: number;                  // Total de productos pendientes
+}
+
+/**
+ * Estado de un pedido afectado por replanificación
+ */
+export interface AffectedOrderStatus {
+  orderId: number;
+  expected: number;           // Productos esperados a reasignar
+  reassigned: number;         // Productos efectivamente reasignados
+  pending: number;            // Productos pendientes
+  status: 'completed' | 'partial' | 'pending';  // Estado del pedido
 }
 
 export interface FlightCancellation {

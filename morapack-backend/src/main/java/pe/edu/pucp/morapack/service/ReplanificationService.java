@@ -100,34 +100,116 @@ public class ReplanificationService {
             }
             
             task.addAffectedOrders(new ArrayList<>(affectedOrderIds));
-            
+
             logger.info("📊 Pedidos afectados: {}", affectedOrderIds.size());
-            
+
             // 3. Extraer pedidos completos
             List<PlannerOrder> affectedOrders = allOrders.stream()
                 .filter(order -> affectedOrderIds.contains(order.getId()))
                 .collect(Collectors.toList());
-            
-            // 4. Filtrar vuelos (excluir el cancelado)
-            List<PlannerFlight> filteredFlights = filterCancelledFlight(
-                availableFlights,
-                cancellation
-            );
-            
-            logger.info("✈️ Vuelos disponibles para replanificación: {}", 
-                filteredFlights.size());
-            
-            // 5. Ejecutar TabuSearch con pedidos afectados
-            logger.info("🔍 Ejecutando TabuSearch para replanificación...");
-            logger.info("📋 [REPLAN] Pasando {} pedidos afectados a TabuSearch", affectedOrders.size());
+
             if (affectedOrders.isEmpty()) {
                 logger.error("❌ [REPLAN] ERROR: affectedOrders está vacío pero affectedOrderIds tiene {} IDs!",
                     affectedOrderIds.size());
                 logger.error("   Esto significa que los pedidos afectados NO están en allOrders");
+                task.markAsCompleted(currentTime, 0, 0, 0);
+                replanificationHistory.put(task.getId(), task);
+                return task;
             }
 
+            // 🆕 4. CRITICAL: Calcular cuántos productos de cada pedido fueron afectados
+            // Esto es necesario porque TabuSearch asume que order.getTotalQuantity() = productos pendientes
+            // pero en replanificación, solo parte del pedido puede estar afectada
+            logger.info("📊 [REPLAN] Calculando productos afectados por pedido...");
+
+            Map<Integer, Integer> productsToReassign = new HashMap<>();
+            List<PlannerShipment> obsoleteShipments = new ArrayList<>();
+
+            for (PlannerShipment shipment : currentSolution.getPlannerShipments()) {
+                // Verificar si este shipment usa el vuelo cancelado
+                boolean usesCancelledFlight = false;
+                for (PlannerFlight flight : shipment.getFlights()) {
+                    if (matchesCancellation(flight, cancellation)) {
+                        usesCancelledFlight = true;
+                        break;
+                    }
+                }
+
+                if (usesCancelledFlight && shipment.getOrder() != null) {
+                    int orderId = shipment.getOrder().getId();
+                    int qty = shipment.getQuantity();
+                    productsToReassign.merge(orderId, qty, Integer::sum);
+                    obsoleteShipments.add(shipment);
+                    logger.debug("   ❌ Shipment #{} (Order #{}): {} productos a reasignar",
+                        shipment.getId(), orderId, qty);
+                }
+            }
+
+            int totalProductsToReassign = productsToReassign.values().stream()
+                .mapToInt(Integer::intValue)
+                .sum();
+
+            logger.info("   📦 [REPLAN] Productos a reasignar:");
+            logger.info("      Total shipments cancelados: {}", obsoleteShipments.size());
+            logger.info("      Total productos afectados: {}", totalProductsToReassign);
+            productsToReassign.forEach((orderId, qty) ->
+                logger.info("         Order #{}: {} productos", orderId, qty));
+
+            // 🆕 Guardar tracking detallado en task
+            task.setProductsToReassign(productsToReassign);
+
+            // 🆕 5. Crear pedidos ajustados con SOLO la cantidad afectada
+            // Esto garantiza que TabuSearch no intente asignar productos que ya están en rutas válidas
+            List<PlannerOrder> adjustedOrders = new ArrayList<>();
+
+            for (PlannerOrder originalOrder : affectedOrders) {
+                int orderId = originalOrder.getId();
+                int qtyToReassign = productsToReassign.getOrDefault(orderId, 0);
+
+                if (qtyToReassign == 0) {
+                    logger.warn("   ⚠️ [REPLAN] Order #{} marcado como afectado pero sin productos a reasignar?", orderId);
+                    continue;
+                }
+
+                // Crear orden ajustada con solo los productos afectados
+                PlannerOrder adjustedOrder = new PlannerOrder(
+                    originalOrder.getId(),
+                    qtyToReassign,  // ✅ Solo productos afectados, NO totalQuantity completo
+                    originalOrder.getOrigin(),
+                    originalOrder.getDestination()
+                );
+                adjustedOrder.setOrderTime(originalOrder.getOrderTime());
+                adjustedOrder.setClientId(originalOrder.getClientId());
+
+                adjustedOrders.add(adjustedOrder);
+
+                logger.info("   ✅ [REPLAN] Order #{}: {} productos de {} totales",
+                    orderId, qtyToReassign, originalOrder.getTotalQuantity());
+            }
+
+            if (adjustedOrders.isEmpty()) {
+                logger.warn("⚠️ [REPLAN] No hay pedidos ajustados para replanificar");
+                task.markAsCompleted(currentTime, obsoleteShipments.size(), 0, 0);
+                replanificationHistory.put(task.getId(), task);
+                return task;
+            }
+
+            // 6. Filtrar vuelos (excluir el cancelado)
+            List<PlannerFlight> filteredFlights = filterCancelledFlight(
+                availableFlights,
+                cancellation
+            );
+
+            logger.info("✈️ Vuelos disponibles para replanificación: {}",
+                filteredFlights.size());
+
+            // 7. Ejecutar TabuSearch con pedidos AJUSTADOS
+            logger.info("🔍 Ejecutando TabuSearch para replanificación...");
+            logger.info("📋 [REPLAN] Pasando {} pedidos ajustados a TabuSearch (total {} productos)",
+                adjustedOrders.size(), totalProductsToReassign);
+
             Solution solution = tabuSearchPlanner.optimize(
-                affectedOrders,
+                adjustedOrders,      // ✅ Pedidos con cantidades ajustadas
                 filteredFlights,
                 airports
             );
@@ -150,14 +232,26 @@ public class ReplanificationService {
                 logger.warn("   - Los pedidos no cumplen restricciones de tiempo");
             }
 
-            // 6. 🆕 APLICAR CAMBIOS A LA SOLUCIÓN ACTUAL
+            // 8. 🆕 APLICAR CAMBIOS A LA SOLUCIÓN ACTUAL
             logger.info("🔄 Aplicando replanificación a la solución global...");
+            Map<Integer, Integer> reassignedProducts = new HashMap<>();
             int cancelledCount = applyReplanificationToSolution(
                 currentSolution,
-                cancellation,
+                obsoleteShipments,  // ✅ Pasar shipments obsoletos ya calculados
                 newSolution,
-                affectedOrderIds
+                productsToReassign,
+                reassignedProducts  // ✅ Output: productos efectivamente reasignados
             );
+
+            // 🆕 Guardar productos reasignados en task para tracking
+            task.setProductsReassigned(reassignedProducts);
+
+            // 🔍 DEBUG: Log detallado de tracking
+            logger.info("🔍 [DEBUG] Tracking de replanificación guardado en task:");
+            logger.info("   📋 productsToReassign: {}", productsToReassign);
+            logger.info("   ✅ productsReassigned: {}", reassignedProducts);
+            logger.info("   ⏳ productsPending: {}", task.getProductsPending());
+            logger.info("   📊 Total pending: {}", task.getTotalProductsPending());
 
             // 7. Registrar resultados
             int newShipmentsCount = newSolution.getPlannerShipments().size();
@@ -293,38 +387,27 @@ public class ReplanificationService {
      * Aplica los cambios de replanificación a la solución global.
      *
      * Este método:
-     * 1. Identifica shipments obsoletos que usaban el vuelo cancelado
-     * 2. Los marca como CANCELLED (manteniéndolos en la solución para historial)
-     * 3. Agrega los nuevos shipments generados por la replanificación
+     * 1. Marca shipments obsoletos como CANCELLED (manteniéndolos en la solución para historial)
+     * 2. Agrega los nuevos shipments generados por la replanificación
+     * 3. Verifica que se hayan reasignado TODOS los productos afectados
      *
      * @param currentSolution Solución global actual (será modificada)
-     * @param cancellation Cancelación que disparó la replanificación
+     * @param obsoleteShipments Shipments obsoletos que usaban el vuelo cancelado
      * @param newSolution Nueva solución con rutas alternativas
-     * @param affectedOrderIds IDs de pedidos afectados
+     * @param productsToReassign Mapa de productos a reasignar por pedido
+     * @param reassignedProducts Output: Mapa de productos efectivamente reasignados por pedido
      * @return Número de shipments marcados como CANCELLED
      */
     private int applyReplanificationToSolution(
             TabuSolution currentSolution,
-            FlightCancellation cancellation,
+            List<PlannerShipment> obsoleteShipments,
             TabuSolution newSolution,
-            Set<Integer> affectedOrderIds) {
+            Map<Integer, Integer> productsToReassign,
+            Map<Integer, Integer> reassignedProducts) {
 
         logger.info("   🔄 [APPLY] Iniciando aplicación de replanificación...");
 
-        // 1. Identificar shipments obsoletos (que pertenecen a pedidos afectados)
-        List<PlannerShipment> obsoleteShipments = currentSolution.getPlannerShipments()
-            .stream()
-            .filter(shipment -> {
-                // Si el shipment pertenece a un pedido afectado, es obsoleto
-                if (shipment.getOrder() != null) {
-                    int orderId = shipment.getOrder().getId();
-                    return affectedOrderIds.contains(orderId);
-                }
-                return false;
-            })
-            .collect(Collectors.toList());
-
-        logger.info("   📦 [APPLY] Shipments obsoletos identificados: {}", obsoleteShipments.size());
+        logger.info("   📦 [APPLY] Shipments obsoletos a marcar como CANCELLED: {}", obsoleteShipments.size());
 
         // DEBUG: Log first few obsolete shipments
         if (!obsoleteShipments.isEmpty()) {
@@ -365,15 +448,50 @@ public class ReplanificationService {
                     s.getId(), s.getOrder() != null ? s.getOrder().getId() : "?", s.getFlights().size()));
         }
 
-        // 4. Verificar consistencia
-        long shipmentsForAffectedOrders = currentSolution.getPlannerShipments()
-            .stream()
-            .filter(s -> s.getOrder() != null && affectedOrderIds.contains(s.getOrder().getId()))
-            .count();
+        // 4. 🆕 Verificar consistencia: ¿Se reasignaron TODOS los productos afectados?
+        logger.info("   🔍 [APPLY] Verificando consistencia de replanificación...");
+
+        // Calcular productos reasignados por pedido
+        reassignedProducts.clear();  // Limpiar el mapa de salida
+        for (PlannerShipment newShipment : newShipments) {
+            if (newShipment.getOrder() != null) {
+                int orderId = newShipment.getOrder().getId();
+                reassignedProducts.merge(orderId, newShipment.getQuantity(), Integer::sum);
+            }
+        }
+
+        // Comparar productos esperados vs reasignados
+        int totalExpected = productsToReassign.values().stream().mapToInt(Integer::intValue).sum();
+        int totalReassigned = reassignedProducts.values().stream().mapToInt(Integer::intValue).sum();
+
+        logger.info("   ✓ [APPLY] Productos esperados a reasignar: {}", totalExpected);
+        logger.info("   ✓ [APPLY] Productos efectivamente reasignados: {}", totalReassigned);
+
+        if (totalReassigned < totalExpected) {
+            int missing = totalExpected - totalReassigned;
+            logger.warn("   ⚠️ [APPLY] ATENCIÓN: Faltan {} productos por reasignar!", missing);
+            logger.warn("      Esto significa que algunos productos NO encontraron rutas alternativas");
+
+            // Detallar pedidos con productos faltantes
+            productsToReassign.forEach((orderId, expected) -> {
+                int reassigned = reassignedProducts.getOrDefault(orderId, 0);
+                if (reassigned < expected) {
+                    logger.warn("         Order #{}: esperado={}, reasignado={}, faltante={}",
+                        orderId, expected, reassigned, expected - reassigned);
+                }
+            });
+        } else if (totalReassigned > totalExpected) {
+            logger.warn("   ⚠️ [APPLY] ATENCIÓN: Se reasignaron {} productos de más!", totalReassigned - totalExpected);
+        } else {
+            logger.info("   ✅ [APPLY] PERFECTO: Todos los productos fueron reasignados correctamente!");
+        }
 
         logger.info("   ✓ [APPLY] Solución actualizada:");
         logger.info("      Total shipments en solución: {}", currentSolution.getPlannerShipments().size());
-        logger.info("      Shipments para pedidos afectados: {} (nuevos + cancelados)", shipmentsForAffectedOrders);
+        logger.info("      Shipments ACTIVOS: {}", currentSolution.getPlannerShipments().stream()
+            .filter(s -> s.getStatus() == PlannerShipment.Status.ACTIVE).count());
+        logger.info("      Shipments CANCELADOS: {}", currentSolution.getPlannerShipments().stream()
+            .filter(s -> s.getStatus() == PlannerShipment.Status.CANCELLED).count());
 
         return cancelledCount;
     }
