@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,12 @@ import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Save, X } from "lucide-react";
 import { airportsApi } from "@/api/airports/airports";
 import { Continent, type CreateAirportPayload } from "@/types/airport";
-import { CoordinatePicker } from "@/components/airports/coordinate-picker";
+
+// Importación dinámica del CoordinatePicker (solo cliente)
+const CoordinatePicker = dynamic(
+  () => import("@/components/airports/coordinate-picker").then(mod => ({ default: mod.CoordinatePicker })),
+  { ssr: false }
+);
 
 const CONTINENTS = [
   { value: Continent.AMERICA_DEL_SUR, label: "America del Sur." },
@@ -117,9 +123,6 @@ export default function AgregarAeropuertoPage() {
 
       {/* Form */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Información del aeropuerto</CardTitle>
-        </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Mostrar errores */}
@@ -273,9 +276,8 @@ export default function AgregarAeropuertoPage() {
 
             {/* Coordenadas geográficas */}
             <div className="space-y-4">
-              <h3 className="text-base font-semibold text-muted-foreground">Coordenadas geográficas</h3>
-              
-              {/* Latitud y Longitud en la misma fila */}
+              <h3 className="text-base font-semibold text-muted-foreground">Coordenadas geográficas</h3>        
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Latitud */}
                 <div className="space-y-2">
@@ -322,7 +324,7 @@ export default function AgregarAeropuertoPage() {
               </div>
             </div>
 
-            {/* Botones */}
+            {/* Botones - CORREGIDO */}
             <div className="flex justify-end gap-3 pt-6 border-t">
               <Button
                 type="button"

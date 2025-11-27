@@ -47,24 +47,3 @@ export * from './simulation/flight.types';
 
 // Dynamic events
 export * from './simulation/events.types';
-
-// ═══════════════════════════════════════════════════════════════
-// BACKWARD COMPATIBILITY (DEPRECATED)
-// ═══════════════════════════════════════════════════════════════
-
-// Legacy exports - kept for backward compatibility
-// These will be removed in a future version
-
-// @deprecated Use types from simulation/ instead
-export * from './vuelo';
-export * from './itinerario';
-
-// @deprecated Use types from simulation/ instead
-export * from './dynamic-events';
-
-// @deprecated Old OrderSummary - use simulation/order-summary.types instead
-export * from './order-summary';
-
-// @deprecated Obsolete types - not used anywhere
-export * from './pedido';
-export * from './envio';
