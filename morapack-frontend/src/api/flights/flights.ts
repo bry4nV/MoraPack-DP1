@@ -9,7 +9,7 @@ export const flightsApi = {
     return await apiClient.get<Flight[]>(API_ENDPOINTS.FLIGHTS.BASE);
   },
 
-  getFlightById: async (id: string): Promise<Flight> => {
+  getFlightById: async (id: number): Promise<Flight> => {
     return await apiClient.get<Flight>(API_ENDPOINTS.FLIGHTS.BY_ID(id));
   },
 
@@ -17,15 +17,15 @@ export const flightsApi = {
     return await apiClient.post<Flight>(API_ENDPOINTS.FLIGHTS.BASE, payload);
   },
 
-  updateFlight: async (id: string, payload: UpdateFlightPayload): Promise<Flight> => {
+  updateFlight: async (id: number, payload: UpdateFlightPayload): Promise<Flight> => {
     return await apiClient.patch<Flight>(API_ENDPOINTS.FLIGHTS.BY_ID(id), payload);
   },
 
-  deleteFlight: async (id: string): Promise<void> => {
+  deleteFlight: async (id: number): Promise<void> => {
     return await apiClient.delete<void>(API_ENDPOINTS.FLIGHTS.BY_ID(id));
   },
 
-  cancelFlight: async (id: string): Promise<Flight> => {
+  cancelFlight: async (id: number): Promise<Flight> => {
     return await apiClient.patch<Flight>(API_ENDPOINTS.FLIGHTS.CANCEL(id),{});
   },
 };
