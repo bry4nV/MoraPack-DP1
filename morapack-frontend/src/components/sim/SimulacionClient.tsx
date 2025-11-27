@@ -60,17 +60,22 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
   const [totalIterations, setTotalIterations] = useState(0);
   const [progress, setProgress] = useState(0);
   const [simulatedTime, setSimulatedTime] = useState("");
-  const [interpolatedTime, setInterpolatedTime] = useState(""); // ✅ Tiempo interpolado
   const [message, setMessage] = useState("Cargando vista previa...");
-  
-  // ✅ Referencias para interpolación de tiempo
-  const lastBackendTimeRef = useRef<string>("");
-  const lastUpdateTimestampRef = useRef<number>(0);
-  const K_MINUTES = 24; // K=24 → cada iteración avanza 120 minutos (WEEKLY scenario)
-  const ITERATION_DELAY_MS = 10000; // 10 segundos por iteración
-  
+
   // ✅ Display time (actualizado cada segundo para evitar "palpitar")
   const [displayTime, setDisplayTime] = useState("");
+
+  // ✅ Calculate real K value from backend data
+  // K = 10080 (minutes in 7 days) / totalIterations / 5 (Sa)
+  // Example: 403 iterations → K = 10080 / 403 / 5 = 5
+  const calculateK = (): number => {
+    if (!totalIterations || totalIterations === 0) return 5; // Default K=5
+    const WEEK_MINUTES = 10080; // 7 days × 24 hours × 60 minutes
+    const SA_MINUTES = 5; // Fixed Sa = 5 minutes
+    const scMinutes = WEEK_MINUTES / totalIterations;
+    const k = scMinutes / SA_MINUTES;
+    return Math.round(k);
+  };
   
   // Métricas finales
   const [finalMetrics, setFinalMetrics] = useState<any>(null);
@@ -140,11 +145,12 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
               if (update.totalIterations !== undefined) setTotalIterations(update.totalIterations);
               if (update.simulatedTime) {
                 setSimulatedTime(update.simulatedTime);
-                lastBackendTimeRef.current = update.simulatedTime;
-                lastUpdateTimestampRef.current = Date.now();
 
                 // Refresh cancellations on each iteration to update status
-                getCancellations().then(data => setCancellations(data)).catch(err => console.error('Error refreshing cancellations:', err));
+                getCancellations().then(data => {
+                  console.log('🔄 [SimulationClient] Cancellations refreshed, count:', data.length);
+                  setCancellations(data);
+                }).catch(err => console.error('Error refreshing cancellations:', err));
               }
 
               // Update orders if present
@@ -274,14 +280,18 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                   setCurrentIteration(update.currentIteration || 0);
                   setTotalIterations(update.totalIterations || 0);
                   setProgress((update.progressPercentage || 0) / 100); // Backend sends 0-100, we need 0-1
-                  setSpeed(update.currentSpeed || 1);
+
+                  // Only update speed if backend reports a different value (avoid race conditions)
+                  if (update.currentSpeed) {
+                    setSpeed((prevSpeed) => {
+                      // Only update if backend value differs from current state
+                      return update.currentSpeed !== prevSpeed ? update.currentSpeed : prevSpeed;
+                    });
+                  }
                   
                   // ✅ Update simulated time with interpolation tracking
                   if (update.simulatedTime) {
                     setSimulatedTime(update.simulatedTime);
-                    lastBackendTimeRef.current = update.simulatedTime;
-                    lastUpdateTimestampRef.current = Date.now();
-                    setInterpolatedTime(update.simulatedTime);
                   }
 
                   // Update map with latest results
@@ -487,96 +497,30 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // ✅ Time interpolation: smooth time progression between backend updates
+  // ✅ Usar directamente el tiempo del backend (sin interpolación)
   useEffect(() => {
-    if (simulationState !== 'RUNNING') {
+    if (!simulatedTime) {
+      setDisplayTime("Esperando...");
       return;
     }
 
-    console.log('[SimulacionClient] 🚀 Interpolación ACTIVADA');
-    
-    let animationFrameId: number;
-    let frameCount = 0;
-    
-    const interpolateTime = () => {
-      const now = Date.now();
-      const elapsedMs = now - lastUpdateTimestampRef.current;
-      const totalIterationMs = ITERATION_DELAY_MS;
-      const scMinutes = K_MINUTES * 5; // K * Sa (5 minutes)
-      
-      // Calculate how much simulated time should have passed
-      const progress = Math.min(1, elapsedMs / totalIterationMs);
-      const simulatedMinutesElapsed = progress * scMinutes;
-      
-      // Add elapsed time to last known backend time
-      if (lastBackendTimeRef.current) {
-        const backendDate = new Date(lastBackendTimeRef.current);
-        const interpolatedDate = new Date(backendDate.getTime() + simulatedMinutesElapsed * 60 * 1000);
-        // ✅ FIX: Formatear como hora local (sin Z) para coincidir con el backend
-        const isoLocal = interpolatedDate.getFullYear() + '-' +
-          String(interpolatedDate.getMonth() + 1).padStart(2, '0') + '-' +
-          String(interpolatedDate.getDate()).padStart(2, '0') + 'T' +
-          String(interpolatedDate.getHours()).padStart(2, '0') + ':' +
-          String(interpolatedDate.getMinutes()).padStart(2, '0') + ':' +
-          String(interpolatedDate.getSeconds()).padStart(2, '0');
-        
-        // 🔍 DEBUG CRÍTICO: Log cada 60 frames
-        if (frameCount % 60 === 0) {
-          console.log('[SimulacionClient] 🔍 INTERPOLACIÓN:', {
-            backendTime: lastBackendTimeRef.current,
-            elapsedMs: elapsedMs.toFixed(0),
-            progress: (progress * 100).toFixed(1) + '%',
-            minutesElapsed: simulatedMinutesElapsed.toFixed(2),
-            interpolatedTime: isoLocal,
-            willSetTo: isoLocal,
-          });
-        }
-        frameCount++;
-        
-        setInterpolatedTime(isoLocal);
-      }
-      
-      animationFrameId = requestAnimationFrame(interpolateTime);
-    };
-    
-    animationFrameId = requestAnimationFrame(interpolateTime);
-    
-    return () => {
-      console.log('[SimulacionClient] 🛑 Interpolación DESACTIVADA');
-      cancelAnimationFrame(animationFrameId);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simulationState, lastBackendTimeRef.current]);
-
-  // ✅ Update display time only once per second (reduce visual "palpitation")
-  useEffect(() => {
-    if (!interpolatedTime) {
-      setDisplayTime(simulatedTime || "Esperando...");
-      return;
-    }
-
-    // Format: "2025-12-01 09:13" (sin segundos para evitar palpitación)
+    // Format: "2025-12-01 09:13" (sin segundos)
     const formatTime = (isoString: string) => {
-      const date = new Date(isoString);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `${year}-${month}-${day} ${hours}:${minutes}`;
+      try {
+        const date = new Date(isoString);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}`;
+      } catch {
+        return isoString;
+      }
     };
 
-    setDisplayTime(formatTime(interpolatedTime));
-
-    // Update display every second
-    const intervalId = setInterval(() => {
-      if (interpolatedTime) {
-        setDisplayTime(formatTime(interpolatedTime));
-      }
-    }, 1000);
-
-    return () => clearInterval(intervalId);
-  }, [interpolatedTime, simulatedTime]);
+    setDisplayTime(formatTime(simulatedTime));
+  }, [simulatedTime]);
 
   // Memoized event handlers for EventosPanel
   const loadDynamicEvents = useCallback(async () => {
@@ -603,9 +547,9 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
   useEffect(() => {
     if (startDate && scenarioType && simulationState === 'IDLE') {
       const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
-      const customK = scenarioType === 'WEEKLY' ? 24 : undefined;
-      const url = `${apiUrl}/api/simulation/preview?startDate=${startDate}&scenarioType=${scenarioType}${customK ? `&customK=${customK}` : ''}`;
-      
+      // Let backend decide K based on scenarioType (ScenarioConfig.java)
+      const url = `${apiUrl}/api/simulation/preview?startDate=${startDate}&scenarioType=${scenarioType}`;
+
       console.log("📡 Fetching preview:", url);
       
       fetch(url)
@@ -714,9 +658,9 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
         destination: "/app/simulation/control",
         body: JSON.stringify({
           action,
-          scenarioType,
-          customK: scenarioType === 'WEEKLY' ? 24 : undefined, // K=24 (Sc=120 min)
-          speed,
+          scenarioType, // Backend will use ScenarioConfig default K for this scenario
+          // customK removed - let backend control configuration
+          speedMultiplier: speed, // Backend expects 'speedMultiplier', not 'speed'
           startDate: startDateTime, // Send combined date+time as ISO string
           ...extras,
         }),
@@ -734,6 +678,14 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
     sendControlMessage("STOP");
     setFinalMetrics(null);
     setItinerarios([]);
+    setCurrentIteration(0);
+    setProgress(0);
+    setElapsedSeconds(0);
+    // Reset clock
+    setSimulatedTime("");
+    setDisplayTime("");
+    // Reset to IDLE so user can start a new simulation
+    setSimulationState('IDLE');
   }, [sendControlMessage]);
 
   const handleReset = useCallback(() => {
@@ -756,28 +708,28 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
       assignmentRatePercent: 0
     } : null);
     setSimulatedTime("");
-    setInterpolatedTime("");
     setDisplayTime("");
-    lastBackendTimeRef.current = "";
-    lastUpdateTimestampRef.current = 0;
   }, [sendControlMessage, previewData]);
 
   const handleSpeedChange = useCallback((newSpeed: string) => {
     const speedValue = parseFloat(newSpeed);
     setSpeed(speedValue);
-    sendControlMessage("SPEED", { speed: speedValue });
-  }, [sendControlMessage]);
+    // Solo enviar comando al backend si la simulación está corriendo
+    if (simulationState === 'RUNNING') {
+      sendControlMessage("SPEED", { speedMultiplier: speedValue });
+    }
+  }, [sendControlMessage, simulationState]);
 
   // Memoize map props to prevent unnecessary re-renders
   const mapProps = useMemo(() => ({
     itinerarios,
     aeropuertos,
-    speedKmh: 800 * speed,
-    simulatedTime: interpolatedTime || simulatedTime,
+    speedKmh: 1200 * speed, // ✈️ Increased from 800 to 1200 for faster plane movement
+    simulatedTime: simulatedTime,
     center: [-60, -15] as [number, number],
     zoom: 3,
     loop: false,
-  }), [itinerarios, aeropuertos, speed, interpolatedTime, simulatedTime]);
+  }), [itinerarios, aeropuertos, speed, simulatedTime]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden">
@@ -812,33 +764,43 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                 {/* Fila 1: Configuración de la simulación */}
                 <div className="flex items-center gap-6 mb-3">
                   {/* Escenario */}
-                  <div className="flex flex-col gap-1">
-                    <Label className="text-xs text-muted-foreground font-semibold uppercase">Escenario</Label>
-                    <RadioGroup
-                      value={scenarioType}
-                      onValueChange={(value: ScenarioType) => setScenarioType(value)}
-                      disabled={simulationState === 'RUNNING' || simulationState === 'STARTING' || !!sharedSessionId}
-                      className="flex items-center gap-3"
-                    >
-                      <div className="flex items-center space-x-1.5">
-                        <RadioGroupItem value="WEEKLY" id="weekly" className="h-4 w-4" />
-                        <Label htmlFor="weekly" className="text-sm font-normal cursor-pointer">
-                          Semanal
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-1.5">
-                        <RadioGroupItem value="COLLAPSE" id="collapse" className="h-4 w-4" />
-                        <Label htmlFor="collapse" className="text-sm font-normal cursor-pointer">
-                          Colapso
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                    {(simulationState === 'RUNNING' || simulationState === 'STARTING') && (
-                      <div className="flex items-center gap-1.5 text-amber-600 text-xs mt-1">
-                        <AlertCircle className="h-3.5 w-3.5" />
-                        <span>Detén la simulación para cambiar escenario</span>
-                      </div>
-                    )}
+                  <div className="flex flex-col gap-1 min-h-[56px]">
+                    <Label className="text-xs text-muted-foreground font-semibold uppercase h-[18px]">
+                      Escenario
+                    </Label>
+                    <TooltipProvider>
+                      <Tooltip open={(simulationState === 'RUNNING' || simulationState === 'STARTING') ? undefined : false}>
+                        <TooltipTrigger asChild>
+                          <div>
+                            <RadioGroup
+                              value={scenarioType}
+                              onValueChange={(value: ScenarioType) => setScenarioType(value)}
+                              disabled={simulationState === 'RUNNING' || simulationState === 'STARTING' || !!sharedSessionId}
+                              className="flex items-center gap-3"
+                            >
+                              <div className="flex items-center space-x-1.5">
+                                <RadioGroupItem value="WEEKLY" id="weekly" className="h-4 w-4" />
+                                <Label htmlFor="weekly" className="text-sm font-normal cursor-pointer">
+                                  Semanal
+                                </Label>
+                              </div>
+                              <div className="flex items-center space-x-1.5">
+                                <RadioGroupItem value="COLLAPSE" id="collapse" className="h-4 w-4" />
+                                <Label htmlFor="collapse" className="text-sm font-normal cursor-pointer">
+                                  Colapso
+                                </Label>
+                              </div>
+                            </RadioGroup>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="bg-amber-600 text-white border-amber-700">
+                          <div className="flex items-center gap-1.5">
+                            <AlertCircle className="h-3.5 w-3.5" />
+                            <span>Detén la simulación para cambiar escenario</span>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
 
                   {/* Fecha de inicio */}
@@ -932,7 +894,6 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                     <Select
                       value={speed.toString()}
                       onValueChange={handleSpeedChange}
-                      disabled={simulationState !== 'RUNNING'}
                     >
                       <SelectTrigger className="w-[70px] h-8 text-sm px-2">
                         <SelectValue />
@@ -940,9 +901,8 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                       <SelectContent>
                         <SelectItem value="0.5">0.5x</SelectItem>
                         <SelectItem value="1">1x</SelectItem>
+                        <SelectItem value="1.5">1.5x</SelectItem>
                         <SelectItem value="2">2x</SelectItem>
-                        <SelectItem value="5">5x</SelectItem>
-                        <SelectItem value="10">10x</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -955,7 +915,7 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
                         <span className="font-medium">{currentIteration}/{totalIterations}</span>
                         <span className="text-muted-foreground ml-1.5">({Math.round(progress * 100)}%)</span>
                       </div>
-                      {simulationState === 'RUNNING' && (
+                      {(simulationState === 'RUNNING' || simulationState === 'COMPLETED') && elapsedSeconds > 0 && (
                         <div className="flex items-center gap-1.5 text-sm text-muted-foreground border-l pl-3">
                           <Timer className="h-4 w-4" />
                           <span>{formatElapsedTime(elapsedSeconds)}</span>
@@ -1090,7 +1050,10 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
         </Card>
 
         {/* Badges de estado debajo del panel de control - SIEMPRE VISIBLES CON POSICIÓN FIJA */}
-        <div className="mt-2 flex items-center gap-2 min-h-[32px]">
+        {/* Cuando el header está cerrado, quitar el margen para aprovechar espacio */}
+        <div className={`flex items-center gap-2 min-h-[32px] transition-all duration-300 ${
+          isHeaderOpen ? 'mt-2' : 'mt-0'
+        }`}>
           {/* Indicador de sesión compartida */}
           {sharedSessionId && (
             <Badge variant="outline" className="text-xs px-2.5 py-1 shadow-lg bg-blue-50/95 border-blue-300 text-blue-700 backdrop-blur">
@@ -1180,23 +1143,25 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
           isPanelOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
         }`}>
           <Tabs defaultValue="pedidos" className="h-full flex flex-col">
-            <TabsList className="grid grid-cols-3 m-2 mb-0">
+            <TabsList className={`grid ${scenarioType === 'COLLAPSE' ? 'grid-cols-2' : 'grid-cols-3'} m-2 mb-0`}>
               <TabsTrigger value="pedidos" className="text-xs">
                 Pedidos
               </TabsTrigger>
               <TabsTrigger value="vuelos" className="text-xs">
                 Vuelos
               </TabsTrigger>
-              <TabsTrigger value="eventos" className="text-xs">
-                Cancelaciones
-              </TabsTrigger>
+              {scenarioType !== 'COLLAPSE' && (
+                <TabsTrigger value="eventos" className="text-xs">
+                  Cancelaciones
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="pedidos" className="flex-1 m-0 overflow-hidden">
               <PedidosPanel
                 pedidos={pedidos.filter(p => {
                   if (simulationState === 'IDLE') return true;
-                  const currentSimTime = new Date(simulatedTime || interpolatedTime);
+                  const currentSimTime = new Date(simulatedTime);
                   const orderTime = new Date(p.requestDateISO);
                   return orderTime <= currentSimTime;
                 })}
@@ -1212,14 +1177,17 @@ export default function SimulacionClient({ sharedSessionId }: SimulacionClientPr
               <VuelosPanel userId={sessionId || ""} />
             </TabsContent>
 
-            <TabsContent value="eventos" className="flex-1 m-0 overflow-hidden">
-              <EventosPanel
-                cancellations={cancellations}
-                onCancellationCreated={handleCancellationCreated}
-                onRefresh={loadDynamicEvents}
-                currentSimulationTime={simulatedTime || lastBackendTimeRef.current}
-              />
-            </TabsContent>
+            {scenarioType !== 'COLLAPSE' && (
+              <TabsContent value="eventos" className="flex-1 m-0 overflow-hidden">
+                <EventosPanel
+                  cancellations={cancellations}
+                  onCancellationCreated={handleCancellationCreated}
+                  onRefresh={loadDynamicEvents}
+                  currentSimulationTime={simulatedTime}
+                  simulationStartDate={startDate}
+                />
+              </TabsContent>
+            )}
           </Tabs>
         </Card>
       </div>

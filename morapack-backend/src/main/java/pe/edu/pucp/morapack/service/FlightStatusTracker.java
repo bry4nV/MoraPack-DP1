@@ -25,9 +25,10 @@ public class FlightStatusTracker {
     private static final Logger logger = LoggerFactory.getLogger(FlightStatusTracker.class);
     
     /**
-     * Estados posibles de un vuelo
+     * Ubicación física del vuelo (usado para determinar si es cancelable)
+     * Nota: Diferente de FlightStatus (modelo general que usa SCHEDULED/DELAYED/CANCELLED/COMPLETED)
      */
-    public enum FlightStatus {
+    public enum FlightLocation {
         ON_GROUND_ORIGIN,       // En tierra en origen (cancelable)
         IN_AIR,                 // En vuelo (NO cancelable)
         ON_GROUND_DESTINATION,  // En destino (completado)
@@ -38,34 +39,48 @@ public class FlightStatusTracker {
      * Información de estado de un vuelo
      */
     public static class FlightStatusInfo {
-        public final FlightStatus status;
+        public final FlightLocation status;
         public final String flightId;
         public final String origin;
         public final String destination;
         public final LocalDateTime scheduledDeparture;
         public final LocalDateTime scheduledArrival;
         public final boolean cancellable;
-        
+        public final boolean cancelled;  // ✅ NEW: indica si el vuelo fue cancelado
+
         public FlightStatusInfo(
-                FlightStatus status,
+                FlightLocation status,
                 String flightId,
                 String origin,
                 String destination,
                 LocalDateTime scheduledDeparture,
                 LocalDateTime scheduledArrival) {
+            this(status, flightId, origin, destination, scheduledDeparture, scheduledArrival, false);
+        }
+
+        public FlightStatusInfo(
+                FlightLocation status,
+                String flightId,
+                String origin,
+                String destination,
+                LocalDateTime scheduledDeparture,
+                LocalDateTime scheduledArrival,
+                boolean cancelled) {
             this.status = status;
             this.flightId = flightId;
             this.origin = origin;
             this.destination = destination;
             this.scheduledDeparture = scheduledDeparture;
             this.scheduledArrival = scheduledArrival;
-            this.cancellable = (status == FlightStatus.ON_GROUND_ORIGIN);
+            this.cancellable = (status == FlightLocation.ON_GROUND_ORIGIN) && !cancelled;
+            this.cancelled = cancelled;
         }
-        
+
         @Override
         public String toString() {
-            return String.format("[%s | %s→%s @ %s | %s]", 
-                flightId, origin, destination, scheduledDeparture, status);
+            String statusStr = cancelled ? "CANCELLED" : status.toString();
+            return String.format("[%s | %s→%s @ %s | %s]",
+                flightId, origin, destination, scheduledDeparture, statusStr);
         }
     }
     
@@ -94,7 +109,7 @@ public class FlightStatusTracker {
                 FlightDTO flight = segment.flight;
 
                 String flightId = getFlightId(flight);
-                FlightStatus status = determineFlightStatus(flight, currentTime);
+                FlightLocation status = determineFlightStatus(flight, currentTime);
 
                 FlightStatusInfo info = new FlightStatusInfo(
                     status,
@@ -178,7 +193,52 @@ public class FlightStatusTracker {
     public Collection<FlightStatusInfo> getAllFlights() {
         return flightStatusCache.values();
     }
-    
+
+    /**
+     * Obtiene un vuelo específico por su ID.
+     * @param flightId ID del vuelo en formato "ORIGIN-DESTINATION-YYYY-MM-DD-HH-MM"
+     * @return FlightStatusInfo o null si no existe
+     */
+    public FlightStatusInfo getFlightById(String flightId) {
+        return flightStatusCache.get(flightId);
+    }
+
+    /**
+     * Registra un vuelo cancelado en el tracker.
+     * Los vuelos cancelados no aparecen en itinerarios, pero necesitamos mostrarlos en el frontend.
+     *
+     * @param origin Código IATA de origen
+     * @param destination Código IATA de destino
+     * @param scheduledDeparture Hora de salida programada
+     * @param scheduledArrival Hora de llegada programada
+     */
+    public void registerCancelledFlight(
+            String origin,
+            String destination,
+            LocalDateTime scheduledDeparture,
+            LocalDateTime scheduledArrival) {
+
+        String scheduledTime = String.format("%02d:%02d",
+            scheduledDeparture.getHour(),
+            scheduledDeparture.getMinute());
+
+        String flightId = String.format("%s-%s-%s", origin, destination, scheduledTime);
+
+        // Crear FlightStatusInfo marcado como cancelado
+        FlightStatusInfo cancelledFlight = new FlightStatusInfo(
+            FlightLocation.ON_GROUND_ORIGIN, // Estado antes de cancelación
+            flightId,
+            origin,
+            destination,
+            scheduledDeparture,
+            scheduledArrival,
+            true  // cancelled = true
+        );
+
+        flightStatusCache.put(flightId, cancelledFlight);
+        logger.info("✈️ Vuelo cancelado registrado: {}", flightId);
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // MÉTODOS AUXILIARES
     // ═══════════════════════════════════════════════════════════════
@@ -186,27 +246,27 @@ public class FlightStatusTracker {
     /**
      * Determina el estado de un vuelo basado en el tiempo actual.
      */
-    private FlightStatus determineFlightStatus(FlightDTO flight, LocalDateTime currentTime) {
+    private FlightLocation determineFlightStatus(FlightDTO flight, LocalDateTime currentTime) {
         LocalDateTime departure = parseToLocalDateTime(flight.scheduledDepartureISO);
         LocalDateTime arrival = parseToLocalDateTime(flight.scheduledArrivalISO);
 
         // Antes de la salida → En tierra en origen
         if (currentTime.isBefore(departure)) {
-            return FlightStatus.ON_GROUND_ORIGIN;
+            return FlightLocation.ON_GROUND_ORIGIN;
         }
 
         // Entre salida y llegada → En vuelo
         if (currentTime.isAfter(departure) && currentTime.isBefore(arrival)) {
-            return FlightStatus.IN_AIR;
+            return FlightLocation.IN_AIR;
         }
 
         // Después de la llegada → En tierra en destino
         if (currentTime.isAfter(arrival) || currentTime.isEqual(arrival)) {
-            return FlightStatus.ON_GROUND_DESTINATION;
+            return FlightLocation.ON_GROUND_DESTINATION;
         }
 
         // Caso por defecto (no debería llegar aquí)
-        return FlightStatus.NOT_SCHEDULED;
+        return FlightLocation.NOT_SCHEDULED;
     }
 
     /**
@@ -263,19 +323,20 @@ public class FlightStatusTracker {
     public void registerCancelledFlight(String origin, String destination, String scheduledTime, LocalDateTime cancellationTime) {
         String flightId = String.format("%s-%s-%s", origin, destination, scheduledTime);
 
-        // Crear un FlightStatusInfo marcado como ON_GROUND_ORIGIN para que sea cancelable
-        // Usamos la hora de cancelación como referencia temporal
+        // Crear un FlightStatusInfo marcado como CANCELADO
+        // El vuelo estaba en tierra, pero ahora está cancelado
         FlightStatusInfo info = new FlightStatusInfo(
-            FlightStatus.ON_GROUND_ORIGIN,
+            FlightLocation.ON_GROUND_ORIGIN,
             flightId,
             origin,
             destination,
             cancellationTime, // Como no tenemos los datos exactos, usamos la hora de cancelación
-            cancellationTime.plusHours(2) // Estimación de llegada
+            cancellationTime.plusHours(2), // Estimación de llegada
+            true  // ✅ CANCELLED = true
         );
 
         flightStatusCache.put(flightId, info);
-        logger.info("📝 Vuelo registrado en tracker: {} (estado: ON_GROUND_ORIGIN, cancelable)", flightId);
+        logger.info("📝 Vuelo registrado en tracker: {} (estado: ON_GROUND_ORIGIN, CANCELLED)", flightId);
     }
 
     /**
@@ -287,18 +348,18 @@ public class FlightStatusTracker {
     }
     
     /**
-     * Obtiene estadísticas de estados de vuelos.
+     * Obtiene estadísticas de ubicaciones de vuelos.
      */
-    public Map<FlightStatus, Long> getStatusStatistics() {
-        Map<FlightStatus, Long> stats = new EnumMap<>(FlightStatus.class);
-        
-        for (FlightStatus status : FlightStatus.values()) {
+    public Map<FlightLocation, Long> getStatusStatistics() {
+        Map<FlightLocation, Long> stats = new EnumMap<>(FlightLocation.class);
+
+        for (FlightLocation location : FlightLocation.values()) {
             long count = flightStatusCache.values().stream()
-                .filter(info -> info.status == status)
+                .filter(info -> info.status == location)
                 .count();
-            stats.put(status, count);
+            stats.put(location, count);
         }
-        
+
         return stats;
     }
 }

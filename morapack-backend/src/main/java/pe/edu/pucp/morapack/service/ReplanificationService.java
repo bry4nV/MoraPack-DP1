@@ -119,7 +119,13 @@ public class ReplanificationService {
             
             // 5. Ejecutar TabuSearch con pedidos afectados
             logger.info("🔍 Ejecutando TabuSearch para replanificación...");
-            
+            logger.info("📋 [REPLAN] Pasando {} pedidos afectados a TabuSearch", affectedOrders.size());
+            if (affectedOrders.isEmpty()) {
+                logger.error("❌ [REPLAN] ERROR: affectedOrders está vacío pero affectedOrderIds tiene {} IDs!",
+                    affectedOrderIds.size());
+                logger.error("   Esto significa que los pedidos afectados NO están en allOrders");
+            }
+
             Solution solution = tabuSearchPlanner.optimize(
                 affectedOrders,
                 filteredFlights,
@@ -127,35 +133,59 @@ public class ReplanificationService {
             );
             
             // Cast a TabuSolution para acceder a shipments
-            TabuSolution newSolution = (solution instanceof TabuSolution) 
-                ? (TabuSolution) solution 
+            TabuSolution newSolution = (solution instanceof TabuSolution)
+                ? (TabuSolution) solution
                 : new TabuSolution(solution);
-            
-            // 6. Registrar resultados
-            int newShipments = newSolution.getPlannerShipments().size();
+
+            // 🔍 DEBUG: Ver cuántos shipments generó TabuSearch
+            logger.info("📦 [REPLAN] TabuSearch generó {} shipments para {} pedidos afectados",
+                newSolution.getPlannerShipments().size(),
+                affectedOrders.size());
+
+            if (newSolution.getPlannerShipments().isEmpty()) {
+                logger.warn("⚠️ [REPLAN] TabuSearch NO generó ningún shipment nuevo!");
+                logger.warn("   Posibles causas:");
+                logger.warn("   - No hay rutas alternativas disponibles");
+                logger.warn("   - Todos los vuelos alternativos están llenos");
+                logger.warn("   - Los pedidos no cumplen restricciones de tiempo");
+            }
+
+            // 6. 🆕 APLICAR CAMBIOS A LA SOLUCIÓN ACTUAL
+            logger.info("🔄 Aplicando replanificación a la solución global...");
+            int cancelledCount = applyReplanificationToSolution(
+                currentSolution,
+                cancellation,
+                newSolution,
+                affectedOrderIds
+            );
+
+            // 7. Registrar resultados
+            int newShipmentsCount = newSolution.getPlannerShipments().size();
             int totalProducts = affectedOrders.stream()
                 .mapToInt(PlannerOrder::getTotalQuantity)
                 .sum();
-            
+
             task.markAsCompleted(
                 LocalDateTime.now(),
-                affectedOrderIds.size(),  // cancelledShipments (aprox)
-                newShipments,
+                cancelledCount,            // Shipments cancelados (mantenidos como historial)
+                newShipmentsCount,         // Nuevos shipments creados
                 totalProducts
             );
-            
+
             logger.info("✅ Replanificación completada: {}", task.getSummary());
-            
-            // 7. Actualizar contador de productos afectados en la cancelación
+            logger.info("   ❌ Cancelados: {} shipments obsoletos (mantenidos en historial)", cancelledCount);
+            logger.info("   ✨ Agregados: {} shipments nuevos", newShipmentsCount);
+
+            // 8. Actualizar contador de productos afectados en la cancelación
             cancellationService.updateAffectedProducts(
-                cancellation.getId(), 
+                cancellation.getId(),
                 totalProducts
             );
             cancellationService.markReplanificationTriggered(cancellation.getId());
-            
-            // 8. Guardar en historial
+
+            // 9. Guardar en historial
             replanificationHistory.put(task.getId(), task);
-            
+
             return task;
             
         } catch (Exception e) {
@@ -242,19 +272,112 @@ public class ReplanificationService {
      * Verifica si un vuelo coincide con una cancelación.
      */
     private boolean matchesCancellation(
-            PlannerFlight flight, 
+            PlannerFlight flight,
             FlightCancellation cancellation) {
-        
+
         String flightTime = String.format("%02d:%02d",
             flight.getDepartureTime().getHour(),
             flight.getDepartureTime().getMinute()
         );
-        
+
         return flight.getOrigin().getCode().equals(cancellation.getFlightOrigin()) &&
                flight.getDestination().getCode().equals(cancellation.getFlightDestination()) &&
                flightTime.equals(cancellation.getScheduledDepartureTime());
     }
-    
+
+    // ═══════════════════════════════════════════════════════════════
+    // APLICACIÓN DE REPLANIFICACIÓN A SOLUCIÓN GLOBAL
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Aplica los cambios de replanificación a la solución global.
+     *
+     * Este método:
+     * 1. Identifica shipments obsoletos que usaban el vuelo cancelado
+     * 2. Los marca como CANCELLED (manteniéndolos en la solución para historial)
+     * 3. Agrega los nuevos shipments generados por la replanificación
+     *
+     * @param currentSolution Solución global actual (será modificada)
+     * @param cancellation Cancelación que disparó la replanificación
+     * @param newSolution Nueva solución con rutas alternativas
+     * @param affectedOrderIds IDs de pedidos afectados
+     * @return Número de shipments marcados como CANCELLED
+     */
+    private int applyReplanificationToSolution(
+            TabuSolution currentSolution,
+            FlightCancellation cancellation,
+            TabuSolution newSolution,
+            Set<Integer> affectedOrderIds) {
+
+        logger.info("   🔄 [APPLY] Iniciando aplicación de replanificación...");
+
+        // 1. Identificar shipments obsoletos (que pertenecen a pedidos afectados)
+        List<PlannerShipment> obsoleteShipments = currentSolution.getPlannerShipments()
+            .stream()
+            .filter(shipment -> {
+                // Si el shipment pertenece a un pedido afectado, es obsoleto
+                if (shipment.getOrder() != null) {
+                    int orderId = shipment.getOrder().getId();
+                    return affectedOrderIds.contains(orderId);
+                }
+                return false;
+            })
+            .collect(Collectors.toList());
+
+        logger.info("   📦 [APPLY] Shipments obsoletos identificados: {}", obsoleteShipments.size());
+
+        // DEBUG: Log first few obsolete shipments
+        if (!obsoleteShipments.isEmpty()) {
+            logger.debug("   🔍 [APPLY] Primeros shipments obsoletos:");
+            obsoleteShipments.stream()
+                .limit(3)
+                .forEach(s -> logger.debug("      - Shipment #{} (Order #{}): {} vuelos",
+                    s.getId(), s.getOrder().getId(), s.getFlights().size()));
+        }
+
+        // 2. ✅ MARCAR como CANCELLED (en lugar de eliminar) para mantener historial
+        int cancelledCount = 0;
+        for (PlannerShipment obsoleteShipment : obsoleteShipments) {
+            obsoleteShipment.setStatus(PlannerShipment.Status.CANCELLED);
+            cancelledCount++;
+            logger.debug("      ❌ Shipment #{} marcado como CANCELLED", obsoleteShipment.getId());
+        }
+
+        logger.info("   ❌ [APPLY] Marcados {} shipments como CANCELLED (mantenidos en historial)", cancelledCount);
+
+        // 3. Agregar nuevos shipments de la replanificación
+        List<PlannerShipment> newShipments = newSolution.getPlannerShipments();
+        int addedCount = 0;
+
+        for (PlannerShipment newShipment : newShipments) {
+            currentSolution.getPlannerShipments().add(newShipment);
+            addedCount++;
+        }
+
+        logger.info("   ✅ [APPLY] Agregados {} shipments nuevos a la solución", addedCount);
+
+        // DEBUG: Log first few new shipments
+        if (!newShipments.isEmpty()) {
+            logger.debug("   🔍 [APPLY] Primeros shipments nuevos:");
+            newShipments.stream()
+                .limit(3)
+                .forEach(s -> logger.debug("      + Shipment #{} (Order #{}): {} vuelos",
+                    s.getId(), s.getOrder() != null ? s.getOrder().getId() : "?", s.getFlights().size()));
+        }
+
+        // 4. Verificar consistencia
+        long shipmentsForAffectedOrders = currentSolution.getPlannerShipments()
+            .stream()
+            .filter(s -> s.getOrder() != null && affectedOrderIds.contains(s.getOrder().getId()))
+            .count();
+
+        logger.info("   ✓ [APPLY] Solución actualizada:");
+        logger.info("      Total shipments en solución: {}", currentSolution.getPlannerShipments().size());
+        logger.info("      Shipments para pedidos afectados: {} (nuevos + cancelados)", shipmentsForAffectedOrders);
+
+        return cancelledCount;
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // CONSULTAS
     // ═══════════════════════════════════════════════════════════════

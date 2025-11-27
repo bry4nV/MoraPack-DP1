@@ -7,6 +7,29 @@
 // FLIGHT CANCELLATIONS
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Detalles de una tarea de replanificación.
+ * Incluye información sobre pedidos afectados, nuevos shipments, y métricas.
+ */
+export interface ReplanificationDetails {
+  id: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  cancellationId: string;
+  cancelledFlightId: string;
+  triggeredTime: string | null;
+  startedTime: string | null;
+  completedTime: string | null;
+  executionTimeMs: number;
+  affectedOrderIds: number[];             // IDs de pedidos afectados
+  totalAffectedProducts: number;          // Total de productos afectados
+  cancelledShipmentsCount: number;        // Envíos cancelados
+  newShipmentsCount: number;              // Nuevos envíos creados
+  successful: boolean;
+  errorMessage: string | null;
+  reassignmentRate: number;               // % de productos reasignados
+  summary: string;                        // Resumen descriptivo
+}
+
 export interface FlightCancellation {
   id: string;
   type?: string;                          // "SCHEDULED" | "MANUAL"
@@ -21,6 +44,7 @@ export interface FlightCancellation {
   affectedProductsCount?: number;         // Number of products affected (only when EXECUTED)
   replanificationTriggered?: boolean;     // Whether replanification was triggered
   errorMessage?: string | null;           // Error message if failed
+  replanificationDetails?: ReplanificationDetails;  // 🆕 Detalles completos de replanificación
 }
 
 export interface CancelFlightRequest {

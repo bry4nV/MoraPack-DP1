@@ -1,5 +1,7 @@
 package pe.edu.pucp.morapack.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -29,18 +31,23 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/simulation/events")
 public class DynamicEventsController {
 
+    private static final Logger logger = LoggerFactory.getLogger(DynamicEventsController.class);
+
     private final CancellationService cancellationService;
     private final DynamicOrderService dynamicOrderService;
     private final pe.edu.pucp.morapack.service.FlightStatusTracker flightStatusTracker;
+    private final pe.edu.pucp.morapack.service.ReplanificationService replanificationService;
 
     public DynamicEventsController(
             CancellationService cancellationService,
             DynamicOrderService dynamicOrderService,
-            pe.edu.pucp.morapack.service.FlightStatusTracker flightStatusTracker) {
+            pe.edu.pucp.morapack.service.FlightStatusTracker flightStatusTracker,
+            pe.edu.pucp.morapack.service.ReplanificationService replanificationService) {
 
         this.cancellationService = cancellationService;
         this.dynamicOrderService = dynamicOrderService;
         this.flightStatusTracker = flightStatusTracker;
+        this.replanificationService = replanificationService;
     }
     
     // ═══════════════════════════════════════════════════════════════
@@ -143,12 +150,18 @@ public class DynamicEventsController {
         List<FlightCancellationDTO> dtos = all.stream()
             .map(this::toCancellationDTO)
             .collect(Collectors.toList());
-        
+
+        // 🔍 DEBUG: Log cancellation states
+        long pending = dtos.stream().filter(c -> "PENDING".equals(c.getStatus())).count();
+        long executed = dtos.stream().filter(c -> "EXECUTED".equals(c.getStatus())).count();
+        logger.debug("📡 [API /cancellations] Returning {} cancellations (PENDING: {}, EXECUTED: {})",
+            dtos.size(), pending, executed);
+
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("count", dtos.size());
         response.put("cancellations", dtos);
-        
+
         return ResponseEntity.ok(response);
     }
     
@@ -190,6 +203,7 @@ public class DynamicEventsController {
                 dto.put("scheduledArrivalTime", flight.scheduledArrival.toString());
                 dto.put("status", flight.status.name());
                 dto.put("cancellable", flight.cancellable);
+                dto.put("cancelled", flight.cancelled);  // ✅ NEW: incluir campo cancelled
                 return dto;
             })
             .collect(Collectors.toList());
@@ -398,6 +412,43 @@ public class DynamicEventsController {
         dto.setAffectedProductsCount(c.getAffectedProductsCount());
         dto.setReplanificationTriggered(c.isReplanificationTriggered());
         dto.setErrorMessage(c.getErrorMessage());
+
+        // 🆕 Incluir detalles de replanificación si existe
+        if (c.isReplanificationTriggered()) {
+            // Buscar la tarea de replanificación correspondiente
+            pe.edu.pucp.morapack.model.ReplanificationTask task = replanificationService
+                .getAllReplanifications()
+                .stream()
+                .filter(t -> t.getCancellationId().equals(c.getId()))
+                .findFirst()
+                .orElse(null);
+
+            if (task != null) {
+                dto.setReplanificationDetails(toReplanificationDTO(task));
+            }
+        }
+
+        return dto;
+    }
+
+    private pe.edu.pucp.morapack.dto.ReplanificationResultDTO toReplanificationDTO(pe.edu.pucp.morapack.model.ReplanificationTask task) {
+        pe.edu.pucp.morapack.dto.ReplanificationResultDTO dto = new pe.edu.pucp.morapack.dto.ReplanificationResultDTO();
+        dto.setId(task.getId());
+        dto.setStatus(task.getStatus().name());
+        dto.setCancellationId(task.getCancellationId());
+        dto.setCancelledFlightId(task.getCancelledFlightId());
+        dto.setTriggeredTime(task.getTriggeredTime() != null ? task.getTriggeredTime().toString() : null);
+        dto.setStartedTime(task.getStartedTime() != null ? task.getStartedTime().toString() : null);
+        dto.setCompletedTime(task.getCompletedTime() != null ? task.getCompletedTime().toString() : null);
+        dto.setExecutionTimeMs(task.getExecutionTimeMs());
+        dto.setAffectedOrderIds(task.getAffectedOrderIds());
+        dto.setTotalAffectedProducts(task.getTotalAffectedProducts());
+        dto.setCancelledShipmentsCount(task.getCancelledShipmentsCount());
+        dto.setNewShipmentsCount(task.getNewShipmentsCount());
+        dto.setSuccessful(task.isSuccessful());
+        dto.setErrorMessage(task.getErrorMessage());
+        dto.setReassignmentRate(task.getReassignmentRate());
+        dto.setSummary(task.getSummary());
         return dto;
     }
     
@@ -458,27 +509,38 @@ public class DynamicEventsController {
                 int minutes = Integer.parseInt(departureTime.substring(2, 4));
                 String scheduledTimeStr = String.format("%02d:%02d", hours, minutes);
 
-                // ⚠️ DYNAMIC CANCELLATION TIMING (supports live loading during simulation):
-                // Determine cancellation time based on whether simulation is running
-                LocalDateTime cancellationTime;
+                // Calculate cancellation time from CSV day and hour
+                // CSV "day" is the day of the month (1-31)
+                // CSV "departureTime" is the hour of the flight (HHmm)
+                LocalDateTime startDateTime = LocalDateTime.parse(startDateStr + "T00:00:00");
+                LocalDateTime cancellationTime = startDateTime
+                    .withDayOfMonth(day)
+                    .withHour(hours)
+                    .withMinute(minutes);
 
                 // Log what we received (only once per batch)
                 if (successCount == 0) {
-                    System.out.println("🔍 [Bulk Upload] currentSimTimeStr received: '" + currentSimTimeStr + "'");
+                    System.out.println("🔍 [Bulk Upload] startDate: " + startDateStr +
+                                     ", currentSimTime: " + (currentSimTimeStr != null ? currentSimTimeStr : "null"));
                 }
 
+                // Determine if cancellation is immediate or scheduled
                 if (currentSimTimeStr != null && !currentSimTimeStr.isEmpty()) {
-                    // SCENARIO: Loaded DURING simulation (live)
-                    // Use current simulation time so cancellation processes in next iteration
-                    cancellationTime = LocalDateTime.parse(currentSimTimeStr);
-                    System.out.println(String.format("✅ [Live] Cancelación inmediata: %s → %s @ %s (simTime: %s)",
-                        origin, destination, scheduledTimeStr, cancellationTime));
+                    LocalDateTime currentSimTime = LocalDateTime.parse(currentSimTimeStr);
+                    if (cancellationTime.isBefore(currentSimTime) || cancellationTime.isEqual(currentSimTime)) {
+                        // SCENARIO: Loaded DURING simulation, and cancellation time already passed
+                        // Execute immediately in next iteration
+                        System.out.println(String.format("✅ [Live - Inmediata] Día %d, %s → %s @ %s (ya pasó, ejecutar ahora)",
+                            day, origin, destination, scheduledTimeStr));
+                    } else {
+                        // SCENARIO: Loaded DURING simulation, but cancellation time is in the future
+                        // Schedule for later
+                        System.out.println(String.format("📅 [Live - Programada] Día %d, %s → %s @ %s (programado: %s)",
+                            day, origin, destination, scheduledTimeStr, cancellationTime));
+                    }
                 } else {
-                    // SCENARIO: Loaded BEFORE simulation starts (pre-loaded)
-                    // Schedule for 00:00 of the specified day
-                    cancellationTime = LocalDateTime.parse(startDateStr + "T00:00:00")
-                        .plusDays(day - 1); // day is 1-based
-                    System.out.println(String.format("📅 [Pre-loaded] Día %d: %s → %s @ %s (programado: %s)",
+                    // SCENARIO: Loaded BEFORE simulation starts
+                    System.out.println(String.format("📅 [Pre-loaded] Día %d del mes, %s → %s @ %s (programado: %s)",
                         day, origin, destination, scheduledTimeStr, cancellationTime));
                 }
 

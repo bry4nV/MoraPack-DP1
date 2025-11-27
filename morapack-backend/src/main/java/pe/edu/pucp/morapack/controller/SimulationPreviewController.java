@@ -149,6 +149,44 @@ public class SimulationPreviewController {
     }
 
     /**
+     * Get detailed cargo information for a specific flight.
+     * Returns all shipments (packages) being transported on this flight.
+     */
+    @GetMapping("/{userId}/flights/{flightId}/cargo")
+    public ResponseEntity<Map<String, Object>> getFlightCargo(
+            @PathVariable String userId,
+            @PathVariable String flightId) {
+        try {
+            SimulationSession session = simulationManager.getSession(userId);
+
+            if (session == null) {
+                session = simulationManager.getSessionBySessionId(userId);
+            }
+
+            if (session == null) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "No active simulation found for: " + userId);
+                return ResponseEntity.badRequest().body(error);
+            }
+
+            Map<String, Object> cargoDetails = session.getFlightCargoDetails(flightId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.putAll(cargoDetails);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "Error getting flight cargo: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    /**
      * Get final simulation report with all metrics.
      * This endpoint is called when the simulation finishes or when the user requests a summary.
      */
@@ -182,9 +220,9 @@ public class SimulationPreviewController {
      */
     private ScenarioConfig createScenarioConfig(String scenarioType, Integer customK) {
         return switch (scenarioType.toUpperCase()) {
-            case "WEEKLY" -> customK != null ? 
-                ScenarioConfig.weekly(customK) : 
-                ScenarioConfig.weekly(); // Default K=24
+            case "WEEKLY" -> customK != null ?
+                ScenarioConfig.weekly(customK) :
+                ScenarioConfig.weekly(); // Default K=5 (defined in ScenarioConfig.java)
             case "COLLAPSE" -> ScenarioConfig.collapse();
             case "DAILY" -> ScenarioConfig.daily();
             default -> ScenarioConfig.weekly();

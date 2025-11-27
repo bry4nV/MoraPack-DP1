@@ -24,3 +24,29 @@ export interface FlightsResponse {
   count: number;
   flights: FlightInfo[];
 }
+
+export type ShipmentStatus = "PENDING" | "IN_TRANSIT" | "IN_WAREHOUSE" | "DELIVERED" | "CANCELLED";
+
+export interface ShipmentInfo {
+  orderId: number;
+  quantity: number;
+  orderOrigin: string;
+  orderDestination: string;
+  deadline: string;
+  status: ShipmentStatus;
+  route: string[]; // ["SPIM → SCEL", "SCEL → LATI"]
+}
+
+export interface FlightCargoResponse {
+  success: boolean;
+  flightId: string;
+  origin: string;
+  destination: string;
+  scheduledDeparture: string;
+  scheduledArrival: string;
+  status: FlightStatus;
+  cancelled: boolean;
+  totalShipments: number;
+  totalQuantity: number;
+  shipments: ShipmentInfo[];
+}

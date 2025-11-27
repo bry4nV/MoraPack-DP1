@@ -24,11 +24,14 @@ public class FlightCancellationDTO {
     private int affectedProductsCount;
     private boolean replanificationTriggered;
     private String errorMessage;
-    
+
+    // 🆕 Detalles de replanificación (incluye pedidos afectados, nuevos shipments, etc.)
+    private ReplanificationResultDTO replanificationDetails;
+
     // ═══════════════════════════════════════════════════════════════
     // CONSTRUCTORES
     // ═══════════════════════════════════════════════════════════════
-    
+
     public FlightCancellationDTO() {
     }
     
@@ -138,6 +141,14 @@ public class FlightCancellationDTO {
     
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public ReplanificationResultDTO getReplanificationDetails() {
+        return replanificationDetails;
+    }
+
+    public void setReplanificationDetails(ReplanificationResultDTO replanificationDetails) {
+        this.replanificationDetails = replanificationDetails;
     }
 }
 

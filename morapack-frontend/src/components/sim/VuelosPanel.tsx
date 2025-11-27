@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { FlightInfo, FlightStatus } from "@/types/simulation/flights.types";
 import { getFlightsStatus } from "@/lib/flights-api";
+import { FlightDetailsModal } from "./FlightDetailsModal";
 
 interface VuelosPanelProps {
   userId: string;
@@ -17,6 +18,7 @@ export const VuelosPanel = memo(function VuelosPanel({ userId }: VuelosPanelProp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
 
   // Cargar vuelos
   const loadFlights = async () => {
@@ -38,9 +40,10 @@ export const VuelosPanel = memo(function VuelosPanel({ userId }: VuelosPanelProp
       console.error("Error loading flights:", error);
       // No mostrar error si es porque la simulación no ha iniciado
       if (error instanceof Error) {
-        if (error.message.includes("404")) {
-          // 404 significa que la sesión no existe o no ha iniciado
+        if (error.message.includes("404") || error.message.includes("400")) {
+          // 404/400 significa que la sesión no existe, no ha iniciado, o fue reseteada
           setError("Esperando inicio de simulación...");
+          setFlights([]); // Limpiar vuelos cuando no hay sesión
         } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
           setError("No se pudo conectar con el servidor. Verifica que el backend esté corriendo.");
         } else {
@@ -142,6 +145,7 @@ export const VuelosPanel = memo(function VuelosPanel({ userId }: VuelosPanelProp
                 icon={Ban}
                 color="red"
                 flights={groupedFlights.cancelled}
+                onFlightClick={setSelectedFlightId}
               />
             )}
 
@@ -152,6 +156,7 @@ export const VuelosPanel = memo(function VuelosPanel({ userId }: VuelosPanelProp
                 icon={Plane}
                 color="blue"
                 flights={groupedFlights.inAir}
+                onFlightClick={setSelectedFlightId}
               />
             )}
 
@@ -162,6 +167,7 @@ export const VuelosPanel = memo(function VuelosPanel({ userId }: VuelosPanelProp
                 icon={Clock}
                 color="yellow"
                 flights={groupedFlights.grounded}
+                onFlightClick={setSelectedFlightId}
               />
             )}
 
@@ -172,6 +178,7 @@ export const VuelosPanel = memo(function VuelosPanel({ userId }: VuelosPanelProp
                 icon={CheckCircle}
                 color="green"
                 flights={groupedFlights.arrived}
+                onFlightClick={setSelectedFlightId}
               />
             )}
 
@@ -190,6 +197,14 @@ export const VuelosPanel = memo(function VuelosPanel({ userId }: VuelosPanelProp
           </>
         )}
       </div>
+
+      {/* Flight Details Modal */}
+      <FlightDetailsModal
+        isOpen={selectedFlightId !== null}
+        onClose={() => setSelectedFlightId(null)}
+        flightId={selectedFlightId || ""}
+        userId={userId}
+      />
     </div>
   );
 });
@@ -201,9 +216,10 @@ interface FlightGroupProps {
   icon: React.ComponentType<{ className?: string }>;
   color: "red" | "blue" | "yellow" | "green";
   flights: FlightInfo[];
+  onFlightClick: (flightId: string) => void;
 }
 
-function FlightGroup({ title, icon: Icon, color, flights }: FlightGroupProps) {
+function FlightGroup({ title, icon: Icon, color, flights, onFlightClick }: FlightGroupProps) {
   const colorClasses = {
     red: "text-red-600",
     blue: "text-blue-600",
@@ -221,7 +237,7 @@ function FlightGroup({ title, icon: Icon, color, flights }: FlightGroupProps) {
       </div>
       <div className="space-y-2">
         {flights.map((flight) => (
-          <FlightCard key={flight.flightId} flight={flight} />
+          <FlightCard key={flight.flightId} flight={flight} onClick={() => onFlightClick(flight.flightId)} />
         ))}
       </div>
     </div>
@@ -230,9 +246,10 @@ function FlightGroup({ title, icon: Icon, color, flights }: FlightGroupProps) {
 
 interface FlightCardProps {
   flight: FlightInfo;
+  onClick: () => void;
 }
 
-function FlightCard({ flight }: FlightCardProps) {
+function FlightCard({ flight, onClick }: FlightCardProps) {
   const statusConfig: Record<FlightStatus, { label: string; color: string; icon: any }> = {
     IN_AIR: {
       label: "En Vuelo",
@@ -260,7 +277,10 @@ function FlightCard({ flight }: FlightCardProps) {
   const StatusIcon = config.icon;
 
   return (
-    <Card className={`border ${flight.cancelled ? "opacity-60 bg-red-50" : ""}`}>
+    <Card
+      className={`border cursor-pointer hover:bg-accent/50 transition-colors ${flight.cancelled ? "opacity-60 bg-red-50" : ""}`}
+      onClick={onClick}
+    >
       <CardContent className="p-3 space-y-2">
         {/* Header */}
         <div className="flex items-center justify-between">

@@ -24,4 +24,7 @@ public class ItineraryDTO {
 
     @JsonProperty("positionLat")
     public double positionLat;
+
+    @JsonProperty("status")
+    public String status;  // "ACTIVE" or "CANCELLED"
 }

@@ -495,6 +495,17 @@ public class CancellationService {
             stats.get("manual")
         );
     }
+
+    /**
+     * Limpia todas las cancelaciones almacenadas.
+     * Se debe llamar al hacer STOP o RESET de la simulación para evitar
+     * que las cancelaciones persistan entre diferentes simulaciones.
+     */
+    public void clearCancellations() {
+        int previousCount = cancellations.size();
+        cancellations.clear();
+        logger.info("🧹 [clearCancellations] Limpiadas {} cancelaciones del servicio", previousCount);
+    }
 }
 
 
