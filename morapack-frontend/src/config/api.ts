@@ -10,13 +10,13 @@ export const API_CONFIG = {
 export const API_ENDPOINTS = {
   ORDERS: {
     BASE: '/api/orders',
-    BY_ID: (id: number) => `/api/orders/${id}`, // Cambié de string a number
+    BY_ID: (id: number) => `/api/orders/${id}`,
     BULK_CREATE: '/api/orders/bulk-create',
     BULK_DELETE: '/api/orders/bulk-delete',
   },
   AIRPORTS: {
     BASE: '/api/airports',
-    BY_ID: (id: number) => `/api/airports/${id}`, // Cambié de string a number
+    BY_ID: (id: number) => `/api/airports/${id}`,
     BULK_CREATE: '/api/airports/bulk-create',
     BULK_DELETE: '/api/airports/bulk-delete',
   },
