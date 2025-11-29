@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -61,9 +62,9 @@ public class SimulationSession implements Runnable {
     private boolean collapseDetected = false;
     private String collapseReason = null;
     private int consecutiveHighUnassignedIterations = 0;
-    
-    // Tabu Search planner
-    private final TabuSearchPlanner planner;
+
+    // Tabu Search planner (not final so it can be recreated when speed changes)
+    private TabuSearchPlanner planner;
     
     // Results accumulation
     private final List<TabuSimulationResponse> allResults = new ArrayList<>();
@@ -96,8 +97,9 @@ public class SimulationSession implements Runnable {
             DynamicOrderService dynamicOrderService,
             OrderInjectionService orderInjectionService,
             ReplanificationService replanificationService,
-            FlightStatusTracker flightStatusTracker) {
-        
+            FlightStatusTracker flightStatusTracker,
+            double initialSpeedMultiplier) {
+
         this.sessionId = UUID.randomUUID().toString();
         this.userId = userId;
         this.dataProvider = dataProvider;
@@ -106,7 +108,10 @@ public class SimulationSession implements Runnable {
         this.endTime = endTime;
         this.currentTime = startTime;
         this.messagingTemplate = messagingTemplate;
-        this.planner = new TabuSearchPlanner();
+        // Initialize speedMultiplier BEFORE creating planner
+        this.speedMultiplier = initialSpeedMultiplier;
+        // Initialize planner with initial speedMultiplier
+        this.planner = new TabuSearchPlanner(System.currentTimeMillis(), this.speedMultiplier);
         
         // 🆕 Assign dynamic services
         this.cancellationService = cancellationService;
@@ -246,30 +251,42 @@ public class SimulationSession implements Runnable {
     }
     
     private void executeIteration() {
+        // 🔍 DEBUG: Start timing the entire iteration
+        long iterationStartTime = System.currentTimeMillis();
+
         iterationCount++;
-        
+
         // Calculate time window for this iteration
-        int scMinutes = scenario.getScMinutes();
+        // ✅ Sc remains constant - speedMultiplier only affects delay between iterations
+        int baseScMinutes = scenario.getScMinutes();
+        int scMinutes = baseScMinutes;  // NO multiply by speedMultiplier
+
         LocalDateTime windowStart = currentTime;
         LocalDateTime windowEnd = currentTime.plusMinutes(scMinutes);
-        
+
         if (windowEnd.isAfter(endTime)) {
             windowEnd = endTime;
         }
-        
+
         System.out.println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         System.out.println("[SimulationSession] " + sessionId + " - Iteration #" + iterationCount);
         System.out.println("   Window: " + windowStart + " → " + windowEnd + " (+" + scMinutes + " min)");
         System.out.println("   Current time will advance from " + currentTime + " to " + windowEnd);
         System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        
-        // 🆕 STEP 1: Process cancellations at current time
-        List<FlightCancellation> newCancellations = cancellationService.processCancellationsAt(currentTime);
-        if (!newCancellations.isEmpty()) {
-            System.out.println("   🚫 " + newCancellations.size() + " flight(s) cancelled:");
-            for (FlightCancellation c : newCancellations) {
-                System.out.println("      • " + c.getFlightOrigin() + " → " + c.getFlightDestination() + 
-                                 " @ " + c.getScheduledDepartureTime());
+
+        // 🆕 STEP 1: Process cancellations at current time (ONLY for WEEKLY and DAILY scenarios)
+        List<FlightCancellation> newCancellations;
+        if (scenario.getType() == ScenarioConfig.ScenarioType.COLLAPSE) {
+            // No cancellations in COLLAPSE scenario
+            newCancellations = new ArrayList<>();
+        } else {
+            newCancellations = cancellationService.processCancellationsAt(currentTime);
+            if (!newCancellations.isEmpty()) {
+                System.out.println("   🚫 " + newCancellations.size() + " flight(s) cancelled:");
+                for (FlightCancellation c : newCancellations) {
+                    System.out.println("      • " + c.getFlightOrigin() + " → " + c.getFlightDestination() +
+                                     " @ " + c.getScheduledDepartureTime());
+                }
             }
         }
         
@@ -293,11 +310,11 @@ public class SimulationSession implements Runnable {
         List<PlannerFlight> flights = dataProvider.getFlights(windowStart, windowEnd);
         List<PlannerOrder> newOrders = dataProvider.getOrders(windowStart, windowEnd);
         
-        // 🆕 STEP 4: Filter out cancelled flights
-        List<PlannerFlight> activeFlights = filterActiveFlight(flights, newCancellations);
+        // 🆕 STEP 4: Filter out cancelled flights and register them in the tracker
+        List<PlannerFlight> activeFlights = filterActiveFlightsAndRegisterCancelled(flights, newCancellations);
         if (flights.size() != activeFlights.size()) {
-            System.out.println("   ⚠️ " + (flights.size() - activeFlights.size()) + 
-                             " cancelled flight(s) filtered out");
+            System.out.println("   ⚠️ " + (flights.size() - activeFlights.size()) +
+                             " cancelled flight(s) filtered out and registered as cancelled");
         }
         
         // Add new orders to pending queue (including injected ones)
@@ -314,22 +331,42 @@ public class SimulationSession implements Runnable {
         
         // Process ALL pending orders (not just new ones)
         List<PlannerOrder> allOrders = new ArrayList<>(pendingOrders);
-        
-        System.out.println("   Flights: " + activeFlights.size() + ", Orders: " + allOrders.size() + 
-                         " (new: " + newOrders.size() + ", injected: " + injectedOrders.size() + 
+
+        // 🆕 CRITICAL FIX: Include orders from lastSolution for replanification
+        // Pedidos que ya están asignados también deben estar disponibles para replanificación
+        if (lastSolution != null && !lastSolution.getPlannerShipments().isEmpty()) {
+            Set<Integer> existingOrderIds = allOrders.stream()
+                .map(PlannerOrder::getId)
+                .collect(java.util.stream.Collectors.toSet());
+
+            lastSolution.getPlannerShipments().forEach(shipment -> {
+                if (shipment.getOrder() != null && !existingOrderIds.contains(shipment.getOrder().getId())) {
+                    allOrders.add(shipment.getOrder());
+                    existingOrderIds.add(shipment.getOrder().getId());
+                }
+            });
+        }
+
+        System.out.println("   Flights: " + activeFlights.size() + ", Orders: " + allOrders.size() +
+                         " (new: " + newOrders.size() + ", injected: " + injectedOrders.size() +
                          ", pending: " + (allOrders.size() - newOrders.size() - injectedOrders.size()) + ")");
-        
+
         // 🆕 STEP 5: Handle replanification if there are new cancellations
         if (!newCancellations.isEmpty() && lastSolution != null) {
             handleReplanification(newCancellations, allOrders, activeFlights);
         }
-        
+
         // Run Tabu Search
         if (!allOrders.isEmpty() && !activeFlights.isEmpty()) {
             // Get airports from data provider
             List<PlannerAirport> airports = new ArrayList<>(dataProvider.getAirports());
-            
+
+            // 🔍 DEBUG: Measure TabuSearch execution time
+            long tabuStartTime = System.currentTimeMillis();
             Solution solution = planner.optimize(allOrders, activeFlights, airports);
+            long tabuEndTime = System.currentTimeMillis();
+            long tabuDuration = tabuEndTime - tabuStartTime;
+            System.out.println("   ⏱️ TabuSearch execution time: " + tabuDuration + "ms (speedMultiplier: " + speedMultiplier + "x)");
             
                 // Cast to TabuSolution and convert to DTO
                 if (solution instanceof TabuSolution tabuSolution) {
@@ -521,8 +558,13 @@ public class SimulationSession implements Runnable {
         // Advance simulation time
         LocalDateTime previousTime = currentTime;
         currentTime = windowEnd;
-        
+
         System.out.println("   ⏰ Time advanced: " + previousTime + " → " + currentTime);
+
+        // 🔍 DEBUG: Total iteration time
+        long iterationEndTime = System.currentTimeMillis();
+        long totalIterationDuration = iterationEndTime - iterationStartTime;
+        System.out.println("   ⏱️ TOTAL iteration time: " + totalIterationDuration + "ms");
         System.out.println("   ✅ Iteration completed, sending update to frontend");
     }
 
@@ -554,8 +596,9 @@ public class SimulationSession implements Runnable {
         double unassignedRate = (unassignedCount * 100.0) / totalOrders;
 
         // COLLAPSE CRITERION 1: High unassigned rate sustained over multiple iterations
-        final double COLLAPSE_THRESHOLD = 60.0; // 60% unassigned
-        final int MIN_CONSECUTIVE_ITERATIONS = 3; // Must be sustained for 3 iterations
+        // ✅ VERY RELAXED: 30% threshold, only 1 iteration
+        final double COLLAPSE_THRESHOLD = 30.0; // 30% unassigned (muy sensible)
+        final int MIN_CONSECUTIVE_ITERATIONS = 1; // Solo 1 iteración es suficiente
 
         if (unassignedRate >= COLLAPSE_THRESHOLD) {
             consecutiveHighUnassignedIterations++;
@@ -575,21 +618,24 @@ public class SimulationSession implements Runnable {
             consecutiveHighUnassignedIterations = 0;
         }
 
-        // COLLAPSE CRITERION 2: All pending orders have expired deadlines
-        if (!pendingOrders.isEmpty()) {
-            boolean allExpired = true;
+        // COLLAPSE CRITERION 2: Many pending orders with expired deadlines
+        // ✅ VERY RELAXED: 30% expired, only 3 orders needed
+        if (!pendingOrders.isEmpty() && pendingOrders.size() >= 3) {
+            int expiredCount = 0;
             for (PlannerOrder order : pendingOrders) {
                 LocalDateTime deadline = order.getDeadlineInDestinationTimezone();
-                if (deadline != null && !currentTime.isAfter(deadline)) {
-                    allExpired = false;
-                    break;
+                if (deadline != null && currentTime.isAfter(deadline)) {
+                    expiredCount++;
                 }
             }
 
-            if (allExpired && pendingOrders.size() >= 10) {
+            double expiredRate = (expiredCount * 100.0) / pendingOrders.size();
+
+            // Si más del 30% de los pending tienen deadline expirado
+            if (expiredRate >= 30.0) {
                 collapseDetected = true;
-                collapseReason = String.format("System collapsed: All %d pending orders have expired deadlines",
-                                             pendingOrders.size());
+                collapseReason = String.format("System collapsed: %d/%d pending orders (%.1f%%) have expired deadlines",
+                                             expiredCount, pendingOrders.size(), expiredRate);
                 System.out.println("\n🚨 " + collapseReason);
                 return true;
             }
@@ -600,21 +646,51 @@ public class SimulationSession implements Runnable {
 
     private void applySpeedControlledDelay() throws InterruptedException {
         // Base delay between iterations (in ms)
-        // Ajustado para que la simulación dure ~30 minutos
-        // Con K=12 → 168 iteraciones
-        // 168 iter × ~10s (delay + processing) = ~1800s = 30 min
-        long baseDelayMs = 8000;  // 8 seconds base (+ ~2s TabuSearch = ~10s total)
-        
-        // Adjust by speed multiplier
-        // speedMultiplier = 1.0 → 8000ms delay
-        // speedMultiplier = 2.0 → 4000ms delay (2x faster)
-        // speedMultiplier = 0.5 → 16000ms delay (2x slower)
-        long adjustedDelay = (long) (baseDelayMs / speedMultiplier);
-        
-        // Ensure minimum delay of 100ms (para speed muy alto)
-        adjustedDelay = Math.max(100, adjustedDelay);
-        
+        // Reality check from measurements:
+        // - TabuSearch at 1x: ~1300ms, at 2x: ~430ms
+        // - Processing overhead (DTO conversion, WebSocket, etc): ~4400ms (FIXED, can't speed up)
+        //
+        // TARGET TIMES:
+        // - 1x: 40-90 minutos para 403 iteraciones → ~6-13s por iteración
+        // - 2x: La mitad del tiempo de 1x → ~3-6.5s por iteración
+        //
+        // STRATEGY: Different base delays for different speeds
+        long adjustedDelay;
+
+        if (speedMultiplier >= 2.0) {
+            // At 2x or higher, use minimal delay (processing overhead is the bottleneck)
+            // Target: ~4.5s per iteration → 403 × 4.5s = ~30 minutos
+            adjustedDelay = 50;
+        } else if (speedMultiplier >= 1.5) {
+            // At 1.5x, reduce delay moderately
+            // Target: ~5.5s per iteration → 403 × 5.5s = ~37 minutos
+            adjustedDelay = 1000;
+        } else if (speedMultiplier == 1.0) {
+            // At 1x, use moderate delay for realistic pace
+            // Target: ~11s per iteration → 403 × 11s = ~74 minutos
+            // With 4400ms overhead + 1300ms TabuSearch = 5700ms
+            // Need 11000ms - 5700ms = 5300ms delay
+            adjustedDelay = 5300;
+        } else if (speedMultiplier <= 0.5) {
+            // At 0.5x, double the 1x delay
+            adjustedDelay = 5300 * 2;
+        } else {
+            // For speeds between 0.5x and 1x (e.g., 0.75x)
+            // Scale from 1x delay (5300ms)
+            adjustedDelay = (long) (5300 / speedMultiplier);
+        }
+
+        // Ensure minimum delay of 50ms
+        adjustedDelay = Math.max(50, adjustedDelay);
+
+        // 🔍 DEBUG: Log actual delay being applied
+        System.out.println("   ⏱️ Applying delay: " + adjustedDelay + "ms (speedMultiplier: " + speedMultiplier + "x)");
+
+        long delayStartTime = System.currentTimeMillis();
         Thread.sleep(adjustedDelay);
+        long delayEndTime = System.currentTimeMillis();
+        long actualDelayDuration = delayEndTime - delayStartTime;
+        System.out.println("   ⏱️ Actual delay duration: " + actualDelayDuration + "ms");
     }
     
     private void sendStatusUpdate(SimulationStatusUpdate update) {
@@ -802,30 +878,44 @@ public class SimulationSession implements Runnable {
     
     /**
      * Filter out cancelled flights from the available flights list.
-     * 
+     * Also registers cancelled flights in the FlightStatusTracker so they appear in the UI.
+     *
      * @param flights All flights in the current window
      * @param cancellations List of newly cancelled flights
      * @return Filtered list of active (non-cancelled) flights
      */
-    private List<PlannerFlight> filterActiveFlight(
-            List<PlannerFlight> flights, 
+    private List<PlannerFlight> filterActiveFlightsAndRegisterCancelled(
+            List<PlannerFlight> flights,
             List<FlightCancellation> cancellations) {
-        
+
         if (cancellations.isEmpty()) {
             return flights;
         }
-        
-        // Filter flights by checking if they are cancelled
-        return flights.stream()
-            .filter(flight -> {
-                // Check if this flight is cancelled
-                String origin = flight.getOrigin().getCode();
-                String destination = flight.getDestination().getCode();
-                String scheduledTime = flight.getDepartureTime().toString();
-                
-                return !cancellationService.isFlightCancelled(origin, destination, scheduledTime);
-            })
-            .collect(java.util.stream.Collectors.toList());
+
+        List<PlannerFlight> activeFlights = new ArrayList<>();
+
+        for (PlannerFlight flight : flights) {
+            String origin = flight.getOrigin().getCode();
+            String destination = flight.getDestination().getCode();
+            String scheduledTime = flight.getDepartureTime().toString();
+
+            boolean isCancelled = cancellationService.isFlightCancelled(origin, destination, scheduledTime);
+
+            if (isCancelled) {
+                // Register cancelled flight in tracker so it appears in UI
+                flightStatusTracker.registerCancelledFlight(
+                    origin,
+                    destination,
+                    flight.getDepartureTime(),
+                    flight.getArrivalTime()
+                );
+            } else {
+                // Keep active flights
+                activeFlights.add(flight);
+            }
+        }
+
+        return activeFlights;
     }
     
     /**
@@ -1325,9 +1415,13 @@ public class SimulationSession implements Runnable {
             System.err.println("[SimulationSession] Invalid speed multiplier: " + multiplier + " (must be 0.1-20.0)");
             return;
         }
-        
+
         this.speedMultiplier = multiplier;
         System.out.println("[SimulationSession] " + sessionId + " speed changed to " + multiplier + "x");
+
+        // Recreate planner with new speedMultiplier for future iterations
+        this.planner = new TabuSearchPlanner(System.currentTimeMillis(), this.speedMultiplier);
+        System.out.println("[SimulationSession] TabuSearchPlanner recreated with speedMultiplier: " + multiplier + "x");
         
         // Send update
         SimulationStatusUpdate update = new SimulationStatusUpdate(
@@ -1395,18 +1489,150 @@ public class SimulationSession implements Runnable {
             info.put("status", flight.status.name());
             info.put("cancellable", flight.cancellable);
 
-            // Verificar si el vuelo está cancelado
-            boolean isCancelled = cancellationService.isFlightCancelled(
-                flight.origin,
-                flight.destination,
-                flight.scheduledDeparture.toString()
-            );
-            info.put("cancelled", isCancelled);
+            // ✅ Usar el campo cancelled del tracker directamente
+            // Ya no necesitamos consultar al CancellationService cada vez
+            info.put("cancelled", flight.cancelled);
 
             flightInfos.add(info);
         }
 
         return flightInfos;
+    }
+
+    /**
+     * Get detailed cargo information for a specific flight.
+     * Returns all shipments and orders being transported on this flight.
+     */
+    public java.util.Map<String, Object> getFlightCargoDetails(String flightId) {
+        java.util.Map<String, Object> cargoDetails = new java.util.HashMap<>();
+
+        // Get flight basic info from tracker
+        FlightStatusTracker.FlightStatusInfo flightInfo = flightStatusTracker.getFlightById(flightId);
+
+        if (flightInfo == null) {
+            cargoDetails.put("error", "Flight not found");
+            return cargoDetails;
+        }
+
+        // Basic flight info
+        cargoDetails.put("flightId", flightInfo.flightId);
+        cargoDetails.put("origin", flightInfo.origin);
+        cargoDetails.put("destination", flightInfo.destination);
+        cargoDetails.put("scheduledDeparture", flightInfo.scheduledDeparture.toString());
+        cargoDetails.put("scheduledArrival", flightInfo.scheduledArrival.toString());
+        cargoDetails.put("status", flightInfo.status.name());
+
+        // ✅ Usar el campo cancelled del tracker directamente
+        cargoDetails.put("cancelled", flightInfo.cancelled);
+
+        // Find all shipments using this flight
+        java.util.List<java.util.Map<String, Object>> shipmentsList = new java.util.ArrayList<>();
+        int totalQuantity = 0;
+        int totalShipments = 0;
+
+        for (pe.edu.pucp.morapack.algos.entities.PlannerShipment shipment : allShipments) {
+            if (shipment.getFlights() == null) continue;
+
+            // Check if this shipment uses this specific flight
+            for (PlannerFlight flight : shipment.getFlights()) {
+                // ✅ Match the tracker format: "ORIGIN-DESTINATION-HH:MM"
+                LocalDateTime departureTime = flight.getDepartureTime();
+                String timeStr = String.format("%02d:%02d", departureTime.getHour(), departureTime.getMinute());
+                String shipmentFlightId = flight.getOrigin().getCode() + "-" +
+                                         flight.getDestination().getCode() + "-" +
+                                         timeStr;
+
+                if (shipmentFlightId.equals(flightId)) {
+                    // This shipment uses this flight
+
+                    // ✅ Filter: Don't show shipments that have already completed their entire route
+                    // This prevents confusion where a flight "in air" shows "delivered" shipments
+                    PlannerFlight lastFlightInShipment = shipment.getFlights().get(shipment.getFlights().size() - 1);
+                    if (lastFlightInShipment.getArrivalTime().isBefore(currentTime)) {
+                        // This shipment has completed its entire journey, skip it
+                        break;
+                    }
+
+                    java.util.Map<String, Object> shipmentInfo = new java.util.HashMap<>();
+
+                    PlannerOrder order = shipment.getOrder();
+                    if (order != null) {
+                        shipmentInfo.put("orderId", order.getId());
+                        shipmentInfo.put("quantity", shipment.getQuantity());
+                        shipmentInfo.put("orderOrigin", order.getOrigin().getCode());
+                        shipmentInfo.put("orderDestination", order.getDestination().getCode());
+                        shipmentInfo.put("deadline", order.getDeadlineInDestinationTimezone().toString());
+
+                        // Calculate shipment status RELATIVE TO THIS SPECIFIC FLIGHT
+                        // Since this modal shows cargo for a specific flight, we need to show status
+                        // in the context of THIS flight, not the complete route
+
+                        // Find the index of this flight in the shipment's route
+                        int flightIndexInRoute = -1;
+                        for (int i = 0; i < shipment.getFlights().size(); i++) {
+                            PlannerFlight f = shipment.getFlights().get(i);
+                            LocalDateTime fTime = f.getDepartureTime();
+                            String fTimeStr = String.format("%02d:%02d", fTime.getHour(), fTime.getMinute());
+                            String fId = f.getOrigin().getCode() + "-" + f.getDestination().getCode() + "-" + fTimeStr;
+                            if (fId.equals(flightId)) {
+                                flightIndexInRoute = i;
+                                break;
+                            }
+                        }
+
+                        PlannerFlight firstFlight = shipment.getFlights().get(0);
+                        PlannerFlight lastFlight = shipment.getFlights().get(shipment.getFlights().size() - 1);
+                        PlannerFlight thisFlightInRoute = flightIndexInRoute >= 0 ?
+                            shipment.getFlights().get(flightIndexInRoute) : null;
+
+                        String shipmentStatus;
+
+                        // ✅ 1. If shipment has reached final destination
+                        if (lastFlight.getArrivalTime().isBefore(currentTime) || lastFlight.getArrivalTime().equals(currentTime)) {
+                            shipmentStatus = "DELIVERED";
+                        }
+                        // ✅ 2. If first flight hasn't departed yet
+                        else if (currentTime.isBefore(firstFlight.getDepartureTime())) {
+                            shipmentStatus = "PENDING";
+                        }
+                        // ✅ 3. If current flight is in the air
+                        else if (thisFlightInRoute != null &&
+                                !currentTime.isBefore(thisFlightInRoute.getDepartureTime()) &&
+                                currentTime.isBefore(thisFlightInRoute.getArrivalTime())) {
+                            shipmentStatus = "IN_TRANSIT";
+                        }
+                        // ✅ 4. If waiting at hub for next flight (arrived but next flight not departed)
+                        else if (thisFlightInRoute != null && currentTime.isBefore(thisFlightInRoute.getDepartureTime())) {
+                            shipmentStatus = "IN_WAREHOUSE";
+                        }
+                        // ✅ 5. Default: In transit (between flights)
+                        else {
+                            shipmentStatus = "IN_TRANSIT";
+                        }
+                        shipmentInfo.put("status", shipmentStatus);
+
+                        // Route information (all flights in this shipment)
+                        java.util.List<String> route = new java.util.ArrayList<>();
+                        for (PlannerFlight f : shipment.getFlights()) {
+                            route.add(f.getOrigin().getCode() + " → " + f.getDestination().getCode());
+                        }
+                        shipmentInfo.put("route", route);
+
+                        totalQuantity += shipment.getQuantity();
+                        totalShipments++;
+
+                        shipmentsList.add(shipmentInfo);
+                    }
+                    break; // Found the flight, no need to check other flights in this shipment
+                }
+            }
+        }
+
+        cargoDetails.put("shipments", shipmentsList);
+        cargoDetails.put("totalShipments", totalShipments);
+        cargoDetails.put("totalQuantity", totalQuantity);
+
+        return cargoDetails;
     }
 
     // ========== ORDER TRACKING METHODS ==========
@@ -1547,34 +1773,42 @@ public class SimulationSession implements Runnable {
     
     /**
      * Find flight segments assigned to a specific order.
-     * Searches through the most recent iteration results.
+     * ✅ FIX: Searches through ALL iteration results (not just last one) to find completed orders.
      * Returns minimal flight info (code, origin, destination) to show route without storing full itinerary.
      */
     private java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> findAssignedFlights(int orderId) {
         java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> segments = new java.util.ArrayList<>();
 
-        // Search in the last result (most recent iteration)
+        // ✅ FIX: Search in ALL results (not just last), since completed orders may be in older iterations
         if (!allResults.isEmpty()) {
-            pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse lastResult =
-                allResults.get(allResults.size() - 1);
+            // Iterate from newest to oldest to get the most recent itinerary for this order
+            for (int i = allResults.size() - 1; i >= 0; i--) {
+                pe.edu.pucp.morapack.dto.simulation.TabuSimulationResponse result = allResults.get(i);
 
-            if (lastResult.itineraries != null) {
-                for (var itinerario : lastResult.itineraries) {
-                    // ✅ Check if this itinerary belongs to our order using orderId field
-                    if (itinerario.orderId == orderId && itinerario.segments != null) {
-                        // Extract segments with origin/destination info
-                        for (var segmento : itinerario.segments) {
-                            if (segmento.flight != null && segmento.flight.code != null) {
-                                String originCode = (segmento.flight.origin != null) ? segmento.flight.origin.code : "???";
-                                String destCode = (segmento.flight.destination != null) ? segmento.flight.destination.code : "???";
+                if (result.itineraries != null) {
+                    for (var itinerario : result.itineraries) {
+                        // ✅ Check if this itinerary belongs to our order using orderId field
+                        if (itinerario.orderId == orderId && itinerario.segments != null) {
+                            // Extract segments with origin/destination info
+                            for (var segmento : itinerario.segments) {
+                                if (segmento.flight != null && segmento.flight.code != null) {
+                                    String originCode = (segmento.flight.origin != null) ? segmento.flight.origin.code : "???";
+                                    String destCode = (segmento.flight.destination != null) ? segmento.flight.destination.code : "???";
 
-                                pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segmentInfo =
-                                    new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
-                                        segmento.flight.code,
-                                        originCode,
-                                        destCode
-                                    );
-                                segments.add(segmentInfo);
+                                    pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segmentInfo =
+                                        new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
+                                            segmento.flight.code,
+                                            originCode,
+                                            destCode
+                                        );
+                                    segments.add(segmentInfo);
+                                }
+                            }
+
+                            // Found this order, stop searching
+                            if (!segments.isEmpty()) {
+                                System.out.println("  🔍 findAssignedFlights(order=" + orderId + "): found in iteration result #" + i);
+                                return segments;
                             }
                         }
                     }
@@ -1599,44 +1833,61 @@ public class SimulationSession implements Runnable {
     private java.util.List<pe.edu.pucp.morapack.dto.simulation.ShipmentInfo> findShipments(int orderId) {
         java.util.List<pe.edu.pucp.morapack.dto.simulation.ShipmentInfo> shipments = new java.util.ArrayList<>();
 
-        // Use lastSolution if available
-        if (lastSolution != null && lastSolution.getPlannerShipments() != null) {
-            pe.edu.pucp.morapack.algos.entities.PlannerOrder order = allProcessedOrdersMap.get(orderId);
+        // ✅ FIX: Use allShipments instead of only lastSolution to include shipments from ALL iterations
+        // This includes COMPLETED shipments (already arrived), not just active ones
+        if (!allShipments.isEmpty()) {
+            // 🔍 DEBUG: Log search
+            int totalShipments = allShipments.size();
+            int matchingShipments = 0;
 
-            if (order != null) {
-                // Get all PlannerShipments for this order
-                java.util.List<pe.edu.pucp.morapack.algos.entities.PlannerShipment> orderShipments =
-                    lastSolution.getShipmentsForOrder(order);
+            // Filter shipments for this specific order
+            for (pe.edu.pucp.morapack.algos.entities.PlannerShipment plannerShipment : allShipments) {
+                if (plannerShipment == null) continue;
 
-                // Convert each PlannerShipment to ShipmentInfo DTO
-                for (pe.edu.pucp.morapack.algos.entities.PlannerShipment plannerShipment : orderShipments) {
+                pe.edu.pucp.morapack.algos.entities.PlannerOrder shipmentOrder = plannerShipment.getOrder();
+                if (shipmentOrder == null) continue;
+
+                if (shipmentOrder.getId() == orderId) {
+                    matchingShipments++;
+
                     java.util.List<pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo> route =
                         new java.util.ArrayList<>();
 
                     // Extract flight segments from this shipment's route
-                    for (pe.edu.pucp.morapack.algos.entities.PlannerFlight flight : plannerShipment.getFlights()) {
-                        String originCode = (flight.getOrigin() != null) ? flight.getOrigin().getCode() : "???";
-                        String destCode = (flight.getDestination() != null) ? flight.getDestination().getCode() : "???";
+                    if (plannerShipment.getFlights() != null) {
+                        for (pe.edu.pucp.morapack.algos.entities.PlannerFlight flight : plannerShipment.getFlights()) {
+                            if (flight == null) continue;
 
-                        pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segment =
-                            new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
-                                flight.getCode(),
-                                originCode,
-                                destCode
-                            );
-                        route.add(segment);
+                            String originCode = (flight.getOrigin() != null) ? flight.getOrigin().getCode() : "???";
+                            String destCode = (flight.getDestination() != null) ? flight.getDestination().getCode() : "???";
+
+                            pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo segment =
+                                new pe.edu.pucp.morapack.dto.simulation.FlightSegmentInfo(
+                                    flight.getCode(),
+                                    originCode,
+                                    destCode
+                                );
+                            route.add(segment);
+                        }
                     }
 
-                    // Create ShipmentInfo with quantity and route
-                    pe.edu.pucp.morapack.dto.simulation.ShipmentInfo shipmentInfo =
-                        new pe.edu.pucp.morapack.dto.simulation.ShipmentInfo(
-                            plannerShipment.getId(),
-                            plannerShipment.getQuantity(),
-                            route
-                        );
+                    // Only add if route is not empty
+                    if (!route.isEmpty()) {
+                        pe.edu.pucp.morapack.dto.simulation.ShipmentInfo shipmentInfo =
+                            new pe.edu.pucp.morapack.dto.simulation.ShipmentInfo(
+                                plannerShipment.getId(),
+                                plannerShipment.getQuantity(),
+                                route
+                            );
 
-                    shipments.add(shipmentInfo);
+                        shipments.add(shipmentInfo);
+                    }
                 }
+            }
+
+            // 🔍 DEBUG: Log results
+            if (matchingShipments > 0) {
+                System.out.println("  📦 findShipments(order=" + orderId + "): found " + matchingShipments + " shipments (searched " + totalShipments + " total)");
             }
         }
 

@@ -56,6 +56,12 @@ export interface FlightSegmentInfo {
 }
 
 /**
+ * Shipment status enum.
+ * Matches backend ShipmentStatus.java
+ */
+export type ShipmentStatus = "PENDING" | "IN_TRANSIT" | "IN_WAREHOUSE" | "DELIVERED" | "CANCELLED";
+
+/**
  * 🆕 Shipment information (envío).
  * Represents a portion of an order with its own quantity and route.
  *
@@ -69,6 +75,7 @@ export interface FlightSegmentInfo {
 export interface ShipmentInfo {
   shipmentId: number;
   quantity: number;              // Number of products in THIS shipment
+  status: ShipmentStatus;        // PENDING, IN_TRANSIT, IN_WAREHOUSE, DELIVERED, CANCELLED
   route: FlightSegmentInfo[];    // Flight segments forming the complete route
   isDirect: boolean;             // true if route has only 1 flight
   numberOfStops: number;         // Number of stopovers (route.length - 1)

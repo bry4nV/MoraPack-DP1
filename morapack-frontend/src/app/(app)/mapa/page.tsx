@@ -1,5 +1,6 @@
 "use client";
 
+<<<<<<< HEAD
 import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
@@ -268,6 +269,45 @@ export default function MapaPage() {
                   <p className="text-[10px] uppercase text-muted-foreground font-bold">Vuelos Activos</p>
                   <p className="text-lg font-bold leading-none">{itinerarios.length}</p>
               </div>
+=======
+import { useMemo } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import AnimatedFlights from "@/components/map/AnimatedFlights";
+import { useAirports } from "@/hooks/use-airports";
+import type { Aeropuerto } from "@/types/aeropuerto";
+
+export default function MapaPage() {
+  const { airports, isLoading } = useAirports();
+
+  // Airport y Aeropuerto son el mismo tipo, solo hacemos el cast
+  const aeropuertos = useMemo(() => airports as Aeropuerto[], [airports]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-4xl font-bold tracking-tight">Operaciones de día a día</h1>
+        <Card>
+          <CardContent className="p-8 text-center">
+            Cargando aeropuertos...
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-4xl font-bold tracking-tight">Operaciones de día a día</h1>
+
+      <Card className="overflow-hidden">
+        <CardContent className="p-0">
+          <div className="h-[calc(100dvh-12rem)]">
+            <AnimatedFlights
+              itinerarios={[]}
+              aeropuertos={aeropuertos}
+              speedKmh={900}
+            />
+>>>>>>> main
           </div>
           
           {/* Indicador de Fecha Operativa (Para que sepas que NO es hoy) */}

@@ -59,18 +59,27 @@ public class TabuSearchPlanner implements IOptimizer {
      * Constructor por defecto: Usa timestamp para VARIABILIDAD en cada ejecución
      */
     public TabuSearchPlanner() {
-        this(System.currentTimeMillis());
+        this(System.currentTimeMillis(), 1.0);
     }
-    
+
     /**
      * Constructor con semilla: Para REPRODUCIBILIDAD cuando se necesite
      * @param seed Semilla para el generador aleatorio
      */
     public TabuSearchPlanner(long seed) {
+        this(seed, 1.0);
+    }
+
+    /**
+     * Constructor con semilla y speedMultiplier para ajustar iteraciones
+     * @param seed Semilla para el generador aleatorio
+     * @param speedMultiplier Multiplicador de velocidad (0.5x, 1x, 1.5x, 2x)
+     */
+    public TabuSearchPlanner(long seed, double speedMultiplier) {
         this.randomSeed = seed;
         this.random = new Random(seed);
-        initializeTabuSearchComponents();
-        System.out.println("[RANDOM] Tabu Search initialized with seed: " + seed);
+        initializeTabuSearchComponents(speedMultiplier);
+        System.out.println("[RANDOM] Tabu Search initialized with seed: " + seed + ", speedMultiplier: " + speedMultiplier);
     }
 
     /**
@@ -160,11 +169,23 @@ public class TabuSearchPlanner implements IOptimizer {
         if (snapshotMs > 0) this.snapshotMs = snapshotMs;
     }
     
-    private void initializeTabuSearchComponents() {
+    private void initializeTabuSearchComponents(double speedMultiplier) {
+        // Ajustar maxIterations según speedMultiplier para que el tiempo total sea proporcional
+        // Target: 40-90 minutos para simulación de 7 días (403 iteraciones) en 1x speed
+        // Queremos ~6-13 segundos por iteración en 1x (incluyendo delay de 1.5s)
+        // Base: 1500 iteraciones de TabuSearch (~4.5-5s) + 1.5s delay = ~6-6.5s/iter total
+        // Esto da: 403 iter × 6.5s ≈ 2,620s ≈ 43.6 minutos (en el rango deseado)
+        int baseMaxIterations = 1500;
+        int adjustedMaxIterations = (int) Math.max(100, baseMaxIterations / speedMultiplier);
+
+        // También ajustar maxIterationsWithoutImprovement proporcionalmente
+        int baseMaxIterationsWithoutImprovement = 200;
+        int adjustedMaxIterationsWithoutImprovement = (int) Math.max(40, baseMaxIterationsWithoutImprovement / speedMultiplier);
+
         this.config = new TabuSearchConfig(
             20,     // tabuListSize inicial (se adapta dinámicamente)
-            500,    // maxIterations (aumentado para mejor exploración)
-            80,     // maxIterationsWithoutImprovement
+            adjustedMaxIterations,    // maxIterations (ajustado por speedMultiplier)
+            adjustedMaxIterationsWithoutImprovement,     // maxIterationsWithoutImprovement (ajustado por speedMultiplier)
             70,     // directRouteProbability
             25,     // oneStopRouteProbability
             1000,   // bottleneckCapacity
@@ -177,6 +198,8 @@ public class TabuSearchPlanner implements IOptimizer {
             50000,  // cancellationPenalty
             15000   // replanificationPenalty
         );
+
+        System.out.println("[TABU] Adjusted maxIterations: " + adjustedMaxIterations + " (speedMultiplier: " + speedMultiplier + "x)");
     }
 
     @Override  

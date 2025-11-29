@@ -116,25 +116,26 @@ public class ScenarioConfig {
     
     /**
      * Factory method: Weekly simulation configuration
-     * K = 12 → Sc = 12 × 5 = 60 minutes of data per iteration
-     * Simulates 7 days in 168 iterations (more granular, slower visual)
-     * 
+     * K = 5 → Sc = 5 × 5 = 25 minutes of data per iteration
+     * Simulates 7 days in 403 iterations (~90 min duration, very smooth movement)
+     *
      * NOTE: K is adjustable. Use weekly(K) to customize.
      */
     public static ScenarioConfig weekly() {
-        return weekly(12); // K=12 (1 hour windows, slower visual speed)
+        return weekly(5); // K=5 (25-min windows, 87-90 min duration, ultra-smooth)
     }
     
     /**
      * Factory method: Weekly simulation with custom K
-     * 
+     *
      * @param K Proportionality constant
-     *   K=10 → 201 iterations (more granular, slower)
-     *   K=14 → 144 iterations (balanced, default)
-     *   K=20 → 100 iterations (less granular, faster)
-     *   K=24 → 84 iterations (similar to PDDS-VRP)
-     *   K=30 → 67 iterations (rapid simulation)
-     * 
+     *   K=5  → 403 iterations (ultra-smooth, ~90 min duration) [RECOMMENDED]
+     *   K=6  → 336 iterations (very smooth, ~60-75 min)
+     *   K=8  → 252 iterations (smooth, ~45-60 min)
+     *   K=10 → 201 iterations (moderate, ~35-50 min)
+     *   K=12 → 168 iterations (fast, ~25-35 min)
+     *   K=24 → 84 iterations (very fast, ~12-18 min)
+     *
      * @return ScenarioConfig for weekly simulation
      */
     public static ScenarioConfig weekly(int K) {

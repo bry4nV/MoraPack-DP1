@@ -135,6 +135,7 @@ public class TabuSolutionToDtoConverter {
             it.positionLat = posLat;
             it.positionLon = posLon;
             it.progressMeters = progressMeters;
+            it.status = ps.getStatus().name();  // "ACTIVE" or "CANCELLED"
 
             out.add(it);
         }

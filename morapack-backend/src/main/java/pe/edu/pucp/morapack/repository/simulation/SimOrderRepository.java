@@ -61,4 +61,10 @@ public interface SimOrderRepository extends JpaRepository<SimOrder, Long> {
      */
     @Query("SELECT MAX(o.orderDate) FROM SimOrder o")
     LocalDate findMaxOrderDate();
+
+    /**
+     * Get the minimum order date in the database.
+     */
+    @Query("SELECT MIN(o.orderDate) FROM SimOrder o")
+    LocalDate findMinOrderDate();
 }
