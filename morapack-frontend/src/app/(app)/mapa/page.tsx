@@ -1,6 +1,5 @@
 "use client";
 
-<<<<<<< HEAD
 import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
@@ -21,8 +20,7 @@ import {
   X, MapPin, User, Box, Plane, CalendarClock
 } from "lucide-react";
 
-// Datos locales (Respaldo)
-import { AEROPUERTOS } from "@/data/aeropuertos";
+// (Eliminamos la importación de datos locales que causaba el error)
 
 // Mapa Dinámico
 const AnimatedFlights = dynamic(
@@ -31,8 +29,6 @@ const AnimatedFlights = dynamic(
 );
 
 // --- 📅 CONFIGURACIÓN DE FECHA OPERATIVA ---
-// CRÍTICO: Usamos esta fecha porque es donde existen vuelos programados en tu BD.
-// Si usamos la fecha real de hoy, el sistema no encontrará vuelos y el pedido quedará "Sin Asignar".
 const OPERATIONAL_DATE = "2025-01-02"; 
 
 export default function MapaPage() {
@@ -40,7 +36,6 @@ export default function MapaPage() {
   const [aeropuertosMap, setAeropuertosMap] = useState<any[]>([]);
   
   // RELOJ PARA ANIMACIÓN EN VIVO
-  // Sincronizamos el reloj con la fecha operativa para que coincida con los vuelos
   const [currentTime, setCurrentTime] = useState(`${OPERATIONAL_DATE}T00:00:00`);
 
   // ESTADOS DEL PANEL
@@ -69,8 +64,6 @@ export default function MapaPage() {
 
   // --- 1. RELOJ DEL SISTEMA ---
   useEffect(() => {
-    // Truco: Usamos la hora actual real, pero la inyectamos en la fecha operativa.
-    // Esto permite ver movimiento "en vivo" dentro del día de la simulación.
     const updateClock = () => {
       const now = new Date();
       const timePart = now.toTimeString().split(' ')[0]; // HH:mm:ss
@@ -82,7 +75,7 @@ export default function MapaPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // --- 2. FETCH DE AEROPUERTOS ---
+  // --- 2. FETCH DE AEROPUERTOS (SOLO BACKEND) ---
   const fetchAeropuertos = useCallback(async () => {
     try {
       const response = await fetch('http://localhost:8080/api/airports');
@@ -103,12 +96,9 @@ export default function MapaPage() {
       }));
       setAeropuertosMap(adaptados);
     } catch (error) {
-      console.error("Error aeropuertos, usando local:", error);
-      setAeropuertosMap(AEROPUERTOS.map((a:any) => ({
-         ...a, 
-         latitude: Number(a.latitud ?? a.latitude), 
-         longitude: Number(a.longitud ?? a.longitude)
-      })));
+      console.error("Error cargando aeropuertos del backend:", error);
+      toast.error("No se pudieron cargar los aeropuertos");
+      setAeropuertosMap([]); // Fallback vacío si falla el backend
     }
   }, []);
 
@@ -116,7 +106,6 @@ export default function MapaPage() {
   const fetchActiveFlights = useCallback(async () => {
     try {
       const apiUrl = 'http://localhost:8080';
-      // Pedimos los vuelos para la fecha donde sabemos que hay itinerario
       const url = `${apiUrl}/api/simulation/preview?startDate=${OPERATIONAL_DATE}&scenarioType=WEEKLY`;
       
       console.log("📡 Sincronizando vuelos para fecha operativa:", OPERATIONAL_DATE); 
@@ -208,8 +197,6 @@ export default function MapaPage() {
     setIsSubmitting(true);
 
     try {
-      // 1. SINCRONIZACIÓN: Usamos la fecha operativa + hora actual
-      // Esto asegura que el pedido entre en la ventana de tiempo donde SI hay aviones
       const now = new Date();
       const timePart = now.toTimeString().split(' ')[0]; // HH:mm:ss
       const simulationDateTime = `${OPERATIONAL_DATE}T${timePart}`;
@@ -219,7 +206,7 @@ export default function MapaPage() {
         clientCode: formData.clientCode.trim(),
         airportDestinationCode: formData.destinationCode.toUpperCase().trim(),
         quantity: Math.max(1, Math.floor(Number(formData.packetCount))),
-        date: simulationDateTime // <--- CLAVE: Se guarda con fecha Enero 2025
+        date: simulationDateTime 
       };
 
       console.log("📨 Enviando pedido sincronizado:", payload);
@@ -231,7 +218,6 @@ export default function MapaPage() {
 
       toast.info("Asignando a vuelo disponible...");
       
-      // Esperamos un poco más (3s) para dar tiempo al algoritmo
       setTimeout(() => {
         fetchActiveFlights(); 
       }, 3000); 
@@ -257,7 +243,7 @@ export default function MapaPage() {
           itinerarios={itinerarios}
           aeropuertos={aeropuertosMap}
           speedKmh={900}
-          simulatedTime={currentTime} // <--- El mapa "ve" la hora operativa
+          simulatedTime={currentTime} 
         />
       </div>
 
@@ -269,48 +255,8 @@ export default function MapaPage() {
                   <p className="text-[10px] uppercase text-muted-foreground font-bold">Vuelos Activos</p>
                   <p className="text-lg font-bold leading-none">{itinerarios.length}</p>
               </div>
-=======
-import { useMemo } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import AnimatedFlights from "@/components/map/AnimatedFlights";
-import { useAirports } from "@/hooks/use-airports";
-import type { Aeropuerto } from "@/types/aeropuerto";
-
-export default function MapaPage() {
-  const { airports, isLoading } = useAirports();
-
-  // Airport y Aeropuerto son el mismo tipo, solo hacemos el cast
-  const aeropuertos = useMemo(() => airports as Aeropuerto[], [airports]);
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <h1 className="text-4xl font-bold tracking-tight">Operaciones de día a día</h1>
-        <Card>
-          <CardContent className="p-8 text-center">
-            Cargando aeropuertos...
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <h1 className="text-4xl font-bold tracking-tight">Operaciones de día a día</h1>
-
-      <Card className="overflow-hidden">
-        <CardContent className="p-0">
-          <div className="h-[calc(100dvh-12rem)]">
-            <AnimatedFlights
-              itinerarios={[]}
-              aeropuertos={aeropuertos}
-              speedKmh={900}
-            />
->>>>>>> main
           </div>
           
-          {/* Indicador de Fecha Operativa (Para que sepas que NO es hoy) */}
           <div className="bg-blue-50/90 backdrop-blur-md px-4 py-2 rounded-lg shadow-lg border border-blue-200 flex items-center gap-3 pointer-events-auto">
               <div className="p-1.5 bg-blue-100 rounded-full text-blue-600"><CalendarClock className="h-4 w-4" /></div>
               <div>
