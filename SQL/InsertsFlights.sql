@@ -5746,6 +5746,11 @@ INSERT INTO `moraTravelSimulation`.`flight` (`airport_origin_code`,`airport_dest
 
 COMMIT;
 
+SET @base_date = CURRENT_DATE();
+
+SET @year_start = DATE(CONCAT(YEAR(@base_date), '-01-01'));
+SET @year_end   = DATE(CONCAT(YEAR(@base_date), '-12-31'));
+
 INSERT IGNORE INTO moraTravelDaily.flight
 (airport_origin_code, airport_destination_code, flight_date, departure_time, arrival_time, capacity, status)
 SELECT
