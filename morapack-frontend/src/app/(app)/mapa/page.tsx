@@ -257,13 +257,7 @@ export default function MapaPage() {
               </div>
           </div>
           
-          <div className="bg-blue-50/90 backdrop-blur-md px-4 py-2 rounded-lg shadow-lg border border-blue-200 flex items-center gap-3 pointer-events-auto">
-              <div className="p-1.5 bg-blue-100 rounded-full text-blue-600"><CalendarClock className="h-4 w-4" /></div>
-              <div>
-                  <p className="text-[10px] uppercase text-blue-600 font-bold">Fecha Operativa</p>
-                  <p className="text-sm font-bold leading-none">{OPERATIONAL_DATE}</p>
-              </div>
-          </div>
+          {/* Se eliminó el indicador de Fecha Operativa a petición del usuario */}
       </div>
 
       {!isPanelOpen && (
@@ -331,13 +325,7 @@ export default function MapaPage() {
             </div>
             <div className="p-6 space-y-4">
               
-              {/* Aviso para que sepas qué está pasando */}
-              <div className="bg-blue-50 border border-blue-200 p-3 rounded text-xs text-blue-800 mb-2 flex gap-2 items-start">
-                <CalendarClock className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>
-                  El pedido se sincronizará con la fecha operativa <strong>{OPERATIONAL_DATE}</strong> para asegurar asignación de vuelo.
-                </span>
-              </div>
+              {/* Se eliminó el aviso de fecha sincronizada a petición del usuario */}
 
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-gray-500 uppercase">Cliente (Código)</label>
@@ -360,7 +348,7 @@ export default function MapaPage() {
                     name="destinationCode" 
                     value={formData.destinationCode} 
                     onChange={handleInputChange} 
-                    placeholder="Ej: MIA" 
+                    placeholder="Ej: EBCI" 
                     maxLength={4} 
                     className="pl-9 flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border-gray-200 uppercase" 
                   />
