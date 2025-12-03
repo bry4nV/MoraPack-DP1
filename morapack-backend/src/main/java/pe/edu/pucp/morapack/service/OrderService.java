@@ -20,6 +20,12 @@ public class OrderService {
         this.orderRepository = orderRepository;
     }
 
+    // 👇 ESTE ES EL MÉTODO QUE TE FALTABA PARA CORREGIR EL ERROR 👇
+    public Order save(Order order) {
+        return orderRepository.save(order);
+    }
+    // -------------------------------------------------------------
+
     public List<OrderDto> listAll() {
         List<Order> entities = orderRepository.findAll();
         return entities.stream().map(this::toDto).collect(Collectors.toList());
@@ -54,7 +60,7 @@ public class OrderService {
                 .orElseThrow(() -> new RuntimeException("Pedido no encontrado con id: " + id));
 
         // Validar número de pedido único si se está cambiando
-        if (!existing.getOrderNumber().equals(dto.getOrderNumber()) && 
+        if (dto.getOrderNumber() != null && !existing.getOrderNumber().equals(dto.getOrderNumber()) && 
             orderRepository.existsByOrderNumber(dto.getOrderNumber())) {
             throw new RuntimeException("Ya existe un pedido con el número: " + dto.getOrderNumber());
         }
@@ -102,5 +108,9 @@ public class OrderService {
         if (dto.getStatus() != null) {
             e.setStatus(dto.getStatus());
         }
+    }
+
+    public void deleteAll() {
+        orderRepository.deleteAll();
     }
 }

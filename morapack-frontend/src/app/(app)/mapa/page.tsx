@@ -6,21 +6,23 @@ import { toast } from "sonner";
 import { dmsToDecimal } from "@/lib/geo";
 
 // --- API SERVICES ---
+// Asegúrate de que este archivo exista en src/api/orders/orders.ts
 import { ordersApi } from "@/api/orders/orders";
 
-// Componentes UI
+// Componentes UI Básicos
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Íconos
 import { 
   Plus, Upload, Activity, ChevronRight, ChevronLeft,
-  Package, Ban, CheckCircle2, LayoutPanelLeft, AlertCircle, LayoutDashboard,
-  X, MapPin, User, Box, Plane, CalendarClock
+  Package, Ban, CheckCircle2, LayoutPanelLeft, AlertCircle, 
+  LayoutDashboard, X, MapPin, User, Box, Plane, Clock
 } from "lucide-react";
-
-// (Eliminamos la importación de datos locales que causaba el error)
 
 // Mapa Dinámico
 const AnimatedFlights = dynamic(
@@ -28,17 +30,22 @@ const AnimatedFlights = dynamic(
   { ssr: false }
 );
 
-// --- 📅 CONFIGURACIÓN DE FECHA OPERATIVA ---
+// --- 📅 CONFIGURACIÓN ---
 const OPERATIONAL_DATE = "2025-01-02"; 
+
+// --- 🛡️ DATOS DE RESPALDO (Por si falla el backend) ---
+// Incluidos aquí para evitar errores de importación
+const FALLBACK_AIRPORTS = [
+  { id: 1, code: 'LIM', city: 'Lima', country: 'Peru', latitude: -12.024, longitude: -77.112, isHub: true, capacity: 1000 },
+  { id: 2, code: 'BOG', city: 'Bogota', country: 'Colombia', latitude: 4.701, longitude: -74.146, isHub: false, capacity: 1000 },
+  { id: 3, code: 'SCL', city: 'Santiago', country: 'Chile', latitude: -33.393, longitude: -70.793, isHub: false, capacity: 1000 },
+  { id: 4, code: 'MIA', city: 'Miami', country: 'USA', latitude: 25.793, longitude: -80.290, isHub: false, capacity: 1000 },
+  { id: 5, code: 'MAD', city: 'Madrid', country: 'Spain', latitude: 40.471, longitude: -3.562, isHub: true, capacity: 1000 },
+];
 
 export default function MapaPage() {
   const [loading, setLoading] = useState(true);
   const [aeropuertosMap, setAeropuertosMap] = useState<any[]>([]);
-  
-  // RELOJ PARA ANIMACIÓN EN VIVO
-  const [currentTime, setCurrentTime] = useState(`${OPERATIONAL_DATE}T00:00:00`);
-
-  // ESTADOS DEL PANEL
   const [isPanelOpen, setIsPanelOpen] = useState(true);
   
   // ESTADOS DEL MODAL
@@ -50,36 +57,24 @@ export default function MapaPage() {
     packetCount: 1       
   });
 
-  // DATOS DE VUELOS (ITINERARIOS)
+  // DATOS
   const [itinerarios, setItinerarios] = useState<any[]>([]); 
+  const [ordersList, setOrdersList] = useState<any[]>([]);   
   
   // MÉTRICAS
   const metrics = {
-    total: itinerarios.length, 
-    pendientes: 0,
-    enTransito: itinerarios.length,
-    completados: 0,
-    sinAsignar: 0
+    total: ordersList.length,
+    pendientes: ordersList.filter((p: any) => p.status === 'PENDING' || p.status === 'Registrado').length,
+    enTransito: ordersList.filter((p: any) => p.status === 'IN_TRANSIT' || p.status === 'En Vuelo').length,
+    completados: ordersList.filter((p: any) => p.status === 'COMPLETED' || p.status === 'Entregado').length,
+    sinAsignar: ordersList.filter((p: any) => p.status === 'UNASSIGNED' || p.status === 'Cancelado').length
   };
 
-  // --- 1. RELOJ DEL SISTEMA ---
-  useEffect(() => {
-    const updateClock = () => {
-      const now = new Date();
-      const timePart = now.toTimeString().split(' ')[0]; // HH:mm:ss
-      setCurrentTime(`${OPERATIONAL_DATE}T${timePart}`);
-    };
-    
-    updateClock();
-    const timer = setInterval(updateClock, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // --- 2. FETCH DE AEROPUERTOS (SOLO BACKEND) ---
+  // --- FETCHERS ---
   const fetchAeropuertos = useCallback(async () => {
     try {
       const response = await fetch('http://localhost:8080/api/airports');
-      if (!response.ok) throw new Error("Error fetching airports");
+      if (!response.ok) throw new Error("Error fetching");
       const data = await response.json();
       
       const adaptados = data.map((a: any) => ({
@@ -92,86 +87,46 @@ export default function MapaPage() {
         isHub: Boolean(a.isHub),
         capacity: a.totalCapacity || 1000,
         nombre: a.name || a.code,
-        pedidosEnEspera: a.pendingOrders || 0,
       }));
       setAeropuertosMap(adaptados);
     } catch (error) {
-      console.error("Error cargando aeropuertos del backend:", error);
-      toast.error("No se pudieron cargar los aeropuertos");
-      setAeropuertosMap([]); // Fallback vacío si falla el backend
+      console.warn("⚠️ Usando aeropuertos de respaldo (Backend desconectado)");
+      // Usamos la constante definida arriba en lugar de importar archivo
+      setAeropuertosMap(FALLBACK_AIRPORTS);
     }
   }, []);
 
-  // --- 3. FETCH DE VUELOS (USANDO FECHA OPERATIVA) ---
-  const fetchActiveFlights = useCallback(async () => {
+  const fetchOrders = useCallback(async () => {
     try {
-      const apiUrl = 'http://localhost:8080';
-      const url = `${apiUrl}/api/simulation/preview?startDate=${OPERATIONAL_DATE}&scenarioType=WEEKLY`;
-      
-      console.log("📡 Sincronizando vuelos para fecha operativa:", OPERATIONAL_DATE); 
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const preview = await response.json();
-        
-        if (preview.itineraries && preview.itineraries.length > 0) {
-          const mappedItinerarios = preview.itineraries.map((itin: any) => ({
-            id: itin.id,
-            pedidoId: itin.orderId, 
-            segmentos: (itin.segments || []).map((seg: any) => ({
-              numeroSegmento: seg.segmentNumber || seg.order,
-              vuelo: {
-                id: seg.flight.code,
-                codigo: seg.flight.code,
-                origen: {
-                  codigo: seg.flight.origin.code,
-                  nombre: seg.flight.origin.name || seg.flight.origin.code,
-                  latitude: seg.flight.origin.latitude,   
-                  longitude: seg.flight.origin.longitude, 
-                  latitud: seg.flight.origin.latitude,    
-                  longitud: seg.flight.origin.longitude,  
-                  ciudad: seg.flight.origin.city || seg.flight.origin.code,
-                },
-                destino: {
-                  codigo: seg.flight.destination.code,
-                  nombre: seg.flight.destination.name || seg.flight.destination.code,
-                  latitude: seg.flight.destination.latitude,
-                  longitude: seg.flight.destination.longitude,
-                  latitud: seg.flight.destination.latitude,
-                  longitud: seg.flight.destination.longitude,
-                  ciudad: seg.flight.destination.city || seg.flight.destination.code,
-                },
-                salidaProgramadaISO: seg.flight.scheduledDepartureISO,
-                llegadaProgramadaISO: seg.flight.scheduledArrivalISO,
-                estado: seg.flight.status,
-              }
-            }))
-          }));
-          
-          console.log(`✈️ ${mappedItinerarios.length} vuelos encontrados para ${OPERATIONAL_DATE}.`);
-          setItinerarios(mappedItinerarios);
-        } else {
-          console.log(`⚠️ 0 vuelos para ${OPERATIONAL_DATE}.`);
-        }
-      }
+        const data = await ordersApi.getOrders(); 
+        setOrdersList(data);
     } catch (error) {
-      console.warn("⚠️ Error cargando vuelos activos:", error);
+        console.error("Error pedidos:", error);
     }
   }, []);
 
-  // Carga inicial
-  useEffect(() => {
+ useEffect(() => {
     const initData = async () => {
       setLoading(true);
-      await Promise.all([fetchAeropuertos(), fetchActiveFlights()]);
-      setLoading(false);
+      
+      try {
+        // 1. 🔥 PRIMERO: Borramos todo lo anterior (Reset)
+        console.log("🧹 Limpiando sesión anterior...");
+        await ordersApi.clearOrders(); 
+        
+        // 2. LUEGO: Cargamos los aeropuertos y listas (que ahora estarán vacías)
+        await Promise.all([fetchAeropuertos(), fetchOrders()]);
+        
+      } catch (e) {
+        console.error("Error en inicialización:", e);
+      } finally {
+        setLoading(false);
+      }
     };
-    initData();
-    
-    // Auto-refresh cada 10s
-    const interval = setInterval(fetchActiveFlights, 10000);
-    return () => clearInterval(interval);
-  }, [fetchAeropuertos, fetchActiveFlights]);
+
+    initData(); // Se ejecuta al cargar la página (F5)
+
+  }, [fetchAeropuertos, fetchOrders]); // Dependencias
 
 
   // --- HANDLERS MODAL ---
@@ -187,89 +142,71 @@ export default function MapaPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // --- LÓGICA DE CREACIÓN DE PEDIDO ---
   const handleSubmitPedido = async () => {
     if (!formData.clientCode || !formData.destinationCode) {
-      toast.error("Complete cliente y destino");
+      toast.error("Complete todos los campos");
       return;
     }
-
     setIsSubmitting(true);
-
     try {
       const now = new Date();
-      const timePart = now.toTimeString().split(' ')[0]; // HH:mm:ss
-      const simulationDateTime = `${OPERATIONAL_DATE}T${timePart}`;
-
+      const timePart = now.toTimeString().split(' ')[0];
       const payload: any = {
-        orderNumber: "", 
         clientCode: formData.clientCode.trim(),
         airportDestinationCode: formData.destinationCode.toUpperCase().trim(),
         quantity: Math.max(1, Math.floor(Number(formData.packetCount))),
-        date: simulationDateTime 
+        date: `${OPERATIONAL_DATE}T${timePart}` 
       };
 
-      console.log("📨 Enviando pedido sincronizado:", payload);
-
       await ordersApi.createOrder(payload); 
-
-      toast.success("Pedido registrado y sincronizado");
+      toast.success("Pedido registrado");
       setShowModal(false);
-
-      toast.info("Asignando a vuelo disponible...");
-      
-      setTimeout(() => {
-        fetchActiveFlights(); 
-      }, 3000); 
-
+      await fetchOrders(); // Recargar lista
     } catch (error: any) {
-      console.error("❌ Error creando pedido:", error);
-      const msg = error.message || "Error desconocido";
-      toast.error(`Error: ${msg}`);
+      toast.error(`Error: ${error.message || "Error desconocido"}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleCargaMasivaPedidos = () => toast.success("Carga Masiva iniciada...");
+  const handleCargaMasivaPedidos = () => toast.info("Carga masiva simulada...");
+  const handleCargaMasivaCancelaciones = () => toast.error("Carga masiva cancelaciones...");
 
   return (
     <div className="relative h-[calc(100vh-4rem)] w-full overflow-hidden bg-background">
       
-      {/* 🌍 MAPA */}
+      {/* MAPA */}
       <div className="absolute inset-0 z-0">
         <AnimatedFlights
           key={aeropuertosMap.length} 
           itinerarios={itinerarios}
           aeropuertos={aeropuertosMap}
           speedKmh={900}
-          simulatedTime={currentTime} 
         />
       </div>
 
-      {/* HEADER FLOTANTE CON INFO DE FECHA */}
+      {/* HEADER FLOTANTE */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 flex gap-3 pointer-events-none">
           <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-lg shadow-lg border flex items-center gap-3 pointer-events-auto">
               <div className="p-1.5 bg-gray-100 rounded-full text-gray-600"><LayoutDashboard className="h-4 w-4" /></div>
               <div>
-                  <p className="text-[10px] uppercase text-muted-foreground font-bold">Vuelos Activos</p>
-                  <p className="text-lg font-bold leading-none">{itinerarios.length}</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-bold">Total</p>
+                  <p className="text-lg font-bold leading-none">{metrics.total}</p>
               </div>
           </div>
-          
-          {/* Se eliminó el indicador de Fecha Operativa a petición del usuario */}
+          <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-lg shadow-lg border flex items-center gap-3 pointer-events-auto">
+              <div className="p-1.5 bg-green-100 rounded-full text-green-600"><CheckCircle2 className="h-4 w-4" /></div>
+              <div>
+                  <p className="text-[10px] uppercase text-muted-foreground font-bold">Entregados</p>
+                  <p className="text-lg font-bold leading-none">{metrics.completados}</p>
+              </div>
+          </div>
       </div>
 
       {!isPanelOpen && (
         <Button variant="secondary" className="absolute top-4 right-4 z-20 shadow-xl gap-2 bg-white text-black" onClick={() => setIsPanelOpen(true)}>
           <LayoutPanelLeft className="h-4 w-4" /> Ver Panel
         </Button>
-      )}
-
-      {loading && (
-          <div className="absolute bottom-4 left-4 z-10 bg-black/80 text-white px-3 py-1 rounded-full text-xs flex items-center gap-2 shadow-lg">
-              <Activity className="h-3 w-3 animate-spin" /> Conectando con Torre de Control...
-          </div>
       )}
 
       {/* PANEL DERECHO */}
@@ -291,93 +228,136 @@ export default function MapaPage() {
           <TabsContent value="pedidos" className="flex-1 flex flex-col p-0 m-0 overflow-hidden">
             <div className="p-4 space-y-3">
               <Button onClick={handleAbrirModal} className="w-full bg-black text-white hover:bg-gray-800 shadow"><Plus className="mr-2 h-4 w-4" /> Nuevo Pedido</Button>
-              <Button onClick={handleCargaMasivaPedidos} variant="outline" className="w-full border-dashed"><Upload className="mr-2 h-4 w-4" /> Carga Masiva</Button>
+              <Button variant="outline" className="w-full border-dashed" onClick={handleCargaMasivaPedidos}><Upload className="mr-2 h-4 w-4" /> Carga Masiva</Button>
             </div>
-            <div className="px-4 pb-4 grid grid-cols-2 gap-2">
-                <div className="bg-blue-50 p-2 rounded text-blue-700 text-center">
-                    <div className="text-[10px] font-bold uppercase">En Aire</div>
-                    <div className="text-xl font-bold">{metrics.enTransito}</div>
+            
+            {/* SUBPANEL MÉTRICAS */}
+            <div className="px-4 pb-4 grid grid-cols-4 gap-2 text-center">
+                <div className="bg-orange-50 p-2 rounded border border-orange-100">
+                    <div className="text-[9px] font-bold text-orange-700 uppercase">Pend.</div>
+                    <div className="text-lg font-bold text-orange-800">{metrics.pendientes}</div>
                 </div>
-                 <div className="bg-gray-50 p-2 rounded text-gray-700 text-center">
-                    <div className="text-[10px] font-bold uppercase">Total</div>
-                    <div className="text-xl font-bold">{metrics.total}</div>
+                <div className="bg-blue-50 p-2 rounded border border-blue-100">
+                    <div className="text-[9px] font-bold text-blue-700 uppercase">Tran.</div>
+                    <div className="text-lg font-bold text-blue-800">{metrics.enTransito}</div>
+                </div>
+                <div className="bg-green-50 p-2 rounded border border-green-100">
+                    <div className="text-[9px] font-bold text-green-700 uppercase">Comp.</div>
+                    <div className="text-lg font-bold text-green-800">{metrics.completados}</div>
+                </div>
+                <div className="bg-red-50 p-2 rounded border border-red-100">
+                    <div className="text-[9px] font-bold text-red-700 uppercase">Alert</div>
+                    <div className="text-lg font-bold text-red-800">{metrics.sinAsignar}</div>
                 </div>
             </div>
+            
             <Separator />
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center text-muted-foreground">
-               <Package className="h-10 w-10 mb-2 opacity-10" />
-               <p className="text-sm">Gestione los pedidos aquí.</p>
+            
+            {/* LISTA DE PEDIDOS */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {ordersList.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center text-muted-foreground py-10">
+                        <Package className="h-10 w-10 mb-2 opacity-10" />
+                        <p className="text-sm">No hay pedidos registrados.</p>
+                    </div>
+                ) : (
+                    ordersList.map((p: any, i: number) => (
+                        <div key={i} className="p-3 bg-white border rounded-lg shadow-sm hover:border-blue-300 transition-all">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <div className="font-bold text-sm text-gray-800">{p.clientName || p.clientCode || "Cliente"}</div>
+                                    <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                        <MapPin className="h-3 w-3" /> 
+                                        {p.originCode || "LIM"} <ChevronRight className="h-3 w-3" /> {p.destinationCode || p.airportDestinationCode}
+                                    </div>
+                                </div>
+                                <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${
+                                    (p.status === 'COMPLETED') ? 'bg-green-100 text-green-700' :
+                                    (p.status === 'IN_TRANSIT') ? 'bg-blue-100 text-blue-700' :
+                                    'bg-orange-100 text-orange-700'
+                                }`}>
+                                    {p.status || 'PENDING'}
+                                </span>
+                            </div>
+                            <div className="mt-2 flex justify-between items-center text-xs text-gray-400">
+                                <span className="flex items-center gap-1"><Package className="h-3 w-3" /> {p.quantity} paq.</span>
+                                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {p.registrationDate ? new Date(p.registrationDate).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--'}</span>
+                            </div>
+                        </div>
+                    ))
+                )}
             </div>
           </TabsContent>
           
           <TabsContent value="vuelos" className="flex-1 p-4"><div className="text-center text-sm text-muted-foreground">Listado de vuelos...</div></TabsContent>
-          <TabsContent value="cancelaciones" className="flex-1 p-4"><div className="text-center text-sm text-muted-foreground">Gestión de bloqueos...</div></TabsContent>
+          
+          <TabsContent value="cancelaciones" className="flex-1 flex flex-col p-0 m-0 overflow-hidden">
+            <div className="p-4 space-y-3">
+                <div className="p-3 bg-red-50 border border-red-100 rounded-md text-xs text-red-800 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div>
+                      Gestión de bloqueos y cancelaciones de vuelos programados.
+                    </div>
+                </div>
+                <Button variant="outline" className="w-full border-dashed border-red-200 hover:bg-red-50 hover:text-red-600 text-red-600" onClick={handleCargaMasivaCancelaciones}>
+                    <Upload className="mr-2 h-4 w-4" /> Carga Masiva
+                </Button>
+            </div>
+            <Separator />
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center text-muted-foreground">
+               <Ban className="h-10 w-10 mb-2 opacity-10" />
+               <p className="text-sm">Sin cancelaciones registradas.</p>
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
 
-      {/* MODAL AGREGAR PEDIDO */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border overflow-hidden">
-            <div className="px-6 py-4 border-b flex justify-between bg-gray-50/50">
-              <h3 className="font-semibold text-lg">Nuevo Pedido</h3>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleCerrarModal}><X className="h-4 w-4" /></Button>
-            </div>
-            <div className="p-6 space-y-4">
-              
-              {/* Se eliminó el aviso de fecha sincronizada a petición del usuario */}
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase">Cliente (Código)</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                  <input 
-                    name="clientCode" 
-                    value={formData.clientCode} 
-                    onChange={handleInputChange} 
-                    placeholder="Ej: 0007729" 
-                    className="pl-9 flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border-gray-200" 
-                  />
+      {/* MODAL INTEGRADO */}
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Nuevo Pedido</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                    <label htmlFor="clientCode" className="text-xs font-semibold text-gray-500 uppercase">Cliente (Código)</label>
+                    <div className="relative">
+                        <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                        <Input id="clientCode" name="clientCode" placeholder="Ej: 0007729" value={formData.clientCode} onChange={handleInputChange} className="pl-9" />
+                    </div>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase">Destino (Aeropuerto)</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                  <input 
-                    name="destinationCode" 
-                    value={formData.destinationCode} 
-                    onChange={handleInputChange} 
-                    placeholder="Ej: EBCI" 
-                    maxLength={4} 
-                    className="pl-9 flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border-gray-200 uppercase" 
-                  />
+                <div className="space-y-2">
+                    <label htmlFor="destinationSelect" className="text-xs font-semibold text-gray-500 uppercase">Destino</label>
+                    <div className="relative">
+                        <MapPin className="absolute left-3 top-3 h-4 w-4 z-10 text-gray-400" />
+                        <Select onValueChange={(val) => setFormData(prev => ({...prev, destinationCode: val}))}>
+                            <SelectTrigger id="destinationSelect" className="pl-9">
+                                <SelectValue placeholder="Seleccionar Aeropuerto" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {aeropuertosMap.map((a: any) => (
+                                    <SelectItem key={a.code} value={a.code}>{a.city} ({a.code})</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase">Paquetes</label>
-                <div className="relative">
-                  <Box className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                  <input 
-                    name="packetCount" 
-                    type="number" 
-                    min={1} 
-                    value={formData.packetCount} 
-                    onChange={handleInputChange} 
-                    className="pl-9 flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border-gray-200" 
-                  />
+                <div className="space-y-2">
+                    <label htmlFor="packetCount" className="text-xs font-semibold text-gray-500 uppercase">Paquetes</label>
+                    <div className="relative">
+                        <Box className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                        <Input id="packetCount" name="packetCount" type="number" min="1" placeholder="1" value={formData.packetCount} onChange={handleInputChange} className="pl-9" />
+                    </div>
                 </div>
-              </div>
+                <div className="flex justify-end gap-3 mt-4">
+                  <Button variant="outline" onClick={handleCerrarModal} disabled={isSubmitting}>Cancelar</Button>
+                  <Button className="bg-black text-white hover:bg-gray-800" onClick={handleSubmitPedido} disabled={isSubmitting}>
+                    {isSubmitting ? <Activity className="mr-2 h-4 w-4 animate-spin" /> : "Guardar y Enviar"}
+                  </Button>
+                </div>
             </div>
-            <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
-              <Button variant="outline" onClick={handleCerrarModal} disabled={isSubmitting}>Cancelar</Button>
-              <Button className="bg-black text-white hover:bg-gray-800" onClick={handleSubmitPedido} disabled={isSubmitting}>
-                {isSubmitting ? <Activity className="h-4 w-4 animate-spin" /> : "Guardar y Enviar"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

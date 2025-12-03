@@ -25,7 +25,11 @@ export const ordersApi = {
 
   async createOrder(payload: CreateOrderDto): Promise<Order> {
     try {
-      const url = getFullUrl(API_ENDPOINTS.ORDERS.BASE);
+      // 🔥 CORRECCIÓN AQUÍ: Agregamos "/create" para coincidir con tu Backend Java
+      const url = getFullUrl(API_ENDPOINTS.ORDERS.BASE) + '/create';
+      
+      console.log("📡 Enviando POST a:", url); // Log para depurar
+
       const response = await fetch(url, {
         method: "POST",
         headers: {
@@ -78,4 +82,14 @@ export const ordersApi = {
       throw error;
     }
   },
+
+  async clearOrders(): Promise<void> {
+    try {
+      const url = getFullUrl(API_ENDPOINTS.ORDERS.BASE) + '/clear'; // Apunta a /api/orders/clear
+      await fetch(url, { method: 'DELETE' });
+    } catch (error) {
+      console.error("Error limpiando pedidos:", error);
+    }
+  },
+
 };
