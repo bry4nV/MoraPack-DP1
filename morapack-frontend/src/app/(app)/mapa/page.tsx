@@ -5,23 +5,27 @@ import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { dmsToDecimal } from "@/lib/geo";
 
+// --- WEBSOCKET IMPORTS ---
+import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
+
 // --- API SERVICES ---
-// Asegúrate de que este archivo exista en src/api/orders/orders.ts
 import { ordersApi } from "@/api/orders/orders";
 
 // Componentes UI Básicos
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+// 🔥 IMPORTANTE: Agregamos DialogDescription para quitar el Warning
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Íconos
 import { 
-  Plus, Upload, Activity, ChevronRight, ChevronLeft,
+  Plus, Upload, Activity, ChevronRight,
   Package, Ban, CheckCircle2, LayoutPanelLeft, AlertCircle, 
-  LayoutDashboard, X, MapPin, User, Box, Plane, Clock
+  LayoutDashboard, MapPin, User, Box, Clock
 } from "lucide-react";
 
 // Mapa Dinámico
@@ -33,8 +37,7 @@ const AnimatedFlights = dynamic(
 // --- 📅 CONFIGURACIÓN ---
 const OPERATIONAL_DATE = "2025-01-02"; 
 
-// --- 🛡️ DATOS DE RESPALDO (Por si falla el backend) ---
-// Incluidos aquí para evitar errores de importación
+// --- 🛡️ DATOS DE RESPALDO ---
 const FALLBACK_AIRPORTS = [
   { id: 1, code: 'LIM', city: 'Lima', country: 'Peru', latitude: -12.024, longitude: -77.112, isHub: true, capacity: 1000 },
   { id: 2, code: 'BOG', city: 'Bogota', country: 'Colombia', latitude: 4.701, longitude: -74.146, isHub: false, capacity: 1000 },
@@ -91,7 +94,6 @@ export default function MapaPage() {
       setAeropuertosMap(adaptados);
     } catch (error) {
       console.warn("⚠️ Usando aeropuertos de respaldo (Backend desconectado)");
-      // Usamos la constante definida arriba en lugar de importar archivo
       setAeropuertosMap(FALLBACK_AIRPORTS);
     }
   }, []);
@@ -105,31 +107,96 @@ export default function MapaPage() {
     }
   }, []);
 
- useEffect(() => {
+  // --- 🔥 CONEXIÓN WEBSOCKET ---
+  useEffect(() => {
+    const socket = new SockJS('http://localhost:8080/ws-morapack');
+    const stompClient = new Client({
+      webSocketFactory: () => socket,
+      reconnectDelay: 5000,
+      onConnect: () => {
+        console.log('✅ Conectado a Torre de Control (WebSocket)');
+        
+        stompClient.subscribe('/topic/flights', (msg) => {
+          if (msg.body) {
+            const evento = JSON.parse(msg.body);
+            console.log("✈️ VUELO RECIBIDO (Raw):", evento);
+
+            if (evento.tipo === 'TAKEOFF') {
+                const datosVuelo = evento.datos;
+
+                // 🔥 TRUCO DE TIEMPO: Forzar fecha actual
+                const ahoraMismo = new Date();
+                const llegadaCalculada = new Date(ahoraMismo.getTime() + 15000); // 15s vuelo
+
+                const nuevoItinerario = {
+                    id: datosVuelo.id,
+                    pedidoId: evento.pedidoId,
+                    segmentos: [{
+                        numeroSegmento: 1,
+                        vuelo: {
+                            id: datosVuelo.id,
+                            codigo: datosVuelo.id,
+                            origen: {
+                                codigo: datosVuelo.origen.codigo,
+                                latitude: Number(datosVuelo.origen.latitude),
+                                longitude: Number(datosVuelo.origen.longitude)
+                            },
+                            destino: {
+                                codigo: datosVuelo.destino.codigo,
+                                latitude: Number(datosVuelo.destino.latitude),
+                                longitude: Number(datosVuelo.destino.longitude)
+                            },
+                            salidaProgramadaISO: ahoraMismo.toISOString(),
+                            llegadaProgramadaISO: llegadaCalculada.toISOString(),
+                            estado: 'IN_TRANSIT'
+                        }
+                    }]
+                };
+
+                setItinerarios(prev => [...prev, nuevoItinerario]);
+                toast.success(`✈️ Vuelo ${datosVuelo.id} despegando!`);
+                fetchOrders(); 
+            } 
+            else if (evento.tipo === 'LANDING') {
+                setItinerarios(prev => prev.filter(it => 
+                    it.segmentos[0].vuelo.id !== evento.vueloId
+                ));
+                toast.success("📦 Pedido Entregado");
+                fetchOrders(); 
+            }
+          }
+        });
+
+        stompClient.subscribe('/topic/orders', (msg) => {
+            if (msg.body === 'UPDATE') fetchOrders();
+        });
+      },
+    });
+
+    stompClient.activate();
+    return () => { stompClient.deactivate(); };
+  }, [fetchOrders]);
+
+
+  // --- CARGA INICIAL ---
+  useEffect(() => {
     const initData = async () => {
       setLoading(true);
-      
       try {
-        // 1. 🔥 PRIMERO: Borramos todo lo anterior (Reset)
-        console.log("🧹 Limpiando sesión anterior...");
-        await ordersApi.clearOrders(); 
-        
-        // 2. LUEGO: Cargamos los aeropuertos y listas (que ahora estarán vacías)
+        // Intentamos limpiar la BD, si falla (404) no rompemos la app
+        await ordersApi.clearOrders().catch(err => console.warn("No se pudo limpiar BD:", err)); 
         await Promise.all([fetchAeropuertos(), fetchOrders()]);
-        
       } catch (e) {
-        console.error("Error en inicialización:", e);
+        console.error("Error inicializando:", e);
       } finally {
         setLoading(false);
       }
     };
-
-    initData(); // Se ejecuta al cargar la página (F5)
-
-  }, [fetchAeropuertos, fetchOrders]); // Dependencias
+    initData();
+  }, [fetchAeropuertos, fetchOrders]);
 
 
-  // --- HANDLERS MODAL ---
+  // --- HANDLERS ---
   const handleAbrirModal = () => {
     setFormData({ clientCode: "", destinationCode: "", packetCount: 1 });
     setShowModal(true);
@@ -159,9 +226,9 @@ export default function MapaPage() {
       };
 
       await ordersApi.createOrder(payload); 
-      toast.success("Pedido registrado");
+      toast.success("Pedido registrado, procesando...");
       setShowModal(false);
-      await fetchOrders(); // Recargar lista
+      await fetchOrders(); 
     } catch (error: any) {
       toast.error(`Error: ${error.message || "Error desconocido"}`);
     } finally {
@@ -209,15 +276,15 @@ export default function MapaPage() {
         </Button>
       )}
 
-      {/* PANEL DERECHO */}
+      {/* PANEL DERECHO - CORREGIDO */}
       <div className={`absolute right-0 top-0 h-full bg-white/95 backdrop-blur-md shadow-2xl z-30 border-l transition-all duration-300 ease-in-out flex flex-col ${isPanelOpen ? "w-96 translate-x-0" : "w-0 translate-x-full opacity-0"}`}>
         <div className="p-4 border-b flex items-center justify-between bg-muted/30">
           <div className="font-semibold text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-blue-600" /> Control de Operaciones</div>
           <Button variant="ghost" size="sm" onClick={() => setIsPanelOpen(false)}>Ocultar <ChevronRight className="h-4 w-4" /></Button>
         </div>
 
-        <Tabs defaultValue="pedidos" className="flex-1 flex flex-col">
-          <div className="px-4 pt-4">
+        <Tabs defaultValue="pedidos" className="flex-1 flex flex-col h-full overflow-hidden">
+          <div className="px-4 pt-4 flex-none">
             <TabsList className="grid w-full grid-cols-3 bg-muted/50">
               <TabsTrigger value="pedidos" className="text-xs">Pedidos</TabsTrigger>
               <TabsTrigger value="vuelos" className="text-xs">Vuelos</TabsTrigger>
@@ -225,43 +292,44 @@ export default function MapaPage() {
             </TabsList>
           </div>
 
-          <TabsContent value="pedidos" className="flex-1 flex flex-col p-0 m-0 overflow-hidden">
-            <div className="p-4 space-y-3">
+          <TabsContent value="pedidos" className="flex-1 flex flex-col p-0 m-0 h-full overflow-hidden">
+            <div className="p-4 space-y-3 flex-none">
               <Button onClick={handleAbrirModal} className="w-full bg-black text-white hover:bg-gray-800 shadow"><Plus className="mr-2 h-4 w-4" /> Nuevo Pedido</Button>
               <Button variant="outline" className="w-full border-dashed" onClick={handleCargaMasivaPedidos}><Upload className="mr-2 h-4 w-4" /> Carga Masiva</Button>
-            </div>
             
-            {/* SUBPANEL MÉTRICAS */}
-            <div className="px-4 pb-4 grid grid-cols-4 gap-2 text-center">
-                <div className="bg-orange-50 p-2 rounded border border-orange-100">
-                    <div className="text-[9px] font-bold text-orange-700 uppercase">Pend.</div>
-                    <div className="text-lg font-bold text-orange-800">{metrics.pendientes}</div>
-                </div>
-                <div className="bg-blue-50 p-2 rounded border border-blue-100">
-                    <div className="text-[9px] font-bold text-blue-700 uppercase">Tran.</div>
-                    <div className="text-lg font-bold text-blue-800">{metrics.enTransito}</div>
-                </div>
-                <div className="bg-green-50 p-2 rounded border border-green-100">
-                    <div className="text-[9px] font-bold text-green-700 uppercase">Comp.</div>
-                    <div className="text-lg font-bold text-green-800">{metrics.completados}</div>
-                </div>
-                <div className="bg-red-50 p-2 rounded border border-red-100">
-                    <div className="text-[9px] font-bold text-red-700 uppercase">Alert</div>
-                    <div className="text-lg font-bold text-red-800">{metrics.sinAsignar}</div>
+                {/* SUBPANEL MÉTRICAS */}
+                <div className="grid grid-cols-4 gap-2 text-center pt-2">
+                    <div className="bg-orange-50 p-2 rounded border border-orange-100">
+                        <div className="text-[9px] font-bold text-orange-700 uppercase">Pend.</div>
+                        <div className="text-lg font-bold text-orange-800">{metrics.pendientes}</div>
+                    </div>
+                    <div className="bg-blue-50 p-2 rounded border border-blue-100">
+                        <div className="text-[9px] font-bold text-blue-700 uppercase">Tran.</div>
+                        <div className="text-lg font-bold text-blue-800">{metrics.enTransito}</div>
+                    </div>
+                    <div className="bg-green-50 p-2 rounded border border-green-100">
+                        <div className="text-[9px] font-bold text-green-700 uppercase">Comp.</div>
+                        <div className="text-lg font-bold text-green-800">{metrics.completados}</div>
+                    </div>
+                    <div className="bg-red-50 p-2 rounded border border-red-100">
+                        <div className="text-[9px] font-bold text-red-700 uppercase">Alert</div>
+                        <div className="text-lg font-bold text-red-800">{metrics.sinAsignar}</div>
+                    </div>
                 </div>
             </div>
             
             <Separator />
             
-            {/* LISTA DE PEDIDOS */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {/* 🔥 LISTA CON SCROLL ARREGLADO */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
                 {ordersList.length === 0 ? (
                     <div className="flex flex-col items-center justify-center text-muted-foreground py-10">
                         <Package className="h-10 w-10 mb-2 opacity-10" />
                         <p className="text-sm">No hay pedidos registrados.</p>
                     </div>
                 ) : (
-                    ordersList.map((p: any, i: number) => (
+                    // Reverse para que el más nuevo salga arriba
+                    [...ordersList].reverse().map((p: any, i: number) => (
                         <div key={i} className="p-3 bg-white border rounded-lg shadow-sm hover:border-blue-300 transition-all">
                             <div className="flex justify-between items-start">
                                 <div>
@@ -312,11 +380,15 @@ export default function MapaPage() {
         </Tabs>
       </div>
 
-      {/* MODAL INTEGRADO */}
+      {/* MODAL INTEGRADO - CORREGIDO WARNING */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Nuevo Pedido</DialogTitle>
+              {/* 🔥 Se agrega Descripción para accesibilidad y evitar warning */}
+              <DialogDescription>
+                Ingrese los datos del envío para calcular la mejor ruta automáticamente.
+              </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
                 <div className="space-y-2">
