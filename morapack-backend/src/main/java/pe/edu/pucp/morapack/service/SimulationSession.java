@@ -1044,7 +1044,7 @@ public class SimulationSession implements Runnable {
                 }
 
                 // Assign shipments to the order
-                order.setShipments(shipments);
+                order.setShipments(new ArrayList<>());
                 ordersPopulated++;
             }
         }
@@ -1229,7 +1229,7 @@ public class SimulationSession implements Runnable {
         for (PlannerOrder order : allProcessedOrdersMap.values()) {
             if (!order.getShipments().isEmpty()) {
                 boolean hasArrival = order.getShipments().stream()
-                    .anyMatch(s -> s.getEstimatedArrival() != null);
+                    .anyMatch(s -> s.getFinalArrivalTime() != null);
                 if (hasArrival) {
                     ordersWithArrival++;
                 } else {

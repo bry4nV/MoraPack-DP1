@@ -1,13 +1,15 @@
 package pe.edu.pucp.morapack.algos.entities;
+
 import java.time.LocalDateTime;
-import java.time.ZonedDateTime;
-import java.time.ZoneOffset;
 import java.time.Duration;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 import pe.edu.pucp.morapack.model.Continent;
-import pe.edu.pucp.morapack.model.Shipment;
+// ❌ ELIMINA: import pe.edu.pucp.morapack.model.Shipment; 
+// (Así desacoplamos el algoritmo de la base de datos)
 
 public class PlannerOrder {
     private int id;
@@ -16,8 +18,10 @@ public class PlannerOrder {
     private PlannerAirport destination;
     private long maxDeliveryHours;
     private LocalDateTime orderTime;
-    private String clientId;  // ID del cliente que realizó el pedido
-    private List<Shipment> shipments = new ArrayList<>();
+    private String clientId;
+    
+    // ✅ CAMBIO CLAVE: Usar la entidad del algoritmo
+    private List<PlannerShipment> shipments = new ArrayList<>();
 
     public PlannerOrder(int id, int quantity, PlannerAirport origin, PlannerAirport destination) {
         this.id = id;
@@ -40,161 +44,73 @@ public class PlannerOrder {
     public String getClientId() { return clientId; }
     public void setClientId(String clientId) { this.clientId = clientId; }
     
-    public List<Shipment> getShipments() {
+    // ✅ GETTER CORREGIDO
+    public List<PlannerShipment> getShipments() {
         return new ArrayList<>(shipments);
     }
     
-    public void setShipments(List<Shipment> shipments) {
+    // ✅ SETTER CORREGIDO
+    public void setShipments(List<PlannerShipment> shipments) {
         this.shipments = new ArrayList<>(shipments);
     }
     
-    public void addShipment(Shipment shipment) {
+    public void addShipment(PlannerShipment shipment) {
         this.shipments.add(shipment);
     }
     
     public Duration getTotalDeliveryTime() {
-        if (shipments.isEmpty() || orderTime == null) {
-            return Duration.ZERO;
-        }
+        if (shipments.isEmpty() || orderTime == null) return Duration.ZERO;
         
         LocalDateTime lastDelivery = shipments.stream()
-            .map(Shipment::getEstimatedArrival)
-            .filter(arrival -> arrival != null)  // Filter out null values
+            .map(PlannerShipment::getFinalArrivalTime)
+            .filter(arrival -> arrival != null)
             .max(LocalDateTime::compareTo)
             .orElse(orderTime);
             
         return Duration.between(orderTime, lastDelivery);
     }
     
-    /**
-     * Determina si el pedido es intercontinental
-     */
     public boolean isInterContinental() {
         if (origin == null || destination == null) return false;
         if (origin.getCountry() == null || destination.getCountry() == null) return false;
-
-        Continent originContinent = origin.getCountry().getContinent();
-        Continent destContinent = destination.getCountry().getContinent();
-
-        // Si alguno de los continentes es null, asumimos que NO es intercontinental
-        if (originContinent == null || destContinent == null) return false;
-
-        return !originContinent.equals(destContinent);
+        return !origin.getCountry().getContinent().equals(destination.getCountry().getContinent());
     }
 
-    /**
-     * Calcula el deadline del pedido considerando el timezone del destino.
-     *
-     * REGLA: El plazo de entrega se mide respecto de la hora en que se hizo el pedido
-     * en el uso horario del DESTINO.
-     *
-     * Ejemplo:
-     * - Pedido realizado a las 10:00 UTC
-     * - Destino: Lima (GMT-5)
-     * - Hora local en Lima: 05:00
-     * - Deadline (48h): 05:00 + 48h = 05:00 (dos días después) en hora de Lima
-     *
-     * @return Deadline en tiempo UTC
-     */
     public LocalDateTime getDeadlineInDestinationTimezone() {
-        if (orderTime == null) {
-            return null;
-        }
+        if (orderTime == null) return null;
+        if (destination == null) return orderTime.plusHours(maxDeliveryHours);
 
-        if (destination == null) {
-            // Fallback: sin timezone del destino, usar cálculo simple en UTC
-            return orderTime.plusHours(maxDeliveryHours);
-        }
-
-        // Convertir orderTime (UTC) a timezone del destino
         ZoneOffset destOffset = ZoneOffset.ofHours(destination.getGmt());
-        ZonedDateTime orderTimeAtDest = orderTime.atZone(ZoneOffset.UTC)
-                                                  .withZoneSameInstant(destOffset);
-
-        // Agregar las horas del deadline en el timezone del destino
-        ZonedDateTime deadlineAtDest = orderTimeAtDest.plusHours(maxDeliveryHours);
-
-        // Convertir de vuelta a UTC para comparaciones
-        return deadlineAtDest.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+        ZonedDateTime orderTimeAtDest = orderTime.atZone(ZoneOffset.UTC).withZoneSameInstant(destOffset);
+        return orderTimeAtDest.plusHours(maxDeliveryHours).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
     }
 
-    /**
-     * Determina si el pedido fue entregado a tiempo considerando el timezone del destino.
-     *
-     * @return true si todos los shipments llegaron antes del deadline, false si no
-     */
     public boolean isDeliveredOnTime() {
-        if (shipments.isEmpty() || orderTime == null) {
-            System.out.println("  ⚠️ [DELIVERY CHECK] Order #" + id + ": FALSE (empty shipments or null orderTime)");
-            return false;  // Sin shipments no puede estar "a tiempo"
-        }
-
+        if (shipments.isEmpty() || orderTime == null) return false;
         LocalDateTime deadline = getDeadlineInDestinationTimezone();
-        if (deadline == null) {
-            System.out.println("  ⚠️ [DELIVERY CHECK] Order #" + id + ": FALSE (deadline is null)");
-            return false;  // Sin deadline calculable, no se puede determinar
-        }
+        if (deadline == null) return false;
 
-        // Contar shipments con/sin arrival time
-        long totalShipments = shipments.size();
-        long shipmentsWithArrival = shipments.stream()
-            .map(Shipment::getEstimatedArrival)
+        boolean anyArrival = shipments.stream().anyMatch(s -> s.getFinalArrivalTime() != null);
+        if (!anyArrival) return false;
+
+        return shipments.stream()
+            .map(PlannerShipment::getFinalArrivalTime)
             .filter(arrival -> arrival != null)
-            .count();
-        long shipmentsWithoutArrival = totalShipments - shipmentsWithArrival;
-
-        // DEBUG: Log arrival times
-        System.out.println("  📊 [DELIVERY CHECK] Order #" + id + ":");
-        System.out.println("     Total shipments: " + totalShipments);
-        System.out.println("     With arrival time: " + shipmentsWithArrival);
-        System.out.println("     WITHOUT arrival time: " + shipmentsWithoutArrival + " ⚠️");
-        System.out.println("     Deadline: " + deadline);
-
-        // Si NO hay arrival times, retornar false
-        if (shipmentsWithArrival == 0) {
-            System.out.println("     Result: FALSE (no arrival times found)");
-            return false;
-        }
-
-        // Verificar que TODOS los shipments CON arrival time llegaron antes del deadline
-        boolean allOnTime = shipments.stream()
-            .map(Shipment::getEstimatedArrival)
-            .filter(arrival -> arrival != null)
-            .allMatch(arrival -> {
-                boolean onTime = arrival.isBefore(deadline) || arrival.isEqual(deadline);
-                System.out.println("       - Arrival: " + arrival + " → " + (onTime ? "ON TIME ✓" : "LATE ✗"));
-                return onTime;
-            });
-
-        System.out.println("     Result: " + (allOnTime ? "TRUE ✓" : "FALSE ✗"));
-        return allOnTime;
+            .allMatch(arrival -> arrival.isBefore(deadline) || arrival.isEqual(deadline));
     }
 
-    /**
-     * Obtiene el retraso en horas si el pedido llegó tarde.
-     *
-     * @return Horas de retraso (positivo si tarde, 0 si a tiempo o antes)
-     */
     public long getDelayHours() {
-        if (shipments.isEmpty() || orderTime == null) {
-            return 0;
-        }
-
+        if (shipments.isEmpty() || orderTime == null) return 0;
         LocalDateTime deadline = getDeadlineInDestinationTimezone();
-        if (deadline == null) {
-            return 0;  // Sin deadline calculable
-        }
+        if (deadline == null) return 0;
 
         LocalDateTime lastArrival = shipments.stream()
-            .map(Shipment::getEstimatedArrival)
+            .map(PlannerShipment::getFinalArrivalTime)
             .filter(arrival -> arrival != null)
             .max(LocalDateTime::compareTo)
             .orElse(orderTime);
 
-        if (lastArrival.isBefore(deadline) || lastArrival.isEqual(deadline)) {
-            return 0;  // A tiempo
-        }
-
+        if (lastArrival.isBefore(deadline) || lastArrival.isEqual(deadline)) return 0;
         return Duration.between(deadline, lastArrival).toHours();
     }
 }

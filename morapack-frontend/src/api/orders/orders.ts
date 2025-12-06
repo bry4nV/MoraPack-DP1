@@ -2,6 +2,7 @@ import { API_CONFIG, API_ENDPOINTS } from '@/config/api';
 import type { Order, CreateOrderDto } from '@/types/order';
 
 const getFullUrl = (path: string) => `${API_CONFIG.BASE_URL}${path}`;
+const API_URL = 'http://localhost:8080/api/orders';
 
 export const ordersApi = {
   async getOrders(): Promise<Order[]> {
@@ -91,5 +92,22 @@ export const ordersApi = {
       console.error("Error limpiando pedidos:", error);
     }
   },
+
+  // ... métodos anteriores ...
+
+  uploadCsv: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`${API_URL}/upload`, {
+      method: 'POST',
+      body: formData, // No poner Content-Type, el navegador lo pone solo con el boundary
+    });
+
+    if (!res.ok) throw new Error("Error al subir archivo");
+    return res.json(); // o res.text() si el backend devuelve texto plano
+  },
+  
+
 
 };
